@@ -26,6 +26,7 @@ export async function GET(request: Request, context: { params: Promise<{ kind: s
   }
   if (kind === "finance" && !canViewFinance(farm.roles)) return new Response("Forbidden", { status: 403 });
   if (kind === "genetics" && !canViewGenetics(farm.roles)) return new Response("Forbidden", { status: 403 });
+  if (kind === "embryos" && !canViewGenetics(farm.roles)) return new Response("Forbidden", { status: 403 });
   if (farm.roles.length === 1 && farm.roles[0] === "worker") return new Response("Forbidden", { status: 403 });
 
   const lines = await reportRows(kind, farm.farmId);

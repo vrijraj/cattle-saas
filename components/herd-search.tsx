@@ -82,7 +82,7 @@ const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "a
   { href: "/semen", label: "Semen", icon: Droplets, gate: "semen" },
   { href: "/genetics", label: "Genetics", icon: Dna, gate: "genetics" },
   { href: "/insights", label: "Insights", icon: Lightbulb },
-  { href: "/embryos", label: "Embryos", icon: Sprout },
+  { href: "/embryos", label: "Embryos", icon: Sprout, gate: "genetics" },
   { href: "/finance", label: "Finance", icon: Wallet, gate: "finance" },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/reports", label: "Reports", icon: FileBarChart, gate: "reports" },

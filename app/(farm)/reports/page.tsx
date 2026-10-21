@@ -115,6 +115,7 @@ function canOpen(kind: ReportId, roles: string[]) {
   if (kind === "health" && !canRecordHealth(roles) && !roles.includes("owner") && !roles.includes("manager")) return false;
   if (kind === "finance" && !canViewFinance(roles)) return false;
   if (kind === "genetics" && !canViewGenetics(roles)) return false;
+  if (kind === "embryos" && !canViewGenetics(roles)) return false;
   return true;
 }
 

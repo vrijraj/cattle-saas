@@ -68,14 +68,14 @@ export function FarmShell({
             <p className="text-xs text-muted-foreground">Farm portal</p>
           </div>
         </div>
-        <FarmNav showTeam={showTeam} showAudit={showAudit} showHealth={showHealth} showSemen={showSemen} />
+        <FarmNav showTeam={showTeam} showAudit={showAudit} showHealth={showHealth} showSemen={showSemen} showGenetics={showGenetics} />
         <div className="mt-auto border-t border-border px-3 py-3">
           <SignOutButton />
         </div>
       </aside>
       <div className="min-w-0">
         <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-card/95 px-3 py-3 backdrop-blur sm:gap-3 sm:px-4">
-          <FarmDrawer farmName={farmName} userName={userName} role={role} initials={initials} showTeam={showTeam} showAudit={showAudit} showHealth={showHealth} showSemen={showSemen} signOut={<SignOutButton />} />
+          <FarmDrawer farmName={farmName} userName={userName} role={role} initials={initials} showTeam={showTeam} showAudit={showAudit} showHealth={showHealth} showSemen={showSemen} showGenetics={showGenetics} signOut={<SignOutButton />} />
           <HerdSearch farmId={farmId} showTeam={showTeam} showAudit={showAudit} showFinance={showFinance} showReports={showReports} showGenetics={showGenetics} showHealth={showHealth} showSemen={showSemen} />
           <Link href="/scan" className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card text-foreground">
             <ScanLine className="size-4" />

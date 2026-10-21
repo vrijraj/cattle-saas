@@ -51,12 +51,14 @@ export function FarmNav({
   showAudit = false,
   showHealth = false,
   showSemen = false,
+  showGenetics = false,
   variant = "sidebar",
 }: {
   showTeam?: boolean;
   showAudit?: boolean;
   showHealth?: boolean;
   showSemen?: boolean;
+  showGenetics?: boolean;
   variant?: "sidebar" | "drawer";
 }) {
   const pathname = usePathname();
@@ -65,7 +67,8 @@ export function FarmNav({
       (link.href !== "/team" || showTeam) &&
       (link.href !== "/audit" || showAudit) &&
       (link.href !== "/health" || showHealth) &&
-      (link.href !== "/semen" || showSemen),
+      (link.href !== "/semen" || showSemen) &&
+      (link.href !== "/embryos" || showGenetics),
   );
   const stacked = variant === "drawer";
   return (
