@@ -41,7 +41,7 @@ function destination(type: string, code: string | null) {
   return `/animals/${code}?tab=health`;
 }
 
-export const metadata = { title: "Herd alerts" };
+export const metadata = { title: "Alerts" };
 
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string; q?: string }> }) {
   const farm = await requireFarm();

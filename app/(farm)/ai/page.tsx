@@ -2,7 +2,7 @@ import { AiChat } from "@/components/ai-chat";
 import { requireFarm } from "@/lib/farm-context";
 import { geminiConfigured } from "@/lib/ai/config";
 
-export const metadata = { title: "Herd assistant" };
+export const metadata = { title: "Assistant" };
 
 export default async function AiPage() {
   const farm = await requireFarm();

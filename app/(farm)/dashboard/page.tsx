@@ -11,7 +11,7 @@ import { canReadAlert } from "@/lib/permissions";
 
 const breedColors = ["#157347", "#7dce78", "#e0a106", "#3d8bfd", "#8b6cc4", "#94a3a0"];
 
-export const metadata = { title: "Herd dashboard" };
+export const metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
   const farm = await requireFarm();
