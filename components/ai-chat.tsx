@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState, type ComponentType } from "react";
+import { FormEvent, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { ArrowUp, Bell, Beef, Droplets, FileBarChart, HeartPulse, LayoutDashboard, Milk, Plus, Scale, ShoppingBag, Sparkles, Sprout, Stethoscope, User, Users, Wallet, Wheat, X } from "lucide-react";
 
 type ConfirmCard = {
@@ -111,21 +111,110 @@ function ToolGlyph({ name, className }: { name: string; className?: string }) {
   return <Icon className={className} />;
 }
 
-function renderText(text: string) {
-  const tokens = text.split(/(\[[^\]]+\]\([^)]+\)|\/[A-Za-z0-9][A-Za-z0-9/_?&=%.-]*)/g);
-  return tokens.map((token, index) => {
-    const linked = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-    const href = linked?.[2] ?? (token.startsWith("/") ? token : null);
-    const label = linked?.[1] ?? token;
-    if (href?.startsWith("/")) {
-      return (
-        <a key={index} href={href} className="font-medium text-primary underline-offset-2 hover:underline">
-          {label}
-        </a>
-      );
+type TextBlock = { type: "p"; text: string } | { type: "ul" | "ol"; items: string[] };
+
+function parseBlocks(text: string): TextBlock[] {
+  const blocks: TextBlock[] = [];
+  let paragraph: string[] = [];
+  let list: { type: "ul" | "ol"; items: string[] } | null = null;
+
+  function flushParagraph() {
+    if (!paragraph.length) return;
+    blocks.push({ type: "p", text: paragraph.join(" ") });
+    paragraph = [];
+  }
+
+  function flushList() {
+    if (!list) return;
+    blocks.push(list);
+    list = null;
+  }
+
+  for (const line of text.replaceAll("\r\n", "\n").split("\n")) {
+    const bullet = line.match(/^\s*(?:[-*]|•)\s+(.*)$/);
+    const ordered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (bullet) {
+      flushParagraph();
+      if (list?.type !== "ul") {
+        flushList();
+        list = { type: "ul", items: [] };
+      }
+      list.items.push(bullet[1]);
+    } else if (ordered) {
+      flushParagraph();
+      if (list?.type !== "ol") {
+        flushList();
+        list = { type: "ol", items: [] };
+      }
+      list.items.push(ordered[1]);
+    } else if (!line.trim()) {
+      flushParagraph();
+      flushList();
+    } else {
+      flushList();
+      paragraph.push(line.trim());
     }
-    return <span key={index}>{token}</span>;
-  });
+  }
+  flushParagraph();
+  flushList();
+  return blocks;
+}
+
+function screenLink(href: string, key: number, label = href) {
+  if (!href.startsWith("/") || href.startsWith("//")) return null;
+  return (
+    <a key={key} href={href} className="font-medium text-primary underline-offset-2 hover:underline">
+      {label}
+    </a>
+  );
+}
+
+function inlineText(source: string) {
+  const pattern = /\*\*([^*]+)\*\*|\*([^*\n]+)\*|`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)|(\/[A-Za-z][A-Za-z0-9/_?&=%.-]*)/g;
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const match of source.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    if (index > last) nodes.push(source.slice(last, index));
+    const [raw, bold, italic, code, linkLabel, linkHref, path] = match;
+    if (bold) nodes.push(<strong key={key++} className="font-semibold">{bold}</strong>);
+    else if (italic) nodes.push(<em key={key++}>{italic}</em>);
+    else if (code) nodes.push(screenLink(code, key++) ?? <code key={key++} className="rounded-md bg-secondary px-1.5 py-0.5 text-[0.85em]">{code}</code>);
+    else if (linkLabel && linkHref) nodes.push(screenLink(linkHref, key++, linkLabel) ?? linkLabel);
+    else if (path) nodes.push(screenLink(path, key++) ?? path);
+    else nodes.push(raw);
+    last = index + raw.length;
+  }
+  if (last < source.length) nodes.push(source.slice(last));
+  return nodes;
+}
+
+function AssistantMessage({ text }: { text: string }) {
+  return (
+    <div className="space-y-3">
+      {parseBlocks(text).map((block, index) =>
+        block.type === "p" ? (
+          <p key={index}>{inlineText(block.text)}</p>
+        ) : block.type === "ol" ? (
+          <ol key={index} className="list-decimal space-y-2 pl-5">
+            {block.items.map((item, itemIndex) => (
+              <li key={itemIndex}>{inlineText(item)}</li>
+            ))}
+          </ol>
+        ) : (
+          <ul key={index} className="space-y-2">
+            {block.items.map((item, itemIndex) => (
+              <li key={itemIndex} className="flex gap-2.5">
+                <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                <span>{inlineText(item)}</span>
+              </li>
+            ))}
+          </ul>
+        ),
+      )}
+    </div>
+  );
 }
 
 export function AiChat({ farmName, configured }: { farmName: string; configured: boolean }) {
@@ -291,7 +380,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
           </button>
         )}
       </div>
-      <p className="mt-2 px-3 text-xs text-muted-foreground">Enter sends the question. Shift Enter starts a new line. A save waits until you confirm it.</p>
+      <p className="mt-2 text-center text-xs text-muted-foreground">Enter sends. Shift Enter adds a line. A save waits until you confirm it.</p>
     </form>
   );
 
@@ -299,37 +388,41 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
 
   if (messages.length === 0) {
     return (
-      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5">
-        <div className="ai-rise rounded-3xl bg-[#e7f6ee] px-5 py-6 sm:px-7">
-          <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.16em] text-primary">
-            <Sparkles className="ai-sparkle size-3.5" />
-            ASSISTANT
-          </p>
-          <h1 className="mt-2 max-w-lg text-3xl sm:text-4xl">Ask about the farm</h1>
-          <p className="mt-2 max-w-lg text-sm text-muted-foreground">{farmName}. Questions can cover cattle, milk, breeding, health, feed, and money.</p>
-        </div>
-        {notice ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">{notice}</p> : null}
-        <div className="grid gap-3 sm:grid-cols-2">
-          {suggestions.map((suggestion, index) => (
-            <button
-              key={suggestion.prompt}
-              type="button"
-              disabled={!configured || busy}
-              onClick={() => void send(suggestion.prompt)}
-              style={{ animationDelay: `${120 + index * 55}ms` }}
-              className="ai-card flex items-start gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left transition hover:bg-muted disabled:opacity-50"
-            >
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
-                <suggestion.icon className="size-4" />
+      <section className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col justify-center gap-4 overflow-y-auto py-2">
+          <div className="ai-rise rounded-3xl bg-[#e7f6ee] px-5 py-5 sm:px-6">
+            <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.16em] text-primary">
+              <span className="grid size-7 place-items-center rounded-lg bg-card text-primary">
+                <Sparkles className="ai-sparkle size-3.5" />
               </span>
-              <span>
-                <span className="text-[11px] font-semibold tracking-[0.14em] text-primary uppercase">{suggestion.label}</span>
-                <span className="mt-1 block text-sm">{suggestion.prompt}</span>
-              </span>
-            </button>
-          ))}
+              ASSISTANT
+            </p>
+            <h1 className="mt-3 text-3xl sm:text-4xl">Ask about the farm</h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{farmName}. Ask about the herd, milk, breeding, health, feed, and what is due.</p>
+          </div>
+          {notice ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">{notice}</p> : null}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={suggestion.prompt}
+                type="button"
+                disabled={!configured || busy}
+                onClick={() => void send(suggestion.prompt)}
+                style={{ animationDelay: `${120 + index * 55}ms` }}
+                className="ai-card flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-left transition hover:border-primary/30 hover:bg-muted disabled:opacity-50"
+              >
+                <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-secondary text-primary">
+                  <suggestion.icon className="size-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="text-[11px] font-semibold tracking-[0.14em] text-primary uppercase">{suggestion.label}</span>
+                  <span className="mt-0.5 block text-sm">{suggestion.prompt}</span>
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="ai-card" style={{ animationDelay: "460ms" }}>
+        <div className="ai-card shrink-0 pt-4" style={{ animationDelay: "460ms" }}>
           {composer}
         </div>
       </section>
@@ -432,9 +525,9 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
                   </div>
                 ) : null}
                 {message.role === "assistant" && (message.text || message.pending) ? (
-                  <div className="rounded-3xl rounded-bl-md border border-border bg-card px-4 py-3 text-sm leading-6 whitespace-pre-wrap">
+                  <div className="rounded-3xl rounded-bl-md border border-border bg-card px-4 py-3 text-sm leading-6">
                       {message.text ? (
-                        renderText(message.text)
+                        <AssistantMessage text={message.text} />
                       ) : (
                         <span className="inline-flex items-center gap-2 text-muted-foreground">
                           Looking through the farm

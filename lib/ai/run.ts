@@ -48,7 +48,7 @@ Saving and voiding functions wait for the person to confirm. Call the function w
 
 Mating checks are decision support. Repeat the disclaimer the function returns. For male cattle, reproduction and lactation are not applicable.
 
-Answer in short paragraphs. Use the animal name and code together. When you mention a screen, include its path.`,
+Answer in short paragraphs. When the answer is a set of animals or rows, use one markdown bullet per row. Bold the animal name and code, then give breed and status. When you mention a screen, link its path, for example [Cattle](/animals). Do not wrap the answer in a code block.`,
     tools: farmTools(scope),
   });
 
