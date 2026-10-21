@@ -2,10 +2,11 @@ import { and, eq, gte, or } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
 import { alerts, animals, milkYields } from "@/db/schema";
-import { addDays, farmToday, formatDisplayDate } from "@/lib/dates";
+import { addDays, farmToday, formatDisplayDate, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { milkDaySummary } from "@/lib/milk-sheet";
 import { canWriteMilk } from "@/lib/permissions";
+import { MilkDatePicker } from "@/components/milk-date-picker";
 import { Button } from "@/components/ui/button";
 import { Notice, Summary } from "@/components/workspace";
 import { saveMilk } from "./actions";
@@ -13,6 +14,7 @@ import { saveMilk } from "./actions";
 const messages: Record<string, string> = {
   range: "Each session must be between 0 and 80 litres.",
   role: "Your role cannot record milk.",
+  date: "Choose today or an earlier date.",
 };
 
 export const metadata = { title: "Milk records" };
@@ -20,11 +22,14 @@ export const metadata = { title: "Milk records" };
 export default async function MilkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; date?: string }>;
 }) {
   const farm = await requireFarm();
   const query = await searchParams;
   const today = farmToday(farm.timezone);
+  const requested = parseFarmDate(query.date);
+  const selected = requested && requested <= today ? requested : today;
+  const recentStart = addDays(today, -7);
   const herd = await db
     .select({
       id: animals.id,
@@ -38,10 +43,10 @@ export default async function MilkPage({
   const existing = await db
     .select()
     .from(milkYields)
-    .where(and(eq(milkYields.farmId, farm.farmId), gte(milkYields.recordedOn, addDays(today, -7))));
+    .where(and(eq(milkYields.farmId, farm.farmId), or(gte(milkYields.recordedOn, recentStart), eq(milkYields.recordedOn, selected))));
   const summary = milkDaySummary(
     herd.map((animal) => animal.id),
-    existing.filter((row) => row.recordedOn === today),
+    existing.filter((row) => row.recordedOn === selected),
   );
   const canSave = canWriteMilk(farm.roles);
   const drops = await db
@@ -61,10 +66,10 @@ export default async function MilkPage({
     const litres = Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0);
     herdDays.set(row.recordedOn, (herdDays.get(row.recordedOn) ?? 0) + litres);
   }
-  const recent = [...herdDays.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const recent = [...herdDays.entries()].filter(([date]) => date >= recentStart).sort(([left], [right]) => left.localeCompare(right));
 
   const stats = [
-    [summary.total.toFixed(1) + " L", "Total milk today"],
+    [summary.total.toFixed(1) + " L", selected === today ? "Total milk today" : "Total for this day"],
     [String(summary.entered), "Cows milked"],
     [String(summary.notEntered), "Not entered"],
     [summary.average.toFixed(1) + " L", "Average entered"],
@@ -74,11 +79,13 @@ export default async function MilkPage({
     <div className="space-y-5">
       <Summary
         title="Milk log"
-        description={`Daily yield for each cow in milk · ${formatDisplayDate(today)}. A blank cow is not entered. A 30% drop against the previous 7 days opens an alert after day 14 in milk.`}
+        description={`Daily yield for each cow in milk · ${formatDisplayDate(selected)}. Pick another day to fill in or correct that log. A blank cow is not entered. A 30% drop against the previous 7 days opens an alert after day 14 in milk.`}
+        action={<MilkDatePicker key={selected} date={selected} today={today} />}
         facts={stats.map(([value, label]) => ({ label, value }))}
       />
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
-      {query.saved ? <Notice>Milk for today is saved.</Notice> : null}
+      {requested && requested > today && query.error !== "date" ? <Notice tone="danger">{messages.date}</Notice> : null}
+      {query.saved ? <Notice>Milk for {formatDisplayDate(selected)} is saved.</Notice> : null}
       {drops.length > 0 ? (
         <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
           <h2 className="font-semibold">Milk drop</h2>
@@ -106,16 +113,22 @@ export default async function MilkPage({
           <h2 className="font-semibold">Herd total</h2>
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {recent.map(([date, litres]) => (
-              <li key={date} className="rounded-xl bg-muted px-3 py-2">
-                <p className="text-xs text-muted-foreground">{formatDisplayDate(date)}</p>
-                <p className="font-medium">{litres.toFixed(1)} L</p>
+              <li key={date}>
+                <Link
+                  href={date === today ? "/milk" : `/milk?date=${date}`}
+                  className={`block rounded-xl px-3 py-2 ${date === selected ? "bg-primary/10 ring-1 ring-primary" : "bg-muted hover:bg-muted/70"}`}
+                >
+                  <p className="text-xs text-muted-foreground">{formatDisplayDate(date)}</p>
+                  <p className="font-medium">{litres.toFixed(1)} L</p>
+                </Link>
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted-foreground">Each day adds only the cows that were entered. A missing cow is not counted as zero.</p>
+          <p className="text-xs text-muted-foreground">Open a day to edit it. Each day adds only the cows that were entered. A missing cow is not counted as zero.</p>
         </section>
       ) : null}
-      <form action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card">
+      <form key={selected} action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card">
+        <input type="hidden" name="recordedOn" value={selected} />
         {herd.length === 0 ? <p className="px-4 py-8 text-sm text-muted-foreground">No lactating animals on the farm.</p> : null}
         {herd.length > 0 ? (
           <div className="hidden grid-cols-[7.5rem_minmax(0,1fr)_8rem_8rem_4.5rem] gap-3 bg-muted px-4 py-3 text-xs font-medium text-muted-foreground lg:grid">
@@ -170,7 +183,7 @@ export default async function MilkPage({
         {canSave && herd.length > 0 ? (
           <div className="border-t border-border px-4 py-3">
             <Button type="submit" className="h-10 rounded-full px-5">
-              Save milk log
+              Save {formatDisplayDate(selected)}
             </Button>
           </div>
         ) : null}

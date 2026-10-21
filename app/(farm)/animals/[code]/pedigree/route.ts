@@ -49,7 +49,7 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
     ...chart.grandparents.map((node, index) => ({ label: `Grandparent ${index + 1}`, node })),
     ...chart.greatGrandparents.map((node, index) => ({ label: `Great-grandparent ${index + 1}`, node })),
     ...chart.generations.slice(3).flatMap((nodes, index) =>
-      nodes.filter((node) => node.code).map((node, nodeIndex) => ({ label: `${index + 4}th generation ${nodeIndex + 1}`, node })),
+      nodes.filter((node) => node.code && !node.repeat).map((node, nodeIndex) => ({ label: `${index + 4}th generation ${nodeIndex + 1}`, node })),
     ),
   ];
   blocks.forEach((block, index) => {

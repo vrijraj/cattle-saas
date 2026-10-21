@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { animals, milkYields } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { farmToday, formatDisplayDate } from "@/lib/dates";
+import { farmToday, formatDisplayDate, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canWriteMilk } from "@/lib/permissions";
 import { syncMilkDrops } from "@/lib/sync-milk-drops";
@@ -18,11 +18,20 @@ function parseLitres(value: FormDataEntryValue | null) {
   return { litres: amount.toFixed(1) };
 }
 
+function milkPath(recordedOn: string, today: string, extra: Record<string, string>) {
+  const params = new URLSearchParams(extra);
+  if (recordedOn !== today) params.set("date", recordedOn);
+  const query = params.toString();
+  return query ? `/milk?${query}` : "/milk";
+}
+
 export async function saveMilk(formData: FormData) {
   const farm = await requireFarm();
   if (!canWriteMilk(farm.roles)) redirect("/milk?error=role");
 
   const today = farmToday(farm.timezone);
+  const recordedOn = parseFarmDate(String(formData.get("recordedOn") ?? ""));
+  if (!recordedOn || recordedOn > today) redirect("/milk?error=date");
   const herd = await db
     .select({ id: animals.id, code: animals.code })
     .from(animals)
@@ -32,7 +41,7 @@ export async function saveMilk(formData: FormData) {
   for (const animal of herd) {
     const morning = parseLitres(formData.get(`morning-${animal.id}`));
     const evening = parseLitres(formData.get(`evening-${animal.id}`));
-    if ("error" in morning || "error" in evening) redirect("/milk?error=range");
+    if ("error" in morning || "error" in evening) redirect(milkPath(recordedOn, today, { error: "range" }));
     rows.push({ id: animal.id, code: animal.code, morning: morning.litres, evening: evening.litres });
   }
 
@@ -44,7 +53,7 @@ export async function saveMilk(formData: FormData) {
         .values({
           farmId: farm.farmId,
           animalId: row.id,
-          recordedOn: today,
+          recordedOn,
           morningLitres: row.morning,
           eveningLitres: row.evening,
           createdBy: farm.userId,
@@ -67,12 +76,12 @@ export async function saveMilk(formData: FormData) {
         action: "update",
         entity: "milk",
         entityId: saved.id,
-        summary: `Milk for ${row.code} on ${formatDisplayDate(today)}: ${[row.morning ? `${row.morning} L morning` : "", row.evening ? `${row.evening} L evening` : ""].filter(Boolean).join(", ") || "no litres entered"}`,
-        after: { recordedOn: today, morning: row.morning, evening: row.evening },
+        summary: `Milk for ${row.code} on ${formatDisplayDate(recordedOn)}: ${[row.morning ? `${row.morning} L morning` : "", row.evening ? `${row.evening} L evening` : ""].filter(Boolean).join(", ") || "no litres entered"}`,
+        after: { recordedOn, morning: row.morning, evening: row.evening },
       });
     }
   });
 
-  await syncMilkDrops(farm.farmId, today);
-  redirect("/milk?saved=1");
+  await syncMilkDrops(farm.farmId, recordedOn);
+  redirect(milkPath(recordedOn, today, { saved: "1" }));
 }

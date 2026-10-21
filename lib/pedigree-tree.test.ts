@@ -46,6 +46,37 @@ describe("ancestorChart", () => {
     expect(chart.generations).toHaveLength(8);
   });
 
+  it("stops when an ancestor is already in the line", () => {
+    const ganga = herd.find((animal) => animal.code === "MIL-GIR-004")!;
+    const krishna: AnimalLink = {
+      id: "8",
+      code: "MIL-GIR-008",
+      name: "Krishna",
+      geneticDamId: "5",
+      geneticSireCode: "BULL-GIR-002",
+      geneticSireName: "BULL-GIR-002",
+      presence: "on_farm",
+    };
+    const godavari: AnimalLink = {
+      id: "5",
+      code: "MIL-GIR-005",
+      name: "Godavari",
+      geneticDamId: null,
+      geneticSireCode: "BULL-GIR-014",
+      geneticSireName: "Sagar",
+      presence: "on_farm",
+    };
+    const chart = ancestorChart(ganga, [...herd, krishna, godavari], [
+      { code: "BULL-GIR-014", name: "Sagar", sireCode: "BULL-GIR-002", damCode: null },
+      { code: "BULL-GIR-002", name: null, sireCode: "MIL-GIR-008", damCode: "MIL-GIR-004" },
+    ]);
+    const repeats = chart.generations.flat().filter((node) => node.repeat);
+    expect(repeats.some((node) => node.code === "MIL-GIR-004")).toBe(true);
+    expect(repeats.some((node) => node.code === "BULL-GIR-002")).toBe(true);
+    expect(chart.generations[2][0].code).toBe("MIL-GIR-008");
+    expect(chart.generations[2][0].repeat).toBeUndefined();
+  });
+
   it("follows a sire line past the 4th generation", () => {
     const animal: AnimalLink = {
       id: "z",

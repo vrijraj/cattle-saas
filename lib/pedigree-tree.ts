@@ -19,6 +19,7 @@ export type PedigreeNode = {
   code: string | null;
   name: string | null;
   href: string | null;
+  repeat?: boolean;
 };
 
 export const PEDIGREE_GENERATIONS = 8;
@@ -54,46 +55,56 @@ export function ancestorChart(animal: AnimalLink, herd: AnimalLink[], bulls: Bul
   const byCode = new Map(herd.map((row) => [row.code, row]));
   const bullByCode = new Map(bulls.map((bull) => [bull.code, bull]));
 
-  function resolve(code: string | null, name: string | null): { node: PedigreeNode; parents: ParentRefs } {
-    if (!code) return { node: { code: null, name: null, href: null }, parents: emptyParents };
+  function resolve(code: string | null, name: string | null, seen: Set<string>): { node: PedigreeNode; parents: ParentRefs; seen: Set<string> } {
+    if (!code) return { node: { code: null, name: null, href: null }, parents: emptyParents, seen };
     const match = byCode.get(code);
+    const bull = bullByCode.get(code);
+    const nodeName = match?.name ?? bull?.name ?? name;
+    const href = match ? `/animals/${match.code}` : null;
+    if (seen.has(code)) return { node: { code, name: nodeName, href, repeat: true }, parents: emptyParents, seen };
+    const path = new Set(seen);
+    path.add(code);
     if (match) {
       const dam = match.geneticDamId ? byId.get(match.geneticDamId) : undefined;
       return {
-        node: { code: match.code, name: match.name, href: `/animals/${match.code}` },
+        node: { code: match.code, name: match.name, href },
         parents: {
           sireCode: match.geneticSireCode,
           sireName: match.geneticSireName,
           damCode: dam?.code ?? null,
           damName: dam?.name ?? null,
         },
+        seen: path,
       };
     }
-    const bull = bullByCode.get(code);
     if (bull) {
       return {
-        node: { code: bull.code, name: bull.name ?? name, href: null },
+        node: { code: bull.code, name: nodeName, href: null },
         parents: { sireCode: bull.sireCode, sireName: null, damCode: bull.damCode, damName: null },
+        seen: path,
       };
     }
-    return { node: { code, name, href: null }, parents: emptyParents };
+    return { node: { code, name, href: null }, parents: emptyParents, seen: path };
   }
 
-  function pair(parents: ParentRefs) {
-    return [resolve(parents.sireCode, parents.sireName), resolve(parents.damCode, parents.damName)] as const;
+  function pair(parents: ParentRefs, seen: Set<string>) {
+    return [resolve(parents.sireCode, parents.sireName, seen), resolve(parents.damCode, parents.damName, seen)] as const;
   }
 
-  const selfParents = pair({
-    sireCode: animal.geneticSireCode,
-    sireName: animal.geneticSireName,
-    damCode: animal.geneticDamId ? (byId.get(animal.geneticDamId)?.code ?? null) : null,
-    damName: animal.geneticDamId ? (byId.get(animal.geneticDamId)?.name ?? null) : null,
-  });
+  const selfParents = pair(
+    {
+      sireCode: animal.geneticSireCode,
+      sireName: animal.geneticSireName,
+      damCode: animal.geneticDamId ? (byId.get(animal.geneticDamId)?.code ?? null) : null,
+      damName: animal.geneticDamId ? (byId.get(animal.geneticDamId)?.name ?? null) : null,
+    },
+    new Set([animal.code]),
+  );
   const generations: PedigreeNode[][] = [];
-  let level = selfParents;
+  let level: readonly { node: PedigreeNode; parents: ParentRefs; seen: Set<string> }[] = selfParents;
   for (let generation = 0; generation < PEDIGREE_GENERATIONS; generation += 1) {
     generations.push(level.map((parent) => parent.node));
-    level = level.flatMap((parent) => pair(parent.parents));
+    level = level.flatMap((parent) => pair(parent.parents, parent.seen));
   }
 
   return {

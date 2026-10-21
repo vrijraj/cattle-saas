@@ -311,8 +311,8 @@ function buildLevel(nodes: PedigreeNode[], roles: string[], below: PedigreeNode[
       const span = 2 ** (step + 2);
       return row.slice(index * span, index * span + span);
     });
-    const next = known && depth < PEDIGREE_GENERATIONS ? buildLevel(pair, ["Sire", "Dam"], scopedRest, depth + 1, node.code ?? parentEdit, editable) : [];
-    const editTarget = !editable || depth >= PEDIGREE_GENERATIONS ? undefined : known ? node.code ?? undefined : depth === 1 ? "self" : parentEdit;
+    const next = known && !node.repeat && depth < PEDIGREE_GENERATIONS ? buildLevel(pair, ["Sire", "Dam"], scopedRest, depth + 1, node.code ?? parentEdit, editable) : [];
+    const editTarget = !editable || node.repeat || depth >= PEDIGREE_GENERATIONS ? undefined : known ? node.code ?? undefined : depth === 1 ? "self" : parentEdit;
     const editLabel = !editTarget ? undefined : known ? `Add ${generationName(depth + 1)}` : `Set ${generationName(depth)}`;
     return [{ node, role: `${generationName(depth)} · ${roles[index] ?? "Ancestor"}`, next, editTarget, editLabel }];
   });
@@ -421,6 +421,7 @@ function AnimalCard({
         <span className={`mt-0.5 block truncate text-sm font-semibold ${known ? "" : "text-muted-foreground"}`}>{title}</span>
       )}
       {showCode ? <span className="block truncate text-xs text-muted-foreground">{node.code}</span> : null}
+      {node.repeat ? <span className="mt-1 block text-xs text-muted-foreground">Already in this line</span> : null}
       {editTarget && onEdit ? (
         <button type="button" onClick={() => onEdit(editTarget)} className="mt-2 text-xs font-medium text-primary">
           {editLabel ?? "Set parents"}
