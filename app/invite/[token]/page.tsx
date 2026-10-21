@@ -5,6 +5,7 @@ import { farms, invites, users } from "@/db/schema";
 import { PageTransition } from "@/components/page-transition";
 import { inputClass, Notice, Submit } from "@/components/workspace";
 import { auth } from "@/lib/auth";
+import { siteConfig } from "@/lib/site-config";
 import { roleLabel } from "@/lib/team";
 import { acceptInvite } from "../actions";
 
@@ -35,7 +36,7 @@ export default async function InvitePage({
     <PageTransition>
       <main className="mx-auto flex min-h-screen w-full max-w-lg items-center px-6 py-12">
         <section className="w-full rounded-2xl border border-border bg-card p-6">
-          <p className="text-sm font-semibold text-primary">Farm portal</p>
+          <p className="text-sm font-semibold text-primary">{siteConfig.name}</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Join {farm?.name ?? "this farm"}</h1>
           {open ? (
             <form action={acceptInvite} className="mt-5 grid gap-3">

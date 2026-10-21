@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { config } from "dotenv";
 import { hash } from "@node-rs/argon2";
 import { eq } from "drizzle-orm";
+import { siteConfig } from "../../lib/site-config";
 import { breedCatalogue } from "./breeds";
 
 config({ path: ".env" });
@@ -55,7 +56,7 @@ async function main() {
   const [farm] = await db
     .insert(farms)
     .values({
-      name: "Shree Gir Dairy",
+      name: siteConfig.name,
       slug: "shree-gir",
       timezone: "Asia/Kolkata",
       currency: "INR",
@@ -153,7 +154,7 @@ async function main() {
   await seedOperations(db, farm.id);
   const { seedLaunchGaps } = await import("./launch");
   await seedLaunchGaps(db, farm.id);
-  console.log("Seeded Shree Gir Dairy. Sign in as asha@shreegir.test / demo-farm-2026");
+  console.log(`Seeded ${siteConfig.name}. Sign in as asha@shreegir.test / demo-farm-2026`);
   const { closeDb } = await import("../close");
   await closeDb();
 }

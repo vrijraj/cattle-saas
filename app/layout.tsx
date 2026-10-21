@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Google_Sans } from "next/font/google";
+import { siteConfig } from "@/lib/site-config";
 import "./globals.css";
 
 const googleSans = Google_Sans({
@@ -9,11 +10,11 @@ const googleSans = Google_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: "Farm portal",
-    template: "%s · Farm portal",
+    default: siteConfig.name,
+    template: `%s · ${siteConfig.name}`,
   },
-  description: "Cattle, milk, breeding, and health records for a dairy farm.",
-  applicationName: "Farm portal",
+  description: siteConfig.description,
+  applicationName: siteConfig.name,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,4 +1,5 @@
 import { Leaf } from "lucide-react";
+import { siteConfig } from "@/lib/site-config";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -46,7 +47,7 @@ export default async function SignInPage({
           <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
             <Leaf className="size-4" />
           </span>
-          Farm portal
+          {siteConfig.name}
         </p>
         <div>
           <h2 className="max-w-sm font-display text-4xl tracking-tight">A healthier herd starts with one record.</h2>

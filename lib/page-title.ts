@@ -3,8 +3,9 @@ import { cache } from "react";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { farms } from "@/db/schema";
+import { siteConfig } from "@/lib/site-config";
 
-export const siteName = "Farm portal";
+export const siteName = siteConfig.name;
 
 export const publicFarm = cache(async (slug: string) => {
   const [farm] = await db.select({ id: farms.id, name: farms.name }).from(farms).where(eq(farms.slug, slug)).limit(1);
