@@ -317,6 +317,7 @@ function MilkLine({ days }: { days: [string, number][] }) {
   const area = `${line} L ${points.at(-1)?.x.toFixed(1) ?? 0} ${height - bottom} L ${points[0]?.x.toFixed(1) ?? 0} ${height - bottom} Z`;
   return (
     <div className="mt-4">
+      <div className="relative">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="xMinYMid meet"
@@ -328,12 +329,30 @@ function MilkLine({ days }: { days: [string, number][] }) {
         <path d={area} fill="#157347" opacity="0.12" />
         <path d={line} fill="none" stroke="#157347" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         {points.map((point, index) => (
-          <g key={days[index][0]}>
-            <circle cx={point.x} cy={point.y} r="4.5" fill="#ffffff" stroke="#157347" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-            <title>{`${formatDisplayDate(days[index][0])}: ${point.litres.toFixed(1)} L`}</title>
-          </g>
+          <circle key={days[index][0]} cx={point.x} cy={point.y} r="4.5" fill="#ffffff" stroke="#157347" strokeWidth="2" vectorEffect="non-scaling-stroke" />
         ))}
       </svg>
+      {points.map((point, index) => {
+        const atStart = index === 0;
+        const atEnd = index === days.length - 1;
+        return (
+          <button
+            key={days[index][0]}
+            type="button"
+            className="group absolute z-10 size-8 -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${(point.x / width) * 100}%`, top: `${(point.y / height) * 100}%` }}
+            aria-label={`${formatDisplayDate(days[index][0])}, ${point.litres.toFixed(1)} litres`}
+          >
+            <span
+              className={`pointer-events-none absolute bottom-full z-10 mb-2 hidden rounded-lg border border-border bg-card px-2.5 py-1.5 text-left text-xs group-hover:block group-focus-visible:block ${atStart ? "left-0" : atEnd ? "right-0" : "left-1/2 -translate-x-1/2"}`}
+            >
+              <span className="block font-medium whitespace-nowrap">{formatDisplayDate(days[index][0])}</span>
+              <span className="text-muted-foreground">{point.litres.toFixed(1)} L</span>
+            </span>
+          </button>
+        );
+      })}
+      </div>
       <div className="relative mt-2 h-8">
         {days.map(([day, litres], index) => {
           const atStart = index === 0;
