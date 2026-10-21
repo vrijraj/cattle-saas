@@ -49,14 +49,18 @@ const links = [
 export function FarmNav({
   showTeam = false,
   showAudit = false,
+  showHealth = false,
   variant = "sidebar",
 }: {
   showTeam?: boolean;
   showAudit?: boolean;
+  showHealth?: boolean;
   variant?: "sidebar" | "drawer";
 }) {
   const pathname = usePathname();
-  const items = links.filter((link) => (link.href !== "/team" || showTeam) && (link.href !== "/audit" || showAudit));
+  const items = links.filter(
+    (link) => (link.href !== "/team" || showTeam) && (link.href !== "/audit" || showAudit) && (link.href !== "/health" || showHealth),
+  );
   const stacked = variant === "drawer";
   return (
     <nav className={stacked ? "flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-3" : "hidden min-h-0 flex-1 space-y-1 overflow-y-auto px-3 md:block"}>

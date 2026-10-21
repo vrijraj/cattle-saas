@@ -8,7 +8,7 @@ import { requireFarm } from "@/lib/farm-context";
 import { AnimalHub, profileTabs, type ProfileTab } from "@/components/animal-hub";
 import { inputClass, Notice, Pill, Submit, TabBar } from "@/components/workspace";
 import { lactationLabel, lifeStageLabel, presenceLabel, reproductionLabel } from "@/lib/labels";
-import { canPublish, canRecordBreeding, canRecordHealth, canViewGenetics, canWriteAnimals } from "@/lib/permissions";
+import { canPublish, canRecordBreeding, canRecordHealth, canSeeClinical, canViewGenetics, canViewHealth, canWriteAnimals } from "@/lib/permissions";
 import { savePhoto } from "../photo-actions";
 
 export default async function AnimalProfilePage({
@@ -50,7 +50,9 @@ export default async function AnimalProfilePage({
       : record.geneticSireCode
     : "Not linked";
 
-  const tabs = profileTabs.filter((tab) => tab.id !== "listing" || canPublish(farm.roles));
+  const tabs = profileTabs.filter(
+    (tab) => (tab.id !== "listing" || canPublish(farm.roles)) && (tab.id !== "health" || canViewHealth(farm.roles)),
+  );
   const tab = tabs.some((item) => item.id === query.tab) ? (query.tab as ProfileTab) : "overview";
 
   const highlights = [
@@ -134,6 +136,7 @@ export default async function AnimalProfilePage({
         canList={canPublish(farm.roles)}
         canEdit={canWriteAnimals(farm.roles)}
         canViewGenetics={canViewGenetics(farm.roles)}
+        canSeeClinical={canSeeClinical(farm.roles)}
         roles={farm.roles}
         userId={farm.userId}
         timezone={farm.timezone}

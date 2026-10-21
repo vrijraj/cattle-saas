@@ -8,7 +8,7 @@ import { isUnderOneYear } from "@/lib/herd-stats";
 import { HerdTree } from "@/components/herd-tree";
 import { HerdSearch } from "@/components/herd-search";
 import { lifeStageLabel, presenceLabel } from "@/lib/labels";
-import { canManageTeam, canViewAudit, canViewFinance, canViewGenetics, canViewReports, canWriteAnimals } from "@/lib/permissions";
+import { canManageTeam, canViewAudit, canViewFinance, canViewGenetics, canViewHealth, canViewReports, canWriteAnimals } from "@/lib/permissions";
 import { matchesHerdQuery } from "@/lib/herd-query";
 import { herdForest } from "@/lib/pedigree-tree";
 import { pickTab, Pill, Summary, TabBar } from "@/components/workspace";
@@ -132,6 +132,7 @@ export default async function AnimalsPage({
               showFinance={canViewFinance(farm.roles)}
               showReports={canViewReports(farm.roles)}
               showGenetics={canViewGenetics(farm.roles)}
+              showHealth={canViewHealth(farm.roles)}
             />
             <div className="flex flex-wrap gap-1.5">
               {views.map((item) => {

@@ -6,6 +6,7 @@ import { alerts, animals, breeds, locations } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { herdCounts } from "@/lib/herd-stats";
+import { canReadAlert } from "@/lib/permissions";
 
 const breedColors = ["#1f9d57", "#7dce78", "#f0b429", "#3d8bfd", "#8b6cc4", "#94a3a0"];
 
@@ -31,10 +32,12 @@ export default async function DashboardPage() {
     today,
   );
 
-  const openAlerts = await db
-    .select()
-    .from(alerts)
-    .where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open")));
+  const openAlerts = (
+    await db
+      .select()
+      .from(alerts)
+      .where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open")))
+  ).filter((alert) => canReadAlert(farm.roles, alert.type));
 
   const breedTotals = new Map<string, number>();
   for (const row of rows) {

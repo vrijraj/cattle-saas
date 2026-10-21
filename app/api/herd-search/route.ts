@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { alerts, animals, breeds, bulls, enquiries, locations, products, semenBatches, straws } from "@/db/schema";
 import { getFarm } from "@/lib/farm-context";
 import { herdMatchField, type HerdMatchRow } from "@/lib/herd-query";
+import { canReadAlert } from "@/lib/permissions";
 
 function includes(values: Array<string | null | undefined>, term: string) {
   return values.some((value) => value?.toLowerCase().includes(term));
@@ -100,7 +101,7 @@ export async function GET(request: Request) {
     5,
   );
   const alertMatches = take(
-    alertRows.filter((row) => row.status === "open" && includes([row.title, row.body], term)),
+    alertRows.filter((row) => row.status === "open" && canReadAlert(farm.roles, row.type) && includes([row.title, row.body], term)),
     5,
   );
   const productMatches = take(

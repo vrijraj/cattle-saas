@@ -60,6 +60,7 @@ export async function AnimalHub({
   canList,
   canEdit,
   canViewGenetics,
+  canSeeClinical,
   roles,
   userId,
   timezone,
@@ -76,6 +77,7 @@ export async function AnimalHub({
   canList: boolean;
   canEdit: boolean;
   canViewGenetics: boolean;
+  canSeeClinical: boolean;
   roles: string[];
   userId: string;
   timezone: string;
@@ -107,7 +109,7 @@ export async function AnimalHub({
     ...pdRows.map((row) => ({ when: row.checkedOn, label: `Pregnancy check · ${row.result.replaceAll("_", " ")}`, group: "breeding" })),
     ...calvingRows.map((row) => ({ when: row.calvedOn, label: `Calving · ${row.outcome}`, group: "breeding" })),
     ...dryRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.driedOn, label: "Dry-off", group: "breeding" })),
-    ...healthRows.map((row) => ({ when: row.eventOn, label: `Treatment · ${row.problem}`, group: "health" })),
+    ...(canSeeClinical ? healthRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.eventOn, label: `Treatment · ${row.problem}`, group: "health" })) : []),
     ...vaccineRows.map((row) => ({ when: row.givenOn, label: `Vaccine · ${row.vaccine}`, group: "health" })),
     ...dewormRows.map((row) => ({ when: row.givenOn, label: `Deworming · ${row.product}`, group: "health" })),
     ...weightRows.map((row) => ({ when: row.weighedOn, label: `Weight · ${row.kilograms} kg`, group: "overview" })),
@@ -442,12 +444,13 @@ export async function AnimalHub({
   }
 
   if (tab === "health") {
-    const treatments = [...healthRows].sort((a, b) => b.eventOn.localeCompare(a.eventOn));
+    const treatments = canSeeClinical ? [...healthRows].filter((row) => !row.voidedAt).sort((a, b) => b.eventOn.localeCompare(a.eventOn)) : [];
     const doses = [...vaccineRows].sort((a, b) => b.givenOn.localeCompare(a.givenOn));
     const worms = [...dewormRows].sort((a, b) => b.givenOn.localeCompare(a.givenOn));
 
     return (
       <div className="space-y-8">
+        {canSeeClinical ? (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Treatments</h2>
@@ -498,6 +501,7 @@ export async function AnimalHub({
             ))}
           </Table>
         </section>
+        ) : null}
 
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">

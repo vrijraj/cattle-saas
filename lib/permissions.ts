@@ -49,6 +49,20 @@ export function canRecordHealth(roles: string[]) {
   return hasRole(roles, HEALTH);
 }
 
+export function canViewHealth(roles: string[]) {
+  return hasRole(roles, ["owner", "manager", "vet", "genetics", "admin"]);
+}
+
+export function canSeeClinical(roles: string[]) {
+  return hasRole(roles, ["owner", "manager", "vet", "admin"]);
+}
+
+const CLINICAL_ALERTS = new Set(["medication_due", "health_followup"]);
+
+export function canReadAlert(roles: string[], type: string) {
+  return canSeeClinical(roles) || !CLINICAL_ALERTS.has(type);
+}
+
 export function canRecordFinance(roles: string[]) {
   return hasRole(roles, FINANCE);
 }

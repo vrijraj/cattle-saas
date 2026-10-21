@@ -12,6 +12,7 @@ export function FarmDrawer({
   initials,
   showTeam,
   showAudit,
+  showHealth,
   signOut,
 }: {
   farmName: string;
@@ -20,6 +21,7 @@ export function FarmDrawer({
   initials: string;
   showTeam: boolean;
   showAudit: boolean;
+  showHealth: boolean;
   signOut: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -74,7 +76,7 @@ export function FarmDrawer({
               <X className="size-4" />
             </button>
           </div>
-          <FarmNav showTeam={showTeam} showAudit={showAudit} variant="drawer" />
+          <FarmNav showTeam={showTeam} showAudit={showAudit} showHealth={showHealth} variant="drawer" />
           <div className="mt-auto border-t border-border px-3 py-3">{signOut}</div>
         </div>
       </dialog>

@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { alerts } from "@/db/schema";
 import { formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
+import { canReadAlert } from "@/lib/permissions";
 import { EmptyRow, Pill, Summary, Table, Td } from "@/components/workspace";
 import { setMilkAlert } from "./actions";
 import { sendReminders } from "./reminders";
@@ -17,7 +18,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
       .from(alerts)
       .where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open")))
       .orderBy(asc(alerts.dueOn))
-  ).filter((alert) => !term || alert.title.toLowerCase().includes(term) || alert.body.toLowerCase().includes(term));
+  ).filter((alert) => canReadAlert(farm.roles, alert.type) && (!term || alert.title.toLowerCase().includes(term) || alert.body.toLowerCase().includes(term)));
 
   return (
     <div className="space-y-5">
