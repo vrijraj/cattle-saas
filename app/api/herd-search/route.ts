@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { alerts, animals, breeds, bulls, enquiries, locations, products, semenBatches, straws } from "@/db/schema";
 import { getFarm } from "@/lib/farm-context";
 import { herdMatchField, type HerdMatchRow } from "@/lib/herd-query";
-import { canReadAlert } from "@/lib/permissions";
+import { canReadAlert, canViewSemen } from "@/lib/permissions";
 
 function includes(values: Array<string | null | undefined>, term: string) {
   return values.some((value) => value?.toLowerCase().includes(term));
@@ -59,6 +59,8 @@ export async function GET(request: Request) {
         bullCode: bulls.code,
         bullName: bulls.name,
         batchNumber: semenBatches.batchNumber,
+        semenType: semenBatches.semenType,
+        semenCompany: bulls.semenCompany,
       })
       .from(straws)
       .innerJoin(semenBatches, eq(semenBatches.id, straws.batchId))
@@ -92,14 +94,16 @@ export async function GET(request: Request) {
     }),
     8,
   );
-  const strawMatches = take(
-    strawRows.filter((row) => includes([row.code, row.tank, row.bullCode, row.bullName, row.batchNumber], term)),
-    5,
-  );
-  const bullMatches = take(
-    bullRows.filter((row) => includes([row.code, row.name, row.breed, row.semenCompany], term)),
-    5,
-  );
+  const seeSemen = canViewSemen(farm.roles);
+  const strawMatches = seeSemen
+    ? take(
+        strawRows.filter((row) => includes([row.code, row.tank, row.bullCode, row.bullName, row.batchNumber, row.semenType, row.semenCompany], term)),
+        5,
+      )
+    : { items: [], count: 0 };
+  const bullMatches = seeSemen
+    ? take(bullRows.filter((row) => includes([row.code, row.name, row.breed, row.semenCompany], term)), 5)
+    : { items: [], count: 0 };
   const alertMatches = take(
     alertRows.filter((row) => row.status === "open" && canReadAlert(farm.roles, row.type) && includes([row.title, row.body], term)),
     5,

@@ -70,7 +70,7 @@ const emptyBody: SearchBody = {
   enquiryCount: 0,
 };
 
-const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "audit" | "finance" | "reports" | "genetics" | "health" }[] = [
+const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "audit" | "finance" | "reports" | "genetics" | "health" | "semen" }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ai", label: "Assistant", icon: Sparkles },
   { href: "/animals", label: "Cattle", icon: Beef },
@@ -79,7 +79,7 @@ const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "a
   { href: "/health", label: "Health", icon: Stethoscope, gate: "health" },
   { href: "/milk", label: "Milk", icon: Milk },
   { href: "/feed", label: "Feed & nutrition", icon: Wheat },
-  { href: "/semen", label: "Semen", icon: Droplets },
+  { href: "/semen", label: "Semen", icon: Droplets, gate: "semen" },
   { href: "/genetics", label: "Genetics", icon: Dna, gate: "genetics" },
   { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/embryos", label: "Embryos", icon: Sprout },
@@ -112,13 +112,13 @@ function pageIcon(href: string) {
   return pages.find((page) => page.href === path)?.icon ?? LayoutDashboard;
 }
 
-function blocked(href: string, gates: Record<"team" | "audit" | "finance" | "reports" | "genetics" | "health", boolean>) {
+function blocked(href: string, gates: Record<"team" | "audit" | "finance" | "reports" | "genetics" | "health" | "semen", boolean>) {
   const path = href.split("?")[0] ?? href;
   const page = pages.find((item) => item.href === path);
   return page?.gate ? !gates[page.gate] : false;
 }
 
-function readRecent(farmId: string, gates: Record<"team" | "audit" | "finance" | "reports" | "genetics" | "health", boolean>): Item[] {
+function readRecent(farmId: string, gates: Record<"team" | "audit" | "finance" | "reports" | "genetics" | "health" | "semen", boolean>): Item[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(recentKey(farmId)) ?? "[]") as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -137,7 +137,7 @@ function readRecent(farmId: string, gates: Record<"team" | "audit" | "finance" |
 }
 
 function remember(farmId: string, item: Item) {
-  const stored = readRecent(farmId, { team: true, audit: true, finance: true, reports: true, genetics: true, health: true })
+  const stored = readRecent(farmId, { team: true, audit: true, finance: true, reports: true, genetics: true, health: true, semen: true })
     .filter((entry) => entry.href !== item.href)
     .map((entry) => ({ href: entry.href, title: entry.title, detail: entry.detail, kind: entry.kind }));
   localStorage.setItem(
@@ -163,6 +163,7 @@ export function HerdSearch({
   showReports = false,
   showGenetics = false,
   showHealth = false,
+  showSemen = false,
 }: {
   variant?: "header" | "field";
   farmId: string;
@@ -172,13 +173,14 @@ export function HerdSearch({
   showReports?: boolean;
   showGenetics?: boolean;
   showHealth?: boolean;
+  showSemen?: boolean;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const router = useRouter();
-  const gates = { team: showTeam, audit: showAudit, finance: showFinance, reports: showReports, genetics: showGenetics, health: showHealth };
+  const gates = { team: showTeam, audit: showAudit, finance: showFinance, reports: showReports, genetics: showGenetics, health: showHealth, semen: showSemen };
   const [value, setValue] = useState("");
   const [body, setBody] = useState<SearchBody>(emptyBody);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -216,16 +218,18 @@ export function HerdSearch({
               },
             ]
           : []),
-        ...body.straws.map((straw) => ({
-          id: `straw:${straw.code}`,
-          href: `/scan?code=${encodeURIComponent(straw.code)}`,
-          title: straw.code,
-          detail: `${straw.bullName} · ${straw.status}`,
-          section: "Straws",
-          icon: Droplets,
-          kind: "straw" as const,
-        })),
-        ...(body.strawCount > body.straws.length
+        ...(showSemen
+          ? body.straws.map((straw) => ({
+              id: `straw:${straw.code}`,
+              href: `/scan?code=${encodeURIComponent(straw.code)}`,
+              title: straw.code,
+              detail: `${straw.bullName} · ${straw.status}`,
+              section: "Straws",
+              icon: Droplets,
+              kind: "straw" as const,
+            }))
+          : []),
+        ...(showSemen && body.strawCount > body.straws.length
           ? [
               {
                 id: "straw-all",
@@ -238,15 +242,17 @@ export function HerdSearch({
               },
             ]
           : []),
-        ...body.bulls.map((bull) => ({
-          id: `bull:${bull.code}`,
-          href: `/semen?q=${encodeURIComponent(bull.code)}`,
-          title: bull.name,
-          detail: [bull.code, bull.breed].filter(Boolean).join(" · "),
-          section: "Bulls",
-          icon: Dna,
-          kind: "bull" as const,
-        })),
+        ...(showSemen
+          ? body.bulls.map((bull) => ({
+              id: `bull:${bull.code}`,
+              href: `/semen?q=${encodeURIComponent(bull.code)}`,
+              title: bull.name,
+              detail: [bull.code, bull.breed].filter(Boolean).join(" · "),
+              section: "Bulls",
+              icon: Dna,
+              kind: "bull" as const,
+            }))
+          : []),
         ...body.alerts.map((alert) => ({
           id: `alert:${alert.id}`,
           href: `/alerts?q=${encodeURIComponent(alert.title)}`,

@@ -1,7 +1,7 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import {
@@ -497,50 +497,138 @@ export async function recordWeight(formData: FormData) {
 export async function saveBull(formData: FormData) {
   const farm = await requireFarm();
   if (!canUseGenetics(farm.roles)) redirect("/semen?error=role");
-  await db.insert(bulls).values({
+  const code = text(formData, "code");
+  const name = text(formData, "name");
+  if (!code || !name) redirect("/semen?error=bull");
+  const [existing] = await db
+    .select({ id: bulls.id })
+    .from(bulls)
+    .where(and(eq(bulls.farmId, farm.farmId), eq(bulls.code, code)))
+    .limit(1);
+  if (existing) redirect("/semen?error=bull");
+  const [bull] = await db
+    .insert(bulls)
+    .values({
+      farmId: farm.farmId,
+      code,
+      name,
+      breed: text(formData, "breed") || null,
+      registrationNumber: text(formData, "registration") || null,
+      semenCompany: text(formData, "company") || null,
+      sireCode: text(formData, "sireCode") || null,
+      damCode: text(formData, "damCode") || null,
+      notes: text(formData, "notes") || null,
+    })
+    .returning({ id: bulls.id });
+  await writeAudit(db, {
     farmId: farm.farmId,
-    code: text(formData, "code"),
-    name: text(formData, "name"),
-    breed: text(formData, "breed") || null,
-    registrationNumber: text(formData, "registration") || null,
-    semenCompany: text(formData, "company") || null,
-    sireCode: text(formData, "sireCode") || null,
-    damCode: text(formData, "damCode") || null,
+    actorId: farm.userId,
+    action: "create",
+    entity: "bull",
+    entityId: bull.id,
+    summary: `Bull ${code} · ${name}`,
+    after: { code, name },
   });
-  redirect("/semen");
+  redirect("/semen?saved=1");
 }
 
 export async function saveSemenBatch(formData: FormData) {
   const farm = await requireFarm();
   if (!canUseGenetics(farm.roles)) redirect("/semen?error=role");
-  const quantity = Number(text(formData, "quantity") || "0");
+  const bullId = text(formData, "bullId");
+  const batchNumber = text(formData, "batchNumber");
+  const quantity = Number(text(formData, "quantity"));
+  const semenType = text(formData, "semenType") || "conventional";
+  const price = text(formData, "price");
+  const collectedOn = text(formData, "collectedOn");
+  const receivedOn = text(formData, "receivedOn") || farmToday(farm.timezone);
+  if (!batchNumber) redirect("/semen?error=batch");
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 200) redirect("/semen?error=quantity");
+  if (semenType !== "conventional" && semenType !== "sexed_female" && semenType !== "sexed_male") redirect("/semen?error=type");
+  if (price && (!Number.isFinite(Number(price)) || Number(price) < 0)) redirect("/semen?error=cost");
+  if ((collectedOn && !/^\d{4}-\d{2}-\d{2}$/.test(collectedOn)) || !/^\d{4}-\d{2}-\d{2}$/.test(receivedOn)) redirect("/semen?error=date");
+  const [bull] = await db
+    .select({ id: bulls.id })
+    .from(bulls)
+    .where(and(eq(bulls.id, bullId), eq(bulls.farmId, farm.farmId)))
+    .limit(1);
+  if (!bull) redirect("/semen?error=bull");
+  const [duplicate] = await db
+    .select({ id: semenBatches.id })
+    .from(semenBatches)
+    .where(and(eq(semenBatches.farmId, farm.farmId), eq(semenBatches.batchNumber, batchNumber)))
+    .limit(1);
+  if (duplicate) redirect("/semen?error=batch");
+  const codes = Array.from({ length: quantity }, (_, index) => `${batchNumber}-${String(index + 1).padStart(3, "0")}`);
+  const taken = await db
+    .select({ code: straws.code })
+    .from(straws)
+    .where(and(eq(straws.farmId, farm.farmId), inArray(straws.code, codes)));
+  if (taken.length > 0) redirect("/semen?error=straw");
   const [batch] = await db
     .insert(semenBatches)
     .values({
       farmId: farm.farmId,
-      bullId: text(formData, "bullId"),
-      batchNumber: text(formData, "batchNumber"),
-      semenType: text(formData, "semenType") || "conventional",
-      collectedOn: text(formData, "collectedOn") || null,
+      bullId,
+      batchNumber,
+      semenType,
+      collectedOn: collectedOn || null,
       quantityReceived: quantity,
-      pricePerStraw: text(formData, "price") || null,
-      receivedOn: farmToday(farm.timezone),
+      pricePerStraw: price || null,
+      receivedOn,
     })
     .returning();
   const tank = text(formData, "tank") || "Tank A";
-  for (let index = 1; index <= quantity; index += 1) {
+  const canister = text(formData, "canister") || "1";
+  const goblet = text(formData, "goblet") || "A";
+  for (const [index, code] of codes.entries()) {
     await db.insert(straws).values({
       farmId: farm.farmId,
       batchId: batch.id,
-      code: `${text(formData, "batchNumber")}-${String(index).padStart(3, "0")}`,
+      code,
       tank,
-      canister: text(formData, "canister") || "1",
-      goblet: text(formData, "goblet") || "A",
-      position: String(index),
+      canister,
+      goblet,
+      position: String(index + 1),
       status: "available",
     });
   }
-  redirect("/semen");
+  await writeAudit(db, {
+    farmId: farm.farmId,
+    actorId: farm.userId,
+    action: "create",
+    entity: "semen",
+    entityId: batch.id,
+    summary: `Batch ${batchNumber} · ${quantity} straws`,
+    after: { batchNumber, quantity, semenType },
+  });
+  redirect("/semen?saved=1");
+}
+
+export async function discardStraw(formData: FormData) {
+  const farm = await requireFarm();
+  if (!canUseGenetics(farm.roles)) redirect("/semen?error=role");
+  const code = text(formData, "code");
+  const reason = text(formData, "reason");
+  if (!reason) redirect("/semen?error=reason");
+  const [straw] = await db
+    .select()
+    .from(straws)
+    .where(and(eq(straws.farmId, farm.farmId), eq(straws.code, code)))
+    .limit(1);
+  if (!straw || straw.status !== "available") redirect("/semen?error=adjust");
+  await db.update(straws).set({ status: "discarded" }).where(eq(straws.id, straw.id));
+  await writeAudit(db, {
+    farmId: farm.farmId,
+    actorId: farm.userId,
+    action: "update",
+    entity: "semen",
+    entityId: straw.id,
+    summary: `Discarded straw ${code}: ${reason}`,
+    before: { status: straw.status },
+    after: { status: "discarded", reason },
+  });
+  redirect("/semen?saved=1");
 }
 
 export async function saveFeed(formData: FormData) {

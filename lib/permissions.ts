@@ -83,6 +83,14 @@ export function canViewGenetics(roles: string[]) {
   return hasRole(roles, ["owner", "manager", "vet", "ai_technician", "genetics", "admin"]);
 }
 
+export function canViewSemen(roles: string[]) {
+  return hasRole(roles, ["owner", "manager", "vet", "ai_technician", "accountant", "genetics", "admin"]);
+}
+
+export function canViewSemenCost(roles: string[]) {
+  return canViewFinance(roles) || roles.includes("genetics");
+}
+
 export function canVoidMatingNote(roles: string[], actorId: string | null, userId: string) {
   if (hasRole(roles, ["owner", "manager", "admin"])) return true;
   return roles.includes("genetics") && actorId === userId;

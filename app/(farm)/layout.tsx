@@ -1,6 +1,6 @@
 import { FarmShell } from "@/components/farm-shell";
 import { requireFarm } from "@/lib/farm-context";
-import { canManageTeam, canViewAudit, canViewFinance, canViewGenetics, canViewHealth, canViewReports } from "@/lib/permissions";
+import { canManageTeam, canViewAudit, canViewFinance, canViewGenetics, canViewHealth, canViewReports, canViewSemen } from "@/lib/permissions";
 
 function roleLabel(roles: string[]) {
   const role = roles[0] ?? "member";
@@ -20,6 +20,7 @@ export default async function FarmLayout({ children }: { children: React.ReactNo
       showReports={canViewReports(farm.roles)}
       showGenetics={canViewGenetics(farm.roles)}
       showHealth={canViewHealth(farm.roles)}
+      showSemen={canViewSemen(farm.roles)}
       farmId={farm.farmId}
     >
       {children}
