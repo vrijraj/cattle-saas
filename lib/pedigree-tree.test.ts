@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ancestorChart, herdForest, type AnimalLink, type BullLink } from "./pedigree-tree";
+import { ancestorChart, herdForest, parentLinkCreatesCycle, type AnimalLink, type BullLink } from "./pedigree-tree";
 
 const herd: AnimalLink[] = [
   { id: "1", code: "MIL-GIR-001", name: "Jamuna", geneticDamId: null, geneticSireCode: "BULL-GIR-002", geneticSireName: "BULL-GIR-002", presence: "on_farm" },
@@ -42,5 +42,22 @@ describe("ancestorChart", () => {
     expect(chart.grandparents.map((node) => node.code)).toEqual(["BULL-GIR-002", null, "BULL-GIR-002", "MIL-GIR-001"]);
     expect(chart.grandparents[3].href).toBe("/animals/MIL-GIR-001");
     expect(chart.greatGrandparents).toHaveLength(8);
+  });
+});
+
+describe("parent link cycle", () => {
+  const links = [
+    { id: "a", damId: null, sireId: null },
+    { id: "b", damId: "a", sireId: null },
+    { id: "c", damId: "b", sireId: null },
+  ];
+
+  it("blocks an animal from being its own ancestor", () => {
+    expect(parentLinkCreatesCycle(links, "a", "c")).toBe(true);
+    expect(parentLinkCreatesCycle(links, "b", "b")).toBe(true);
+  });
+
+  it("allows a parent who is not already a descendant", () => {
+    expect(parentLinkCreatesCycle(links, "c", "a")).toBe(false);
   });
 });

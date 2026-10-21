@@ -12,6 +12,7 @@ import {
   semenBatches,
   straws,
   vaccinations,
+  weights,
 } from "@/db/schema";
 
 export async function reportRows(kind: string, farmId: string): Promise<string[][] | null> {
@@ -73,6 +74,23 @@ export async function reportRows(kind: string, farmId: string): Promise<string[]
   if (kind === "finance") {
     const list = await db.select().from(financeEntries).where(eq(financeEntries.farmId, farmId));
     return [["date", "kind", "category", "amount", "note"], ...list.map((row) => [row.entryOn, row.kind, row.category, row.amount, row.note ?? ""])];
+  }
+  if (kind === "weight") {
+    const list = await db
+      .select({
+        weighedOn: weights.weighedOn,
+        kilograms: weights.kilograms,
+        note: weights.note,
+        code: animals.code,
+        name: animals.name,
+      })
+      .from(weights)
+      .innerJoin(animals, eq(animals.id, weights.animalId))
+      .where(eq(weights.farmId, farmId));
+    return [
+      ["date", "code", "name", "kilograms", "note"],
+      ...list.map((row) => [row.weighedOn, row.code, row.name ?? "", row.kilograms, row.note ?? ""]),
+    ];
   }
   return null;
 }

@@ -8,6 +8,7 @@ import { writeAudit } from "@/lib/audit";
 import { farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canWriteMilk } from "@/lib/permissions";
+import { syncMilkDrops } from "@/lib/sync-milk-drops";
 
 function parseLitres(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
@@ -69,5 +70,6 @@ export async function saveMilk(formData: FormData) {
     }
   });
 
+  await syncMilkDrops(farm.farmId, today);
   redirect("/milk?saved=1");
 }

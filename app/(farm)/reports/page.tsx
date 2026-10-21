@@ -14,6 +14,7 @@ const reports = [
   { id: "health", label: "Health", detail: "Records by type", chart: "type" },
   { id: "feed", label: "Feed", detail: "Quantity by item", chart: "feed" },
   { id: "semen", label: "Semen", detail: "Straws by status", chart: "status" },
+  { id: "weight", label: "Weight", detail: "Weighings by animal", chart: "weight" },
   { id: "finance", label: "Finance", detail: "Amount by type", chart: "money" },
 ] as const;
 
@@ -118,7 +119,7 @@ function chartSeries(kind: ReportId, rows: string[][]) {
   const counted =
     kind === "cattle"
       ? countBy(rows, 2)
-      : kind === "breeding"
+      : kind === "breeding" || kind === "weight"
         ? countBy(rows, 1)
         : kind === "health"
           ? countBy(rows, 0)
@@ -168,5 +169,6 @@ function prettyLabel(kind: ReportId, label: string) {
 function prettyValue(kind: ReportId, value: number) {
   if (kind === "finance") return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
   if (kind === "milk" || kind === "feed") return value.toLocaleString("en-IN", { maximumFractionDigits: 1 });
+  if (kind === "weight") return `${value} records`;
   return String(value);
 }

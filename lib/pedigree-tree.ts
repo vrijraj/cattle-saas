@@ -96,6 +96,30 @@ export function ancestorChart(animal: AnimalLink, herd: AnimalLink[], bulls: Bul
   };
 }
 
+export type ParentLink = {
+  id: string;
+  damId: string | null;
+  sireId: string | null;
+};
+
+export function parentLinkCreatesCycle(links: ParentLink[], animalId: string, parentId: string) {
+  if (!parentId || animalId === parentId) return true;
+  const byId = new Map(links.map((link) => [link.id, link]));
+  const seen = new Set<string>();
+  const stack = [parentId];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || seen.has(current)) continue;
+    if (current === animalId) return true;
+    seen.add(current);
+    const node = byId.get(current);
+    if (!node) continue;
+    if (node.damId) stack.push(node.damId);
+    if (node.sireId) stack.push(node.sireId);
+  }
+  return false;
+}
+
 export function herdForest(herd: AnimalLink[]): HerdNode[] {
   const byId = new Map(herd.map((animal) => [animal.id, animal]));
   const childrenOf = new Map<string, AnimalLink[]>();

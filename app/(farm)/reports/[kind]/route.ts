@@ -2,6 +2,8 @@ import { requireFarm } from "@/lib/farm-context";
 import { canRecordHealth, canViewFinance } from "@/lib/permissions";
 import { reportRows } from "@/lib/report-data";
 import { csvFile, excelFile, pdfFile } from "@/lib/report-files";
+import { writeAudit } from "@/lib/audit";
+import { db } from "@/db";
 
 const titles: Record<string, string> = {
   cattle: "Cattle register",
@@ -10,6 +12,7 @@ const titles: Record<string, string> = {
   health: "Health and vaccination",
   feed: "Feed stock",
   semen: "Semen inventory",
+  weight: "Weight",
   finance: "Finance",
 };
 
@@ -26,6 +29,15 @@ export async function GET(request: Request, context: { params: Promise<{ kind: s
   if (!lines) return new Response("Unknown report", { status: 404 });
 
   const format = new URL(request.url).searchParams.get("format") ?? "csv";
+  await writeAudit(db, {
+    farmId: farm.farmId,
+    actorId: farm.userId,
+    action: "export",
+    entity: "export",
+    entityId: kind,
+    summary: `Downloaded ${titles[kind] ?? kind} as ${format}`,
+    after: { kind, format },
+  });
   if (format === "xlsx") {
     const body = await excelFile(lines);
     return new Response(new Uint8Array(body), {

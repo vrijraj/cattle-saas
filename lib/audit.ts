@@ -9,7 +9,7 @@ export async function writeAudit(
   entry: {
     farmId: string;
     actorId: string;
-    action: "create" | "update" | "void";
+    action: "create" | "update" | "void" | "export";
     entity: string;
     entityId: string;
     summary: string;

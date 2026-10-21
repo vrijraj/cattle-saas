@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Leaf, LogOut, Search } from "lucide-react";
+import { Bell, Leaf, LogOut, ScanLine, Search } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { FarmDrawer } from "@/components/farm-drawer";
 import { FarmNav } from "@/components/farm-nav";
@@ -71,6 +71,10 @@ export function FarmShell({
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </form>
+          <Link href="/scan" className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card text-foreground">
+            <ScanLine className="size-4" />
+            <span className="sr-only">Scan</span>
+          </Link>
           <Link href="/alerts" className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card text-foreground">
             <Bell className="size-4" />
             <span className="sr-only">Alerts</span>

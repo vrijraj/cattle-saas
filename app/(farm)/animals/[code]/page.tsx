@@ -88,10 +88,17 @@ export default async function AnimalProfilePage({
               <Pill>{lactationLabel[record.lactation]}</Pill>
             </div>
           </div>
-          <Link href={`/animals/${record.code}/qr`} className="shrink-0 rounded-xl border border-border p-1">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/animals/${record.code}/qr`} alt="" className="size-11 sm:size-14" />
-          </Link>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <Link href={`/animals/${record.code}/qr`} className="rounded-xl border border-border p-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/animals/${record.code}/qr`} alt="" className="size-11 sm:size-14" />
+            </Link>
+            {farm.roles.length === 1 && farm.roles[0] === "worker" ? null : (
+              <Link href={`/animals/${record.code}/pedigree`} className="text-xs font-medium text-primary">
+                Pedigree PDF
+              </Link>
+            )}
+          </div>
         </div>
         <dl className="mt-5 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 xl:grid-cols-3">
           {highlights.map(([label, value]) => (

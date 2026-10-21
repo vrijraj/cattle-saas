@@ -29,6 +29,7 @@ import {
   weights,
 } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { calfSireFromConception } from "@/lib/calving-sire";
 import { addDays, farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { issueAnimalCode } from "@/lib/issue-code";
@@ -230,7 +231,8 @@ export async function recordCalving(formData: FormData) {
     .from(inseminations)
     .where(and(eq(inseminations.id, inseminationId), eq(inseminations.animalId, dam.id)))
     .limit(1);
-  if (!ai) redirect(`/animals/${dam.code}?tab=breeding&event=calving&error=conception`);
+  const sire = calfSireFromConception(ai ?? null);
+  if (!ai || !sire) redirect(`/animals/${dam.code}?tab=breeding&event=calving&error=conception`);
   const outcome = text(formData, "outcome") || "live";
   const calvedOn = text(formData, "calvedOn") || farmToday(farm.timezone);
   const sex = text(formData, "calfSex") === "male" ? "male" : "female";
@@ -257,8 +259,8 @@ export async function recordCalving(formData: FormData) {
           locationId: dam.locationId,
           qrToken: randomBytes(32).toString("base64url"),
           geneticDamId: dam.id,
-          geneticSireCode: ai.bullCode,
-          geneticSireName: ai.bullName,
+          geneticSireCode: sire.code,
+          geneticSireName: sire.name,
           createdBy: farm.userId,
         })
         .returning();

@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { db } from "@/db";
-import { animals, milkYields } from "@/db/schema";
+import { alerts, animals, milkYields } from "@/db/schema";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canWriteMilk } from "@/lib/permissions";
@@ -37,6 +37,16 @@ export default async function MilkPage({
     .where(and(eq(milkYields.farmId, farm.farmId), eq(milkYields.recordedOn, today)));
   const byAnimal = new Map(existing.map((row) => [row.animalId, row]));
   const canSave = canWriteMilk(farm.roles);
+  const drops = await db
+    .select()
+    .from(alerts)
+    .where(
+      and(
+        eq(alerts.farmId, farm.farmId),
+        eq(alerts.status, "open"),
+        or(eq(alerts.type, "milk_drop"), eq(alerts.type, "herd_milk_drop")),
+      ),
+    );
   const entered = herd.filter((animal) => byAnimal.has(animal.id));
   const total = entered.reduce((sum, animal) => {
     const row = byAnimal.get(animal.id);
@@ -56,11 +66,24 @@ export default async function MilkPage({
     <div className="space-y-5">
       <Summary
         title="Milk log"
-        description={`Daily yield for each cow in milk · ${formatDisplayDate(today)}`}
+        description={`Daily yield for each cow in milk · ${formatDisplayDate(today)}. A 30% drop against the previous 7 days opens an alert after day 14 in milk.`}
         facts={stats.map(([value, label]) => ({ label, value }))}
       />
       {query.error ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.saved ? <Notice>Milk for today is saved.</Notice> : null}
+      {drops.length > 0 ? (
+        <section className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <h2 className="font-semibold">Milk drop</h2>
+          <ul className="space-y-2">
+            {drops.map((alert) => (
+              <li key={alert.id}>
+                <p className="text-sm font-medium">{alert.title}</p>
+                <p className="text-sm text-muted-foreground">{alert.body}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <form action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         {herd.length === 0 ? <p className="px-4 py-8 text-sm text-muted-foreground">No lactating animals on the farm.</p> : null}
         {herd.length > 0 ? (

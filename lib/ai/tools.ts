@@ -646,7 +646,7 @@ export function farmTools(scope: FarmScope) {
     execute: async () => {
       const workerOnly = scope.roles.length === 1 && scope.roles[0] === "worker";
       if (workerOnly) return denied("reports");
-      const kinds = ["cattle", "breeding", "milk", "health", "feed", "semen", "finance"].filter((kind) => {
+      const kinds = ["cattle", "breeding", "milk", "health", "feed", "semen", "weight", "finance"].filter((kind) => {
         if (kind === "health" && !canRecordHealth(scope.roles) && !scope.roles.includes("owner") && !scope.roles.includes("manager")) return false;
         if (kind === "finance" && !canViewFinance(scope.roles)) return false;
         return true;
@@ -670,6 +670,8 @@ export function farmTools(scope: FarmScope) {
     execute: () => ({
       screens: [
         { task: "Herd counts and due calvings", path: "/dashboard" },
+        { task: "Farm assistant", path: "/ai" },
+        { task: "Scan an animal tag or straw and start an AI", path: "/scan" },
         { task: "Cattle register and family tree", path: "/animals" },
         { task: "Add an animal", path: "/animals/new" },
         { task: "Animal profile, parentage, breeding, health, milk, listing", path: "/animals/{code}" },

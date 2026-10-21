@@ -1,7 +1,7 @@
 # Product Requirements Document
 
 **Product:** Cattle Management SaaS  
-**Document status:** Draft v1.3  
+**Document status:** Draft v1.4  
 **Date:** 21 October 2026  
 **Audience:** Product, design, engineering, and farm stakeholders
 
@@ -13,7 +13,7 @@ Build a multi-farm SaaS for dairy and genetics operations. Farm staff record eac
 
 The product has two surfaces:
 
-1. **Farm workspace** — authenticated, role-based, mobile-friendly operations.
+1. **Farm workspace** — authenticated, role-based, mobile-friendly operations, including a farm assistant that answers from live herd data and saves a record only after the person confirms it.
 2. **Public catalogue** — selected animals, semen, and embryos shown for enquiry, with product checkout added later.
 
 Phase 1 is daily farm work: animal identity, pedigree, semen, breeding, health, milk, weight, feed stock, reminders, and exports. Embryo workflows, finance, the public site, ecommerce, and predictive models are designed into the data model and shipped in later phases. Mating checks and milk-drop alerts are decision support. They do not make veterinary or genetic claims.
@@ -114,6 +114,7 @@ One Next.js application serves the farm workspace, the public catalogue, and the
 | Email | ZeptoMail | Invites, enquiry notices, and later alert mail |
 | Schedule | Host cron, once a day | Open due alerts. Saving an event also opens or closes alerts in the same request. |
 | Payments | Razorpay, Phase 3 | Checkout plus a signed webhook |
+| Assistant | Google ADK and Gemini | Farm assistant at `/ai`. Function calls read the herd and, after confirmation, write the same records as the screens. |
 | Tests | Vitest and Playwright | Domain rules, and the phone-width flows in §12 |
 | Host | Vercel, Neon Postgres, Cloudflare R2 | App, database, and file storage. The app stays standard Next.js and Postgres so the app host can change. R2 remains the file store. |
 
@@ -228,6 +229,8 @@ emails/               HTML and text templates ZeptoMail sends
 | `R2_BUCKET_PRIVATE`, `R2_BUCKET_PUBLIC`, `R2_PUBLIC_BASE_URL` | With the R2 keys. Public base URL is the Cloudflare domain in front of `cattle-public`. |
 | `ZEPTOMAIL_TOKEN`, `ZEPTOMAIL_FROM`, `ZEPTOMAIL_API_URL` | Production invites and enquiries. Token is the ZeptoMail send-mail token. API URL defaults to the India endpoint. |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, webhook secret | Phase 3 |
+| `GEMINI_API_KEY` | Farm assistant. Also accepts `GOOGLE_API_KEY` or `GOOGLE_GENAI_API_KEY`. |
+| `GEMINI_MODEL` | Optional. Defaults to `gemini-flash-latest`. |
 
 Secrets stay in the host’s environment. They are not committed. `.env` is not a source of sample animal data.
 
@@ -260,8 +263,9 @@ Ship a usable daily product:
 - Rule-based milk-drop alert
 - Feed items, stock movements, and animal or group allocations
 - Dashboard, due lists, in-app notifications
-- PDF and Excel export for the Phase 1 registers
-- Audit log for create, update, and void
+- PDF and Excel export for the Phase 1 registers, including a single-animal pedigree PDF and a weight spreadsheet. Each download is written to the audit log.
+- Audit log for create, update, void, and export
+- Farm assistant at `/ai` (see §11.21). This is a conversational front for the same records. It is not the Phase 4 prediction work.
 
 Embryo tables and notification-channel interfaces are created but not exposed as full workflows.
 
@@ -290,6 +294,8 @@ Architecture only until this phase: heat prediction, disease-risk signals, weigh
 
 ```text
 Dashboard
+Assistant
+Scan
 Animals
   Profile
   Timeline
@@ -718,6 +724,18 @@ Exports respect role visibility (an accountant export does not include clinical 
 | Genetics performance | 3 | PDF, Excel |
 
 Each export records who ran it and the filters used.
+
+### 11.21 Farm assistant
+
+The assistant is a page in the farm workspace at `/ai`. It uses Google ADK with Gemini. Every lookup and every save is a function call against the signed-in farm. The model does not receive a farm id it can change.
+
+Reads cover the herd, one animal, breeding, health, milk, feed, semen, embryos, finance (when the role can see it), alerts, the shop, the team, the audit log, mating flags, and the report catalogue.
+
+Writes use the same server actions as the screens: add an animal, record heat, insemination, pregnancy check, calving, treatment, vaccine, deworming, weight, milk, feed, finance, semen, and embryos, publish a listing, add a shop product, invite staff, and void a record. A write pauses until the person chooses Save or Cancel in the chat. The assistant does not disable a staff account.
+
+A calving still requires a confirmed insemination, and the calf’s sire is that bull. Mating answers repeat the decision-support disclaimer shown on the genetics page. The conversation is kept in the browser and in `.data/ai-sessions.json` on the server until the person starts a new chat. Without `GEMINI_API_KEY`, the page explains that the key is required and does not call Gemini.
+
+Phase 4 prediction models remain a separate later phase. The assistant does not score heat, disease, or mating on its own.
 
 ---
 
