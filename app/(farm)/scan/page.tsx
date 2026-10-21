@@ -5,6 +5,7 @@ import { animals, bulls, semenBatches, straws } from "@/db/schema";
 import { farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canRecordBreeding } from "@/lib/permissions";
+import { scanLookupError } from "@/lib/scan-lookup";
 import { FormSelect } from "@/components/form-select";
 import { CodeScanner } from "@/components/code-scanner";
 import { Summary } from "@/components/workspace";
@@ -21,6 +22,7 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
   const farm = await requireFarm();
   const query = await searchParams;
   const raw = query.code?.trim() ?? "";
+  const lookupError = query.code === undefined ? null : scanLookupError(raw);
   let strawCard: {
     code: string;
     status: string;
@@ -35,7 +37,7 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
   } | null = null;
   let missing = false;
 
-  if (raw) {
+  if (raw && !lookupError) {
     const token = tokenFrom(raw);
     const [animal] = await db
       .select({ code: animals.code })
@@ -77,7 +79,7 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
   return (
     <div className="mx-auto w-full max-w-lg space-y-5">
       <Summary title="Scan" description="Open an animal from a tag, or look up a straw and start an insemination." />
-      <CodeScanner />
+      <CodeScanner code={raw} error={lookupError} />
       {missing ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">No animal or straw matches {raw}.</p> : null}
       {strawCard ? (
         <section className="space-y-4 rounded-2xl border border-border bg-card p-4">

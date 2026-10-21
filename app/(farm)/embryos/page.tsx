@@ -9,8 +9,10 @@ import { embryoStatusLabel, embryoStorageLabel } from "@/lib/embryo-stock";
 import { requireFarm } from "@/lib/farm-context";
 import { canUseGenetics, canViewGenetics } from "@/lib/permissions";
 import { FormSelect } from "@/components/form-select";
+import { EmbryoSearch } from "@/components/embryo-search";
+import { PanelTabs } from "@/components/panel-tabs";
 import { RecordDialog } from "@/components/record-dialog";
-import { EmptyRow, inputClass, Notice, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
+import { EmptyRow, inputClass, Notice, pickTab, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
 
 const messages: Record<string, string> = {
   role: "Your role cannot change embryo stock.",
@@ -30,6 +32,12 @@ const results: Record<string, string> = {
   doubtful: "Doubtful",
 };
 
+const tabs = [
+  { id: "collections", label: "Collections" },
+  { id: "inventory", label: "Inventory" },
+  { id: "transfers", label: "Transfers" },
+];
+
 function includes(values: Array<string | number | null | undefined>, term: string) {
   return values.some((value) => String(value ?? "").toLowerCase().includes(term));
 }
@@ -47,7 +55,7 @@ function flushFacts(value: unknown) {
 
 export const metadata = { title: "Embryos" };
 
-export default async function EmbryosPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; saved?: string }> }) {
+export default async function EmbryosPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; saved?: string; tab?: string }> }) {
   const farm = await requireFarm();
   if (!canViewGenetics(farm.roles)) redirect("/dashboard");
   const query = await searchParams;
@@ -64,6 +72,7 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
       .orderBy(animals.code),
   ]);
   const canEdit = canUseGenetics(farm.roles);
+  const tab = pickTab(query.tab, tabs, "collections");
   const byId = new Map(herd.map((animal) => [animal.id, animal]));
   const females = herd.filter((animal) => animal.sex === "female" && animal.presence === "on_farm");
   const femaleOptions = [{ value: "", label: "Female" }, ...females.map((animal) => ({ value: animal.id, label: `${animal.name ?? animal.code} · ${animal.code}` }))];
@@ -104,26 +113,25 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
           { label: "Transferred", value: String(rows.filter((embryo) => embryo.status === "transferred").length) },
           { label: "Discarded", value: String(rows.filter((embryo) => embryo.status === "discarded").length) },
         ]}
-        action={
-          term ? (
-            <Link href="/embryos" className="inline-flex h-10 items-center rounded-full border border-border px-4 text-sm font-medium">
-              Clear
-            </Link>
-          ) : null
-        }
       />
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.saved ? <Notice>Embryo stock is saved.</Notice> : null}
-      <form method="get" className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card p-4">
-        <input name="q" defaultValue={query.q ?? ""} placeholder="Code, donor, sire, grade, location" className={`${inputClass} min-w-0 flex-1`} />
-        <Submit>Search</Submit>
-      </form>
+      <EmbryoSearch query={query.q ?? ""} />
+      <PanelTabs
+        initialTab={tab}
+        tabs={[
+          { id: "collections", label: "Collections", count: visibleCollections.length },
+          { id: "inventory", label: "Inventory", count: visibleEmbryos.length },
+          { id: "transfers", label: "Transfers", count: visibleTransfers.length },
+        ]}
+        panels={{
+          collections: (
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Collections</h2>
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {canEdit ? (
             <RecordDialog title="Record collection" button="Record collection">
               <form action={recordFlush} className="grid gap-3">
+                <input type="hidden" name="returnTab" value="collections" />
                 <FormSelect name="donorId" required defaultValue="" options={[{ value: "", label: "Donor" }, ...femaleOptions.slice(1)]} />
                 <input name="sireCode" placeholder="Sire code" className={inputClass} />
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -167,13 +175,15 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
           })}
         </Table>
       </section>
+          ),
+          inventory: (
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Inventory</h2>
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {canEdit ? (
             <div className="flex flex-wrap gap-2">
               <RecordDialog title="Add embryo" button="Add embryo">
                 <form action={saveEmbryo} className="grid gap-3">
+                  <input type="hidden" name="returnTab" value="inventory" />
                   <input name="code" required placeholder="EMB-2026-0001" className={inputClass} />
                   <FormSelect name="donorId" defaultValue="" options={femaleOptions} />
                   <input name="sireCode" placeholder="Sire code" className={inputClass} />
@@ -199,6 +209,7 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
               </RecordDialog>
               <RecordDialog title="Discard an embryo" button="Discard">
                 <form action={discardEmbryo} className="grid gap-3">
+                  <input type="hidden" name="returnTab" value="inventory" />
                   <FormSelect
                     name="code"
                     required
@@ -251,12 +262,14 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
           })}
         </Table>
       </section>
+          ),
+          transfers: (
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Transfers</h2>
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {canEdit ? (
             <RecordDialog title="Record transfer" button="Record transfer">
               <form action={transferEmbryo} className="grid gap-3">
+                <input type="hidden" name="returnTab" value="transfers" />
                 <FormSelect
                   name="embryoId"
                   required
@@ -307,6 +320,9 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
           })}
         </Table>
       </section>
+          ),
+        }}
+      />
     </div>
   );
 }

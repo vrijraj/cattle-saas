@@ -86,18 +86,27 @@ The farm app runs with these left empty. Each feature explains itself in the UI 
 | ZeptoMail | Staff invite email | `ZEPTOMAIL_TOKEN`, `ZEPTOMAIL_FROM` |
 | Razorpay | Shop checkout | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` |
 | Gemini | Assistant at `/ai`, through Google ADK | `GEMINI_API_KEY` |
+| WhatsApp / SMS | Optional delivery of an alert | `WHATSAPP_TOKEN`, `WHATSAPP_API_URL`, `SMS_TOKEN`, `SMS_API_URL` |
 
-Without ZeptoMail, an invite still creates a link the owner can copy. Without Razorpay, a cart becomes an order waiting for payment. Without R2, photo upload is refused and the profile says storage is not configured.
+Without ZeptoMail, an invite still creates a link the owner can copy. Without Razorpay, a cart becomes an order waiting for payment. Without R2, photo upload is refused and the profile says storage is not configured. Without WhatsApp or SMS, the in-app alert stays open and the send is recorded as not configured.
 
 `AUTH_SECRET` must be a long random string before any shared deployment. Do not commit `.env`.
 
 ## What the app covers
 
-**Farm workspace** (signed in): dashboard, cattle register and profile, dam-line family tree, heat / AI / pregnancy / calving, health, milk, feed, semen, mating check, embryos, finance, alerts, reports (CSV, PDF, Excel), shop products, team invites, an audit log, and an assistant at `/ai`.
+Sign-in is at `/signin`. The home page sends a signed-in person to the dashboard.
+
+**Today:** dashboard, assistant at `/ai`, and alerts.
+
+**Herd:** cattle register and dam-line family tree (`/animals` and `/animals?tab=tree`), sheds, milk, and feed.
+
+**Breeding:** one register with tabs for what is due, pregnant animals, heat, inseminations, pregnancy checks, and calvings (`/breeding?tab=calvings` and the same pattern for the other tabs). Health uses the same pattern for due work, treatments, vaccines, and deworming. Semen uses the same pattern for batches, straws, and bulls. Also genetics (mating check and bull performance), insights, and embryos (collections, inventory, and transfers).
+
+**Business:** finance, reports (CSV, PDF, Excel), shop products, buyer enquiries, the audit log, and team invites.
+
+The header has scan and the account menu. Scan opens an animal or a semen straw from a code. On a phone, the farm menu opens from the header. From the `md` breakpoint up, the same menu is a fixed sidebar. Some items stay hidden until the signed-in roles include them.
 
 The assistant at `/ai` uses Google ADK with Gemini function calls. It looks up the same records as the workspace. After you confirm, it can add an animal, record breeding, health, milk, weight, feed, finance, semen, and embryos, publish a listing, add a shop product, invite staff, and void a record. Set `GEMINI_API_KEY` (from Google AI Studio) and restart the dev server. `GEMINI_MODEL` defaults to `gemini-flash-latest`. Without a key, `/ai` explains what to add. The conversation is kept in this browser and in `.data/ai-sessions.json`, so a server restart keeps the same chat until you choose New chat.
-
-On a phone, the farm menu opens from the header. From the `md` breakpoint up, the same menu is a fixed sidebar.
 
 **Public:** farm catalogue, animal listing, shop, and cart. A QR code encodes `https://{AUTH_URL}/q/{token}`. A signed-out scan does not show unpublished records.
 

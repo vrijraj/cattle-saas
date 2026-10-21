@@ -167,6 +167,96 @@ dialog[open]::backdrop {
   }
 }
 
+.ai-rise,
+.ai-card {
+  animation:
+    420ms ease-out both page-fade,
+    420ms ease-out both page-rise;
+}
+
+.ai-in,
+.ai-in-user {
+  animation: 320ms ease-out both ai-message;
+}
+
+.ai-in-user {
+  animation-name: ai-message-user;
+}
+
+.ai-sparkle {
+  animation: ai-sparkle 2.4s ease-in-out infinite;
+}
+
+.ai-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.ai-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: ai-dot 1s ease-in-out infinite;
+}
+
+.ai-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.ai-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes ai-message {
+  from {
+    opacity: 0;
+    translate: -10px 8px;
+  }
+  to {
+    opacity: 1;
+    translate: 0;
+  }
+}
+
+@keyframes ai-message-user {
+  from {
+    opacity: 0;
+    translate: 10px 8px;
+  }
+  to {
+    opacity: 1;
+    translate: 0;
+  }
+}
+
+@keyframes ai-sparkle {
+  0%,
+  100% {
+    opacity: 1;
+    rotate: 0deg;
+    scale: 1;
+  }
+  50% {
+    opacity: 0.45;
+    rotate: 14deg;
+    scale: 0.86;
+  }
+}
+
+@keyframes ai-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    translate: 0;
+  }
+  40% {
+    opacity: 1;
+    translate: 0 -3px;
+  }
+}
+
 .loader-spin {
   animation: loader-spin 0.7s linear infinite;
 }
@@ -188,7 +278,13 @@ dialog[open]::backdrop {
   dialog[open],
   dialog[open]::backdrop,
   dialog.nav-drawer[open],
-  .loader-spin {
+  .loader-spin,
+  .ai-rise,
+  .ai-card,
+  .ai-in,
+  .ai-in-user,
+  .ai-sparkle,
+  .ai-dots i {
     animation: none;
   }
 }

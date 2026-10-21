@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { ArrowUp, Sparkles } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState, type ComponentType } from "react";
+import { ArrowUp, Bell, Beef, Droplets, FileBarChart, HeartPulse, LayoutDashboard, Milk, Plus, Scale, ShoppingBag, Sparkles, Sprout, Stethoscope, User, Users, Wallet, Wheat, X } from "lucide-react";
 
 type ConfirmCard = {
   id: string;
@@ -21,13 +21,52 @@ type ChatMessage = {
 
 const STORAGE_KEY = "farm-ai-chat";
 
-const suggestions = [
-  "How is the herd today?",
-  "Who is due to calve?",
-  "Which cows are in milk?",
-  "What feed is running low?",
-  "Show open alerts",
+const suggestions: { label: string; prompt: string; icon: ComponentType<{ className?: string }> }[] = [
+  { label: "Herd", prompt: "How is the herd today?", icon: Beef },
+  { label: "Calving", prompt: "Who is due to calve?", icon: HeartPulse },
+  { label: "Milk", prompt: "Which cows are in milk?", icon: Milk },
+  { label: "Feed", prompt: "What feed is running low?", icon: Wheat },
+  { label: "Alerts", prompt: "Show open alerts", icon: Bell },
+  { label: "Breeding", prompt: "Which animals are pregnant?", icon: Sprout },
 ];
+
+const toolIcons: Record<string, ComponentType<{ className?: string }>> = {
+  herd_overview: Beef,
+  search_cattle: Beef,
+  animal_profile: Beef,
+  add_animal: Beef,
+  breeding_records: HeartPulse,
+  record_heat: HeartPulse,
+  record_insemination: HeartPulse,
+  record_pregnancy_check: HeartPulse,
+  record_calving: HeartPulse,
+  mating_check: HeartPulse,
+  health_records: Stethoscope,
+  record_treatment: Stethoscope,
+  record_vaccine: Stethoscope,
+  record_deworming: Stethoscope,
+  milk_records: Milk,
+  record_milk: Milk,
+  feed_stock: Wheat,
+  record_feed: Wheat,
+  semen_inventory: Droplets,
+  receive_straws: Droplets,
+  embryo_stock: Sprout,
+  add_embryo: Sprout,
+  record_embryo_transfer: Sprout,
+  finance_summary: Wallet,
+  record_finance: Wallet,
+  open_alerts: Bell,
+  shop_overview: ShoppingBag,
+  publish_listing: ShoppingBag,
+  add_product: ShoppingBag,
+  people_and_audit: Users,
+  invite_staff: Users,
+  report_catalogue: FileBarChart,
+  workspace_map: LayoutDashboard,
+  record_weight: Scale,
+  void_record: X,
+};
 
 const toolLabels: Record<string, string> = {
   herd_overview: "Herd",
@@ -67,6 +106,11 @@ const toolLabels: Record<string, string> = {
   invite_staff: "Invite staff",
 };
 
+function ToolGlyph({ name, className }: { name: string; className?: string }) {
+  const Icon = toolIcons[name] ?? Sparkles;
+  return <Icon className={className} />;
+}
+
 function renderText(text: string) {
   const tokens = text.split(/(\[[^\]]+\]\([^)]+\)|\/[A-Za-z0-9][A-Za-z0-9/_?&=%.-]*)/g);
   return tokens.map((token, index) => {
@@ -91,6 +135,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState<string | null>(configured ? null : "Add GEMINI_API_KEY to .env and restart the server.");
   const sessionId = useRef<string | null>(null);
+  const settledIds = useRef<Set<string>>(new Set());
   const scroller = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -100,7 +145,9 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
       if (saved) {
         const parsed = JSON.parse(saved) as { sessionId?: string; messages?: ChatMessage[] };
         sessionId.current = parsed.sessionId ?? null;
-        setMessages((parsed.messages ?? []).filter((message) => !message.pending));
+        const stored = (parsed.messages ?? []).filter((message) => !message.pending);
+        settledIds.current = new Set(stored.map((message) => message.id));
+        setMessages(stored);
       }
     } catch {
       localStorage.removeItem(STORAGE_KEY);
@@ -217,147 +264,202 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
     setBusy(false);
   }
 
-  return (
-    <section className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
-        <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold">Assistant</h1>
-          <p className="truncate text-xs text-muted-foreground">{farmName} · Gemini</p>
-        </div>
-        <button type="button" onClick={reset} className="h-10 shrink-0 rounded-xl border border-border px-3 text-sm font-medium hover:bg-muted">
-          New chat
-        </button>
-      </header>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-        {messages.length === 0 ? (
-          <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center text-center">
-            <span className="grid size-12 place-items-center rounded-2xl bg-secondary text-primary">
-              <Sparkles className="size-5" />
-            </span>
-            <h2 className="mt-4 text-2xl font-semibold tracking-tight">Ask about the farm</h2>
-            <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Gemini function calls read the herd, milk, breeding, health, feed, and money. A save waits until you confirm it.
-            </p>
-            {notice ? <p className="mt-4 max-w-md rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">{notice}</p> : null}
-            <div className="mt-6 flex flex-wrap justify-center gap-2">
-              {suggestions.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => void send(suggestion)}
-                  className="rounded-full border border-border bg-card px-3 py-2 text-sm hover:bg-muted"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          </div>
+  const composer = (
+    <form onSubmit={onSubmit}>
+      <div className="assistant-composer flex items-end gap-2 rounded-3xl border border-border bg-card p-2">
+        <textarea
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void send(draft);
+            }
+          }}
+          rows={1}
+          placeholder={configured ? "Ask about cattle, milk, breeding, money…" : "Gemini key needed before the first question"}
+          className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+        />
+        {busy ? (
+          <button type="button" onClick={() => abortRef.current?.abort()} className="h-11 shrink-0 rounded-full border border-border px-4 text-sm font-medium">
+            Stop
+          </button>
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-4">
-            {notice ? <p className="rounded-xl bg-muted px-3 py-2 text-center text-xs text-muted-foreground">{notice}</p> : null}
-            {messages.map((message) => (
-              <article key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
-                <div className={message.role === "user" ? "max-w-[85%] rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground" : "max-w-[85%]"}>
-                  {message.role === "assistant" && message.tools.length > 0 ? (
-                    <p className="mb-2 flex flex-wrap gap-1.5">
-                      {message.tools.map((tool) => (
-                        <span key={tool} className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                          Function · {toolLabels[tool] ?? tool.replaceAll("_", " ")}
-                        </span>
-                      ))}
-                    </p>
-                  ) : null}
-                  {message.confirm ? (
-                    <div className="mb-2 rounded-2xl border border-border bg-card p-3 text-sm">
-                      <p className="font-medium">{toolLabels[message.confirm.tool] ?? message.confirm.tool}</p>
-                      <dl className="mt-2 space-y-1 text-muted-foreground">
-                        {Object.entries(message.confirm.args).map(([key, value]) => (
-                          <div key={key} className="flex gap-2">
-                            <dt className="capitalize">{key.replaceAll(/([A-Z])/g, " $1")}</dt>
-                            <dd className="text-foreground">{String(value)}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                      {message.confirm.decided ? (
-                        <p className="mt-3 text-xs font-medium text-primary">{message.confirm.decided === "saved" ? "Confirmed" : "Left unsaved"}</p>
-                      ) : (
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => {
-                              const id = message.confirm!.id;
-                              setMessages((current) =>
-                                current.map((item) =>
-                                  item.confirm?.id === id ? { ...item, confirm: { ...item.confirm!, decided: "saved" } } : item,
-                                ),
-                              );
-                              void send("Save this record", { id, confirmed: true });
-                            }}
-                            className="h-10 rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-40"
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => {
-                              const id = message.confirm!.id;
-                              setMessages((current) =>
-                                current.map((item) =>
-                                  item.confirm?.id === id ? { ...item, confirm: { ...item.confirm!, decided: "cancelled" } } : item,
-                                ),
-                              );
-                              void send("Don't save this", { id, confirmed: false });
-                            }}
-                            className="h-10 rounded-xl border border-border px-3 text-sm font-medium disabled:opacity-40"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                  {message.role === "assistant" && (message.text || message.pending) ? (
-                    <div className="rounded-2xl border border-border bg-card px-4 py-3 text-sm leading-6 whitespace-pre-wrap">
-                      {message.text ? renderText(message.text) : <span className="text-muted-foreground">Looking through the farm…</span>}
-                    </div>
-                  ) : message.role === "user" ? (
-                    <p className="whitespace-pre-wrap">{message.text}</p>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
+          <button type="submit" disabled={!draft.trim()} className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40">
+            <ArrowUp className="size-4" />
+            <span className="sr-only">Send</span>
+          </button>
         )}
       </div>
-      <form onSubmit={onSubmit} className="border-t border-border px-4 py-3 sm:px-6">
-        <div className="assistant-composer mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-card p-2">
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void send(draft);
-              }
-            }}
-            rows={1}
-            placeholder={configured ? "Ask about cattle, milk, breeding, money…" : "Gemini key needed before the first question"}
-            className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
-          />
-          {busy ? (
-            <button type="button" onClick={() => abortRef.current?.abort()} className="grid size-11 shrink-0 place-items-center rounded-xl border border-border text-sm">
-              Stop
-            </button>
-          ) : (
-            <button type="submit" disabled={!draft.trim()} className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40">
-              <ArrowUp className="size-4" />
-              <span className="sr-only">Send</span>
-            </button>
-          )}
+      <p className="mt-2 px-3 text-xs text-muted-foreground">Enter sends the question. Shift Enter starts a new line. A save waits until you confirm it.</p>
+    </form>
+  );
+
+  if (!ready) return <section className="min-h-[50vh]" />;
+
+  if (messages.length === 0) {
+    return (
+      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5">
+        <div className="ai-rise rounded-3xl bg-[#e7f6ee] px-5 py-6 sm:px-7">
+          <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.16em] text-primary">
+            <Sparkles className="ai-sparkle size-3.5" />
+            ASSISTANT
+          </p>
+          <h1 className="mt-2 max-w-lg text-3xl sm:text-4xl">Ask about the farm</h1>
+          <p className="mt-2 max-w-lg text-sm text-muted-foreground">{farmName}. Questions can cover cattle, milk, breeding, health, feed, and money.</p>
         </div>
-      </form>
+        {notice ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">{notice}</p> : null}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {suggestions.map((suggestion, index) => (
+            <button
+              key={suggestion.prompt}
+              type="button"
+              disabled={!configured || busy}
+              onClick={() => void send(suggestion.prompt)}
+              style={{ animationDelay: `${120 + index * 55}ms` }}
+              className="ai-card flex items-start gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left transition hover:bg-muted disabled:opacity-50"
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
+                <suggestion.icon className="size-4" />
+              </span>
+              <span>
+                <span className="text-[11px] font-semibold tracking-[0.14em] text-primary uppercase">{suggestion.label}</span>
+                <span className="mt-1 block text-sm">{suggestion.prompt}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="ai-card" style={{ animationDelay: "460ms" }}>
+          {composer}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-secondary text-primary">
+            <Sparkles className="ai-sparkle size-4" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-2xl">Assistant</h1>
+            <p className="truncate text-xs text-muted-foreground">{farmName}</p>
+          </div>
+        </div>
+        <button type="button" onClick={reset} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-border px-4 text-sm font-medium hover:bg-muted">
+          <Plus className="size-4" />
+          New chat
+        </button>
+      </div>
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex flex-col gap-4 pb-4">
+          {notice ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-center text-sm text-muted-foreground">{notice}</p> : null}
+          {messages.map((message) => (
+            <article
+              key={message.id}
+              className={`${message.role === "user" ? "flex justify-end" : "flex justify-start"} items-end gap-2 ${settledIds.current.has(message.id) ? "" : message.role === "user" ? "ai-in-user" : "ai-in"}`}
+            >
+              {message.role === "assistant" ? (
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-primary">
+                  <Sparkles className="size-3.5" />
+                </span>
+              ) : null}
+              <div className={message.role === "user" ? "max-w-[85%] rounded-3xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground" : "max-w-[85%]"}>
+                {message.role === "assistant" && message.tools.length > 0 ? (
+                  <p className="mb-2 flex flex-wrap gap-1.5">
+                    {message.tools.map((tool) => (
+                      <span key={tool} className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
+                        <ToolGlyph name={tool} className="size-3" />
+                        {toolLabels[tool] ?? tool.replaceAll("_", " ")}
+                      </span>
+                    ))}
+                  </p>
+                ) : null}
+                {message.confirm ? (
+                  <div className="mb-2 rounded-2xl border border-border bg-card p-4 text-sm">
+                    <p className="flex items-center gap-2 font-medium">
+                      <ToolGlyph name={message.confirm.tool} className="size-4 text-primary" />
+                      {toolLabels[message.confirm.tool] ?? message.confirm.tool}
+                    </p>
+                    <dl className="mt-3 space-y-1.5 text-muted-foreground">
+                      {Object.entries(message.confirm.args).map(([key, value]) => (
+                        <div key={key} className="flex gap-2">
+                          <dt className="capitalize">{key.replaceAll(/([A-Z])/g, " $1")}</dt>
+                          <dd className="text-foreground">{String(value)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {message.confirm.decided ? (
+                      <p className="mt-3 text-xs font-medium text-primary">{message.confirm.decided === "saved" ? "Confirmed" : "Left unsaved"}</p>
+                    ) : (
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            const id = message.confirm!.id;
+                            setMessages((current) =>
+                              current.map((item) =>
+                                item.confirm?.id === id ? { ...item, confirm: { ...item.confirm!, decided: "saved" } } : item,
+                              ),
+                            );
+                            void send("Save this record", { id, confirmed: true });
+                          }}
+                          className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-40"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            const id = message.confirm!.id;
+                            setMessages((current) =>
+                              current.map((item) =>
+                                item.confirm?.id === id ? { ...item, confirm: { ...item.confirm!, decided: "cancelled" } } : item,
+                              ),
+                            );
+                            void send("Don't save this", { id, confirmed: false });
+                          }}
+                          className="h-10 rounded-full border border-border px-4 text-sm font-medium disabled:opacity-40"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+                {message.role === "assistant" && (message.text || message.pending) ? (
+                  <div className="rounded-3xl rounded-bl-md border border-border bg-card px-4 py-3 text-sm leading-6 whitespace-pre-wrap">
+                      {message.text ? (
+                        renderText(message.text)
+                      ) : (
+                        <span className="inline-flex items-center gap-2 text-muted-foreground">
+                          Looking through the farm
+                          <span className="ai-dots" aria-hidden="true">
+                            <i />
+                            <i />
+                            <i />
+                          </span>
+                        </span>
+                      )}
+                  </div>
+                ) : message.role === "user" ? (
+                  <p className="whitespace-pre-wrap">{message.text}</p>
+                ) : null}
+              </div>
+              {message.role === "user" ? (
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+                  <User className="size-3.5" />
+                </span>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      </div>
+      {composer}
     </section>
   );
 }

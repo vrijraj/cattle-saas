@@ -1,15 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { scanLookupError } from "@/lib/scan-lookup";
 
 type Detector = { detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>> };
 
-export function CodeScanner() {
+export function CodeScanner({ code = "", error = null }: { code?: string; error?: string | null }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [scanning, setScanning] = useState(false);
   const [note, setNote] = useState("");
+  const [lookup, setLookup] = useState(code);
+  const [lookupError, setLookupError] = useState(error);
+
+  function closeCamera() {
+    setScanning(false);
+  }
 
   useEffect(() => {
     if (!scanning) return;
@@ -80,30 +87,61 @@ export function CodeScanner() {
     }
   }
 
+  function lookUp(event: FormEvent<HTMLFormElement>) {
+    const message = scanLookupError(lookup);
+    if (!message) return;
+    event.preventDefault();
+    setLookupError(message);
+  }
+
   return (
     <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
-      <button
-        className="h-11 w-full rounded-full bg-primary text-sm font-medium text-primary-foreground"
-        type="button"
-        onClick={() => {
-          setNote("");
-          setScanning(true);
-        }}
-      >
-        Scan with camera
-      </button>
-      {scanning ? <video ref={videoRef} className="aspect-[3/4] w-full rounded-xl bg-black object-cover" muted playsInline /> : null}
+      {scanning ? (
+        <div className="relative">
+          <video ref={videoRef} className="aspect-[3/4] w-full rounded-xl bg-black object-cover" muted playsInline />
+          <button
+            className="absolute top-3 right-3 h-10 rounded-full bg-card px-4 text-sm font-medium text-foreground"
+            type="button"
+            onClick={closeCamera}
+          >
+            Close camera
+          </button>
+        </div>
+      ) : (
+        <button
+          className="h-11 w-full rounded-full bg-primary text-sm font-medium text-primary-foreground"
+          type="button"
+          onClick={() => {
+            setNote("");
+            setScanning(true);
+          }}
+        >
+          Scan with camera
+        </button>
+      )}
       {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
-      <form action="/scan" className="grid gap-2">
+      <form action="/scan" className="grid gap-2" onSubmit={lookUp}>
         <label className="text-sm font-medium" htmlFor="lookup-code">
           Animal code, straw code, or tag link
         </label>
         <input
           id="lookup-code"
           name="code"
+          value={lookup}
+          aria-invalid={lookupError ? true : undefined}
+          aria-describedby={lookupError ? "lookup-code-error" : undefined}
           className="h-11 rounded-xl border border-border bg-background px-3 text-sm"
           placeholder="MIL-GIR-001 or STR-G14-2026-013"
+          onChange={(event) => {
+            setLookup(event.target.value);
+            setLookupError(null);
+          }}
         />
+        {lookupError ? (
+          <p id="lookup-code-error" className="text-sm text-destructive">
+            {lookupError}
+          </p>
+        ) : null}
         <button className="h-11 rounded-full border border-border text-sm font-medium" type="submit">
           Look up
         </button>

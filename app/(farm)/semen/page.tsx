@@ -8,9 +8,11 @@ import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canUseGenetics, canViewGenetics, canViewSemen, canViewSemenCost } from "@/lib/permissions";
 import { semenTypeLabel, strawCounts, strawStatusLabel } from "@/lib/semen-stock";
+import { PanelTabs } from "@/components/panel-tabs";
+import { SemenFilter } from "@/components/semen-filter";
 import { FormSelect } from "@/components/form-select";
 import { RecordDialog } from "@/components/record-dialog";
-import { EmptyRow, inputClass, Notice, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
+import { EmptyRow, inputClass, Notice, pickTab, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
 
 const messages: Record<string, string> = {
   role: "Your role cannot change semen stock.",
@@ -24,6 +26,12 @@ const messages: Record<string, string> = {
   cost: "Price per straw must be zero or more.",
   date: "Use a date in YYYY-MM-DD.",
 };
+
+const tabs = [
+  { id: "batches", label: "Batches" },
+  { id: "straws", label: "Straws" },
+  { id: "bulls", label: "Bulls" },
+];
 
 const types = [
   { value: "conventional", label: "Conventional" },
@@ -40,7 +48,7 @@ export const metadata = { title: "Semen inventory" };
 export default async function SemenPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; tank?: string; stock?: string; error?: string; saved?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; tank?: string; stock?: string; error?: string; saved?: string; tab?: string }>;
 }) {
   const farm = await requireFarm();
   if (!canViewSemen(farm.roles)) redirect("/dashboard");
@@ -97,6 +105,7 @@ export default async function SemenPage({
     : bullRows;
   const totals = strawCounts(strawRows);
   const bullLabel = (bull: { code: string; name: string } | undefined) => (bull ? `${bull.name} · ${bull.code}` : "—");
+  const tab = pickTab(query.tab, tabs, "batches");
 
   return (
     <div className="space-y-5">
@@ -109,17 +118,10 @@ export default async function SemenPage({
           { label: "Batches", value: String(batches.length) },
           { label: "Bulls", value: String(bullRows.length) },
         ]}
-        action={
-          filtered ? (
-            <Link href="/semen" className="inline-flex h-10 items-center rounded-full border border-border px-4 text-sm font-medium">
-              Clear
-            </Link>
-          ) : null
-        }
       />
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.saved ? <Notice>Semen stock is saved.</Notice> : null}
-      <form method="get" className="grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <SemenFilter clear={filtered}>
         <input name="q" defaultValue={query.q ?? ""} placeholder="Bull, batch, company, straw" className={inputClass} />
         <FormSelect name="type" defaultValue={type} options={[{ value: "", label: "All types" }, ...types]} />
         <FormSelect name="tank" defaultValue={tank} options={[{ value: "", label: "All tanks" }, ...tanks.map((item) => ({ value: item, label: item }))]} />
@@ -131,12 +133,16 @@ export default async function SemenPage({
             { value: "available", label: "Balance above zero" },
           ]}
         />
-        <div className="sm:col-span-2 lg:col-span-4">
-          <Submit>Filter</Submit>
-        </div>
-      </form>
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Batches</h2>
+      </SemenFilter>
+      <PanelTabs
+        initialTab={tab}
+        tabs={[
+          { id: "batches", label: "Batches", count: batchRows.length },
+          { id: "straws", label: "Straws", count: visibleStraws.length },
+          { id: "bulls", label: "Bulls", count: visibleBulls.length },
+        ]}
+        panels={{
+          batches: (
         <Table headers={["Batch", "Bull", "Type", "Received", "Used", "Discarded", "Transferred", "Balance", ...(showCost ? ["Price"] : [])]}>
           {batchRows.length === 0 ? <EmptyRow cols={showCost ? 9 : 8}>{filtered ? "No batches match this filter." : "No batches yet."}</EmptyRow> : null}
           {batchRows.map(({ batch, bull, counts }) => (
@@ -169,14 +175,15 @@ export default async function SemenPage({
             </tr>
           ))}
         </Table>
-      </section>
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Straws</h2>
+          ),
+          straws: (
+        <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {canEdit ? (
             <div className="flex flex-wrap gap-2">
             <RecordDialog title="Receive straws" button="Receive straws">
               <form action={saveSemenBatch} className="grid gap-3">
+                <input type="hidden" name="returnTab" value="straws" />
                 <FormSelect
                   name="bullId"
                   required
@@ -205,6 +212,7 @@ export default async function SemenPage({
             </RecordDialog>
             <RecordDialog title="Adjust a straw" button="Adjust count">
               <form action={discardStraw} className="grid gap-3">
+                <input type="hidden" name="returnTab" value="straws" />
                 <FormSelect
                   name="code"
                   required
@@ -264,13 +272,15 @@ export default async function SemenPage({
             );
           })}
         </Table>
-      </section>
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Bulls</h2>
+        </div>
+          ),
+          bulls: (
+        <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {canEdit ? (
             <RecordDialog title="Add bull" button="Add bull">
               <form action={saveBull} className="grid gap-3">
+                <input type="hidden" name="returnTab" value="bulls" />
                 <input name="code" required placeholder="Bull code" className={inputClass} />
                 <input name="name" required placeholder="Name" className={inputClass} />
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -314,7 +324,10 @@ export default async function SemenPage({
             </tr>
           ))}
         </Table>
-      </section>
+        </div>
+          ),
+        }}
+      />
     </div>
   );
 }

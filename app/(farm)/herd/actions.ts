@@ -517,16 +517,16 @@ export async function recordWeight(formData: FormData) {
 
 export async function saveBull(formData: FormData) {
   const farm = await requireFarm();
-  if (!canUseGenetics(farm.roles)) redirect("/semen?error=role");
+  if (!canUseGenetics(farm.roles)) semenRedirect(formData, { error: "role" });
   const code = text(formData, "code");
   const name = text(formData, "name");
-  if (!code || !name) redirect("/semen?error=bull");
+  if (!code || !name) semenRedirect(formData, { error: "bull" });
   const [existing] = await db
     .select({ id: bulls.id })
     .from(bulls)
     .where(and(eq(bulls.farmId, farm.farmId), eq(bulls.code, code)))
     .limit(1);
-  if (existing) redirect("/semen?error=bull");
+  if (existing) semenRedirect(formData, { error: "bull" });
   const [bull] = await db
     .insert(bulls)
     .values({
@@ -550,12 +550,12 @@ export async function saveBull(formData: FormData) {
     summary: `Bull ${code} · ${name}`,
     after: { code, name },
   });
-  redirect("/semen?saved=1");
+  semenRedirect(formData, { saved: true });
 }
 
 export async function saveSemenBatch(formData: FormData) {
   const farm = await requireFarm();
-  if (!canUseGenetics(farm.roles)) redirect("/semen?error=role");
+  if (!canUseGenetics(farm.roles)) semenRedirect(formData, { error: "role" });
   const bullId = text(formData, "bullId");
   const batchNumber = text(formData, "batchNumber");
   const quantity = Number(text(formData, "quantity"));
@@ -563,29 +563,29 @@ export async function saveSemenBatch(formData: FormData) {
   const price = text(formData, "price");
   const collectedOn = text(formData, "collectedOn");
   const receivedOn = text(formData, "receivedOn") || farmToday(farm.timezone);
-  if (!batchNumber) redirect("/semen?error=batch");
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 200) redirect("/semen?error=quantity");
-  if (semenType !== "conventional" && semenType !== "sexed_female" && semenType !== "sexed_male") redirect("/semen?error=type");
-  if (price && (!Number.isFinite(Number(price)) || Number(price) < 0)) redirect("/semen?error=cost");
-  if ((collectedOn && !/^\d{4}-\d{2}-\d{2}$/.test(collectedOn)) || !/^\d{4}-\d{2}-\d{2}$/.test(receivedOn)) redirect("/semen?error=date");
+  if (!batchNumber) semenRedirect(formData, { error: "batch" });
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 200) semenRedirect(formData, { error: "quantity" });
+  if (semenType !== "conventional" && semenType !== "sexed_female" && semenType !== "sexed_male") semenRedirect(formData, { error: "type" });
+  if (price && (!Number.isFinite(Number(price)) || Number(price) < 0)) semenRedirect(formData, { error: "cost" });
+  if ((collectedOn && !/^\d{4}-\d{2}-\d{2}$/.test(collectedOn)) || !/^\d{4}-\d{2}-\d{2}$/.test(receivedOn)) semenRedirect(formData, { error: "date" });
   const [bull] = await db
     .select({ id: bulls.id })
     .from(bulls)
     .where(and(eq(bulls.id, bullId), eq(bulls.farmId, farm.farmId)))
     .limit(1);
-  if (!bull) redirect("/semen?error=bull");
+  if (!bull) semenRedirect(formData, { error: "bull" });
   const [duplicate] = await db
     .select({ id: semenBatches.id })
     .from(semenBatches)
     .where(and(eq(semenBatches.farmId, farm.farmId), eq(semenBatches.batchNumber, batchNumber)))
     .limit(1);
-  if (duplicate) redirect("/semen?error=batch");
+  if (duplicate) semenRedirect(formData, { error: "batch" });
   const codes = Array.from({ length: quantity }, (_, index) => `${batchNumber}-${String(index + 1).padStart(3, "0")}`);
   const taken = await db
     .select({ code: straws.code })
     .from(straws)
     .where(and(eq(straws.farmId, farm.farmId), inArray(straws.code, codes)));
-  if (taken.length > 0) redirect("/semen?error=straw");
+  if (taken.length > 0) semenRedirect(formData, { error: "straw" });
   const [batch] = await db
     .insert(semenBatches)
     .values({
@@ -623,21 +623,21 @@ export async function saveSemenBatch(formData: FormData) {
     summary: `Batch ${batchNumber} · ${quantity} straws`,
     after: { batchNumber, quantity, semenType },
   });
-  redirect("/semen?saved=1");
+  semenRedirect(formData, { saved: true });
 }
 
 export async function discardStraw(formData: FormData) {
   const farm = await requireFarm();
-  if (!canUseGenetics(farm.roles)) redirect("/semen?error=role");
+  if (!canUseGenetics(farm.roles)) semenRedirect(formData, { error: "role" });
   const code = text(formData, "code");
   const reason = text(formData, "reason");
-  if (!reason) redirect("/semen?error=reason");
+  if (!reason) semenRedirect(formData, { error: "reason" });
   const [straw] = await db
     .select()
     .from(straws)
     .where(and(eq(straws.farmId, farm.farmId), eq(straws.code, code)))
     .limit(1);
-  if (!straw || straw.status !== "available") redirect("/semen?error=adjust");
+  if (!straw || straw.status !== "available") semenRedirect(formData, { error: "adjust" });
   await db.update(straws).set({ status: "discarded" }).where(eq(straws.id, straw.id));
   await writeAudit(db, {
     farmId: farm.farmId,
@@ -649,7 +649,7 @@ export async function discardStraw(formData: FormData) {
     before: { status: straw.status },
     after: { status: "discarded", reason },
   });
-  redirect("/semen?saved=1");
+  semenRedirect(formData, { saved: true });
 }
 
 export async function saveFeed(formData: FormData) {
@@ -782,24 +782,44 @@ function isoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function embryoRedirect(formData: FormData, notice?: { error?: string; saved?: boolean }) {
+  const tab = text(formData, "returnTab");
+  const params = new URLSearchParams();
+  if (tab === "inventory" || tab === "transfers") params.set("tab", tab);
+  if (notice?.error) params.set("error", notice.error);
+  if (notice?.saved) params.set("saved", "1");
+  const value = params.toString();
+  redirect(value ? `/embryos?${value}` : "/embryos");
+}
+
+function semenRedirect(formData: FormData, notice?: { error?: string; saved?: boolean }) {
+  const tab = text(formData, "returnTab");
+  const params = new URLSearchParams();
+  if (tab === "straws" || tab === "bulls") params.set("tab", tab);
+  if (notice?.error) params.set("error", notice.error);
+  if (notice?.saved) params.set("saved", "1");
+  const value = params.toString();
+  redirect(value ? `/semen?${value}` : "/semen");
+}
+
 export async function saveEmbryo(formData: FormData) {
   const farm = await requireFarm();
-  if (!canUseGenetics(farm.roles)) redirect("/embryos?error=role");
+  if (!canUseGenetics(farm.roles)) embryoRedirect(formData, { error: "role" });
   const code = text(formData, "code");
   const storage = text(formData, "storage") || "fresh";
   const frozenOn = text(formData, "frozenOn");
   const donorId = text(formData, "donorId");
-  if (!code) redirect("/embryos?error=code");
-  if (storage !== "fresh" && storage !== "frozen") redirect("/embryos?error=storage");
-  if (frozenOn && !isoDate(frozenOn)) redirect("/embryos?error=date");
+  if (!code) embryoRedirect(formData, { error: "code" });
+  if (storage !== "fresh" && storage !== "frozen") embryoRedirect(formData, { error: "storage" });
+  if (frozenOn && !isoDate(frozenOn)) embryoRedirect(formData, { error: "date" });
   const [duplicate] = await db
     .select({ id: embryos.id })
     .from(embryos)
     .where(and(eq(embryos.farmId, farm.farmId), eq(embryos.code, code)))
     .limit(1);
-  if (duplicate) redirect("/embryos?error=code");
+  if (duplicate) embryoRedirect(formData, { error: "code" });
   const donor = donorId ? await animalInFarm(farm.farmId, donorId) : null;
-  if (donorId && (!donor || donor.sex !== "female" || donor.presence !== "on_farm")) redirect("/embryos?error=animal");
+  if (donorId && (!donor || donor.sex !== "female" || donor.presence !== "on_farm")) embryoRedirect(formData, { error: "animal" });
   const [row] = await db
     .insert(embryos)
     .values({
@@ -823,28 +843,28 @@ export async function saveEmbryo(formData: FormData) {
     summary: `Embryo ${code}`,
     after: { code, storage },
   });
-  redirect("/embryos?saved=1");
+  embryoRedirect(formData, { saved: true });
 }
 
 export async function transferEmbryo(formData: FormData) {
   const farm = await requireFarm();
-  if (!canUseGenetics(farm.roles)) redirect("/embryos?error=role");
+  if (!canUseGenetics(farm.roles)) embryoRedirect(formData, { error: "role" });
   const embryoId = text(formData, "embryoId");
   const recipientId = text(formData, "recipientId");
   const transferredOn = text(formData, "transferredOn") || farmToday(farm.timezone);
   const pregnancyResult = text(formData, "pregnancyResult");
-  if (!isoDate(transferredOn)) redirect("/embryos?error=date");
+  if (!isoDate(transferredOn)) embryoRedirect(formData, { error: "date" });
   if (pregnancyResult && pregnancyResult !== "pregnant" && pregnancyResult !== "not_pregnant" && pregnancyResult !== "doubtful") {
-    redirect("/embryos?error=result");
+    embryoRedirect(formData, { error: "result" });
   }
   const [embryo] = await db
     .select()
     .from(embryos)
     .where(and(eq(embryos.id, embryoId), eq(embryos.farmId, farm.farmId)))
     .limit(1);
-  if (!embryo || embryo.status !== "in_stock") redirect("/embryos?error=embryo");
+  if (!embryo || embryo.status !== "in_stock") embryoRedirect(formData, { error: "embryo" });
   const recipient = await animalInFarm(farm.farmId, recipientId);
-  if (!recipient || recipient.sex !== "female" || recipient.presence !== "on_farm") redirect("/embryos?error=animal");
+  if (!recipient || recipient.sex !== "female" || recipient.presence !== "on_farm") embryoRedirect(formData, { error: "animal" });
   const [transfer] = await db
     .insert(embryoTransfers)
     .values({
@@ -866,21 +886,21 @@ export async function transferEmbryo(formData: FormData) {
     before: { status: embryo.status },
     after: { status: "transferred", transferId: transfer.id, pregnancyResult: pregnancyResult || null },
   });
-  redirect("/embryos?saved=1");
+  embryoRedirect(formData, { saved: true });
 }
 
 export async function discardEmbryo(formData: FormData) {
   const farm = await requireFarm();
-  if (!canUseGenetics(farm.roles)) redirect("/embryos?error=role");
+  if (!canUseGenetics(farm.roles)) embryoRedirect(formData, { error: "role" });
   const code = text(formData, "code");
   const reason = text(formData, "reason");
-  if (!reason) redirect("/embryos?error=reason");
+  if (!reason) embryoRedirect(formData, { error: "reason" });
   const [embryo] = await db
     .select()
     .from(embryos)
     .where(and(eq(embryos.farmId, farm.farmId), eq(embryos.code, code)))
     .limit(1);
-  if (!embryo || embryo.status !== "in_stock") redirect("/embryos?error=embryo");
+  if (!embryo || embryo.status !== "in_stock") embryoRedirect(formData, { error: "embryo" });
   await db.update(embryos).set({ status: "discarded" }).where(eq(embryos.id, embryo.id));
   await writeAudit(db, {
     farmId: farm.farmId,
@@ -892,19 +912,19 @@ export async function discardEmbryo(formData: FormData) {
     before: { status: embryo.status },
     after: { status: "discarded", reason },
   });
-  redirect("/embryos?saved=1");
+  embryoRedirect(formData, { saved: true });
 }
 
 export async function recordFlush(formData: FormData) {
   const farm = await requireFarm();
-  if (!canUseGenetics(farm.roles)) redirect("/embryos?error=role");
+  if (!canUseGenetics(farm.roles)) embryoRedirect(formData, { error: "role" });
   const donor = await animalInFarm(farm.farmId, text(formData, "donorId"));
-  if (!donor || donor.sex !== "female" || donor.presence !== "on_farm") redirect("/embryos?error=animal");
+  if (!donor || donor.sex !== "female" || donor.presence !== "on_farm") embryoRedirect(formData, { error: "animal" });
   const flushedOn = text(formData, "flushedOn") || farmToday(farm.timezone);
-  if (!isoDate(flushedOn)) redirect("/embryos?error=date");
+  if (!isoDate(flushedOn)) embryoRedirect(formData, { error: "date" });
   const oocytes = wholeNumber(text(formData, "oocytes"), 200);
   const produced = wholeNumber(text(formData, "produced"), 20);
-  if (oocytes === null || produced === null) redirect("/embryos?error=count");
+  if (oocytes === null || produced === null) embryoRedirect(formData, { error: "count" });
   const sireCode = text(formData, "sireCode") || null;
   const grade = text(formData, "grade") || null;
   const location = text(formData, "location") || null;
@@ -931,7 +951,7 @@ export async function recordFlush(formData: FormData) {
     summary: `OPU ${donor.code}: ${oocytes} oocytes, ${produced} embryos`,
     after: { flushedOn, oocytes, produced, sireCode, codes },
   });
-  redirect("/embryos?saved=1");
+  embryoRedirect(formData, { saved: true });
 }
 
 export async function saveListing(formData: FormData) {
