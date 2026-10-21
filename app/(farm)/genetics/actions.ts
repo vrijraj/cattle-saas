@@ -13,7 +13,9 @@ export async function saveMatingCheck(formData: FormData) {
   const farm = await requireFarm();
   if (!canUseGenetics(farm.roles)) redirect("/genetics?error=role");
   const female = String(formData.get("female") ?? "").trim();
-  const bull = String(formData.get("bull") ?? "").trim();
+  const raw = String(formData.get("bull") ?? "").trim();
+  const bull = raw.split("::")[0]?.trim() ?? "";
+  const batch = raw.split("::")[1]?.trim() || null;
   const herd = await db.select().from(animals).where(eq(animals.farmId, farm.farmId));
   const bullRows = await db.select().from(bulls).where(eq(bulls.farmId, farm.farmId));
   const femaleRow = herd.find((row) => row.code === female);
@@ -34,8 +36,8 @@ export async function saveMatingCheck(formData: FormData) {
     action: "create",
     entity: "mating_check",
     entityId: femaleRow.id,
-    summary: `Mating check ${female} × ${bull}`,
-    after: { female, bull, flags },
+    summary: `Mating check ${female} × ${bull}${batch ? ` · batch ${batch}` : ""}`,
+    after: { female, bull, batch, flags },
   });
-  redirect(`/genetics?female=${encodeURIComponent(female)}&bull=${encodeURIComponent(bull)}&saved=1`);
+  redirect(`/genetics?female=${encodeURIComponent(female)}&bull=${encodeURIComponent(raw)}&saved=1`);
 }

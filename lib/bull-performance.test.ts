@@ -23,7 +23,19 @@ describe("bull performance", () => {
     expect(bullPerformance(rows, { year: "2025", lactation: "1" })).toHaveLength(0);
   });
 
-  it("returns nothing when no offspring match", () => {
-    expect(bullPerformance([], {})).toEqual([]);
+  it("reports conception results and the average gap between a daughter's calvings", () => {
+    const [sagar] = bullPerformance(rows, {}, {
+      mates: [
+        { bullCode: "SAGAR", result: "pregnant" },
+        { bullCode: "SAGAR", result: "open" },
+      ],
+      daughterBirths: [
+        { damId: "1", calvedOn: "2024-01-01" },
+        { damId: "1", calvedOn: "2025-01-11" },
+      ],
+    });
+    expect(sagar.conceptions).toBe(1);
+    expect(sagar.mateChecks).toBe(2);
+    expect(sagar.averageCalvingInterval).toBe(376);
   });
 });

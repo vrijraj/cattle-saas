@@ -24,4 +24,19 @@ describe("mating flags", () => {
     expect(flags.some((flag) => flag.flag === "Parent")).toBe(false);
     expect(flags.some((flag) => flag.flag === "Grandparent" || flag.flag === "Common ancestor")).toBe(true);
   });
+
+  it("flags a bull who is the son of the female", () => {
+    const flags = matingFlags("MIL-GIR-001", "MIL-GIR-002", links);
+    expect(flags.some((flag) => flag.flag === "Son" && flag.code === "MIL-GIR-002")).toBe(true);
+  });
+
+  it("flags a shared ancestor who is not the proposed bull", () => {
+    const shared = [
+      { code: "DAM", sireCode: "SHARED", damCode: null },
+      { code: "BULL", sireCode: "SHARED", damCode: null },
+    ];
+    const flags = matingFlags("DAM", "BULL", shared);
+    expect(flags.some((flag) => flag.flag === "Common ancestor" && flag.code === "SHARED")).toBe(true);
+    expect(flags.some((flag) => flag.flag === "Parent")).toBe(false);
+  });
 });

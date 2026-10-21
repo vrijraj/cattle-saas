@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   animals,
+  auditLogs,
   bulls,
   calvings,
   dewormings,
@@ -121,6 +122,11 @@ export async function AnimalHub({
     const births = [...calvingRows].sort((a, b) => b.calvedOn.localeCompare(a.calvedOn));
     const aiById = new Map(aiRows.map((row) => [row.id, row]));
     const herdById = new Map(herd.map((row) => [row.id, row]));
+    const matingNotes = await db
+      .select()
+      .from(auditLogs)
+      .where(and(eq(auditLogs.farmId, animal.farmId), eq(auditLogs.entity, "mating_check"), eq(auditLogs.entityId, animal.id)))
+      .orderBy(desc(auditLogs.createdAt));
 
     function bullLabel(row: { bullCode: string; bullName: string | null }) {
       return row.bullName && row.bullName !== row.bullCode ? `${row.bullName} · ${row.bullCode}` : row.bullCode;
@@ -128,6 +134,16 @@ export async function AnimalHub({
 
     return (
       <div className="space-y-8">
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold">Mating checks</h2>
+          {matingNotes.length === 0 ? <p className="text-sm text-muted-foreground">No mating check saved on this animal.</p> : null}
+          {matingNotes.map((note) => (
+            <p key={note.id} className="rounded-xl bg-muted px-3 py-3 text-sm">
+              <span className="text-muted-foreground">{formatDisplayDate(note.createdAt.toISOString().slice(0, 10))}</span>
+              <span className="mt-1 block font-medium">{note.summary}</span>
+            </p>
+          ))}
+        </section>
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Heat</h2>

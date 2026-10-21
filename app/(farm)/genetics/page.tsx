@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
-import { animals, bulls, calvings, healthEvents, milkYields } from "@/db/schema";
+import { animals, bulls, calvings, healthEvents, inseminations, milkYields, pregnancyChecks, semenBatches } from "@/db/schema";
 import { saveMatingCheck } from "@/app/(farm)/genetics/actions";
 import { requireFarm } from "@/lib/farm-context";
 import { bullPerformance } from "@/lib/bull-performance";
-import { matingFlags, type PedigreeLink } from "@/lib/mating";
+import { matingFlags, pedigreeLines, type PedigreeLink } from "@/lib/mating";
 import { canUseGenetics } from "@/lib/permissions";
 import { FormSelect } from "@/components/form-select";
 import { inputClass, Notice, Panel, pickTab, Submit, Summary, TabBar, Table, Td } from "@/components/workspace";
@@ -15,20 +15,33 @@ const tabs = [
   { id: "bulls", label: "Bull performance" },
 ];
 
+const saveErrors: Record<string, string> = {
+  role: "Your role cannot save a mating check.",
+  animal: "Choose a female on this farm and a bull code.",
+};
+
+function proposedSire(value: string | undefined) {
+  return (value ?? "").split("::")[0]?.trim() ?? "";
+}
+
 export default async function GeneticsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ female?: string; bull?: string; tab?: string; year?: string; lactation?: string; saved?: string }>;
+  searchParams: Promise<{ female?: string; bull?: string; tab?: string; year?: string; lactation?: string; saved?: string; error?: string }>;
 }) {
   const farm = await requireFarm();
   const query = await searchParams;
   const tab = pickTab(query.tab, tabs, "check");
   const herd = await db.select().from(animals).where(eq(animals.farmId, farm.farmId));
   const bullRows = await db.select().from(bulls).where(eq(bulls.farmId, farm.farmId));
+  const batches = await db.select().from(semenBatches).where(eq(semenBatches.farmId, farm.farmId));
   const births = await db.select().from(calvings).where(eq(calvings.farmId, farm.farmId));
   const health = await db.select().from(healthEvents).where(eq(healthEvents.farmId, farm.farmId));
   const milk = await db.select().from(milkYields).where(eq(milkYields.farmId, farm.farmId));
+  const ais = await db.select().from(inseminations).where(eq(inseminations.farmId, farm.farmId));
+  const checks = await db.select().from(pregnancyChecks).where(eq(pregnancyChecks.farmId, farm.farmId));
   const byId = new Map(herd.map((animal) => [animal.id, animal]));
+  const bullById = new Map(bullRows.map((bull) => [bull.id, bull]));
   const links: PedigreeLink[] = [
     ...herd.map((animal) => ({
       code: animal.code,
@@ -37,7 +50,18 @@ export default async function GeneticsPage({
     })),
     ...bullRows.map((bull) => ({ code: bull.code, sireCode: bull.sireCode, damCode: bull.damCode })),
   ];
-  const flags = query.female && query.bull ? matingFlags(query.female, query.bull, links) : [];
+  const sireCode = proposedSire(query.bull);
+  const flags = query.female && sireCode ? matingFlags(query.female, sireCode, links) : [];
+  const mates = ais
+    .filter((row) => !row.voidedAt)
+    .map((row) => {
+      const results = checks.filter((check) => check.inseminationId === row.id && !check.voidedAt);
+      const pregnant = results.some((check) => check.result === "pregnant");
+      return { bullCode: row.bullCode, result: pregnant ? "pregnant" : (results[0]?.result ?? "") };
+    });
+  const daughterBirths = births
+    .filter((birth) => !birth.voidedAt)
+    .map((birth) => ({ damId: birth.damId, calvedOn: birth.calvedOn }));
   const performance = bullPerformance(
     herd.map((animal) => ({
       id: animal.id,
@@ -54,8 +78,22 @@ export default async function GeneticsPage({
       calvingOutcome: births.find((birth) => birth.calfId === animal.id && !birth.voidedAt)?.outcome ?? null,
     })),
     { year: query.year, lactation: query.lactation },
+    { mates, daughterBirths },
   );
   const canSave = canUseGenetics(farm.roles);
+  const bullCodes = new Set(bullRows.map((bull) => bull.code));
+  const bullOptions = [
+    ...bullRows.map((bull) => ({ value: bull.code, label: `${bull.code} · ${bull.name}` })),
+    ...herd
+      .filter((animal) => animal.sex === "male" && !bullCodes.has(animal.code))
+      .map((animal) => ({ value: animal.code, label: `${animal.code} · ${animal.name ?? animal.code}` })),
+    ...batches.flatMap((batch) => {
+      const bull = bullById.get(batch.bullId);
+      if (!bull) return [];
+      return [{ value: `${bull.code}::${batch.batchNumber}`, label: `Batch ${batch.batchNumber} · ${bull.code} · ${bull.name}` }];
+    }),
+  ];
+  const saveError = query.error ? saveErrors[query.error] : undefined;
 
   return (
     <div className="space-y-5">
@@ -76,7 +114,7 @@ export default async function GeneticsPage({
           {performance.length === 0 ? (
             <Notice>Figures appear after offspring are linked to a sire. Nothing is filled in when that history is missing.</Notice>
           ) : (
-            <Table headers={["Sire", "Offspring", "Daughters", "Daughters in milk", "Avg daily L", "Health events", "Live births"]}>
+            <Table headers={["Sire", "Offspring", "Daughters", "Daughters in milk", "Avg daily L", "Health events", "Live births", "Conception", "Calving interval", "Animals"]}>
               {performance.map((row) => (
                 <tr key={row.sireCode}>
                   <Td className="font-medium">{row.sireCode}</Td>
@@ -86,68 +124,91 @@ export default async function GeneticsPage({
                   <Td>{row.averageDailyYield ?? "—"}</Td>
                   <Td>{row.healthEvents}</Td>
                   <Td>{row.liveCalvings}</Td>
+                  <Td>{row.mateChecks ? `${row.conceptions} pregnant of ${row.mateChecks}` : "—"}</Td>
+                  <Td>{row.averageCalvingInterval ? `${row.averageCalvingInterval} days` : "—"}</Td>
+                  <Td>
+                    {row.animals.map((animal) => (
+                      <Link key={animal.code} href={`/animals/${animal.code}`} className="mr-2 text-primary">
+                        {animal.name ?? animal.code}
+                      </Link>
+                    ))}
+                  </Td>
                 </tr>
               ))}
             </Table>
           )}
-          {performance.flatMap((row) => row.animals).length > 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {performance
-                .flatMap((row) => row.animals.map((animal) => animal.code))
-                .slice(0, 12)
-                .map((code) => (
-                  <Link key={code} href={`/animals/${code}`} className="mr-3 text-primary">
-                    {code}
-                  </Link>
-                ))}
-            </p>
-          ) : null}
         </div>
       ) : (
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
-        <Panel title="Mating check">
-          <form className="grid gap-3">
-            <FormSelect
-              name="female"
-              defaultValue={query.female}
-              options={herd
-                .filter((animal) => animal.sex === "female")
-                .map((animal) => ({ value: animal.code, label: `${animal.code} · ${animal.name ?? animal.code}` }))}
-            />
-            <input name="bull" defaultValue={query.bull ?? ""} placeholder="Proposed bull or semen code" className={inputClass} />
-            <Submit>Check mating</Submit>
-          </form>
-          {query.female && query.bull && canSave ? (
-            <form action={saveMatingCheck} className="mt-3">
-              <input type="hidden" name="female" value={query.female} />
-              <input type="hidden" name="bull" value={query.bull} />
-              <Submit>Save on the female</Submit>
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+          <Panel title="Mating check">
+            {saveError ? <div className="mb-3"><Notice tone="danger">{saveError}</Notice></div> : null}
+            <form className="grid gap-3">
+              <FormSelect
+                name="female"
+                defaultValue={query.female}
+                placeholder="Female"
+                options={herd
+                  .filter((animal) => animal.sex === "female")
+                  .map((animal) => ({ value: animal.code, label: `${animal.code} · ${animal.name ?? animal.code}` }))}
+              />
+              <FormSelect name="bull" defaultValue={query.bull} placeholder="Bull or semen batch" options={bullOptions} />
+              <Submit>Check mating</Submit>
             </form>
-          ) : null}
-          {query.saved ? <p className="mt-3 text-sm text-muted-foreground">The check is saved on the female. It does not block an insemination.</p> : null}
-        </Panel>
-        <Panel title={query.female && query.bull ? `${query.female} × ${query.bull}` : "Result"}>
-          {query.female && query.bull ? (
-            flags.length === 0 ? (
-              <Notice>No shared ancestor was found in the stored pedigree.</Notice>
+            {query.female && sireCode && canSave ? (
+              <form action={saveMatingCheck} className="mt-3">
+                <input type="hidden" name="female" value={query.female} />
+                <input type="hidden" name="bull" value={query.bull} />
+                <Submit>Save on the female</Submit>
+              </form>
+            ) : null}
+            {query.saved ? <p className="mt-3 text-sm text-muted-foreground">The check is saved on the female. It does not block an insemination.</p> : null}
+          </Panel>
+          <Panel title={query.female && sireCode ? `${query.female} × ${sireCode}` : "Result"}>
+            {query.female && sireCode ? (
+              <div className="space-y-4">
+                {flags.length === 0 ? (
+                  <Notice>No shared ancestor was found in the stored pedigree.</Notice>
+                ) : (
+                  <ul className="space-y-2 text-sm">
+                    {flags.map((flag) => (
+                      <li key={`${flag.flag}-${flag.code}-${flag.generation}`} className="rounded-xl bg-muted px-3 py-3">
+                        <span className="font-medium">{flag.flag}</span>
+                        <span className="mt-1 block text-muted-foreground">
+                          {flag.code} appears {flag.generation} generation{flag.generation === 1 ? "" : "s"} back.
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <PedigreeList title={query.female} code={query.female} links={links} />
+                  <PedigreeList title={sireCode} code={sireCode} links={links} />
+                </div>
+              </div>
             ) : (
-              <ul className="space-y-2 text-sm">
-                {flags.map((flag) => (
-                  <li key={`${flag.flag}-${flag.generation}`} className="rounded-xl bg-muted px-3 py-3">
-                    <span className="font-medium">{flag.flag}</span>
-                    <span className="mt-1 block text-muted-foreground">
-                      {flag.code} appears {flag.generation} generation{flag.generation === 1 ? "" : "s"} back.
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )
-          ) : (
-            <p className="text-sm text-muted-foreground">Choose a female and a bull, then run the check.</p>
-          )}
-        </Panel>
-      </div>
+              <p className="text-sm text-muted-foreground">Choose a female and a bull, then run the check.</p>
+            )}
+          </Panel>
+        </div>
       )}
+    </div>
+  );
+}
+
+function PedigreeList({ title, code, links }: { title: string; code: string; links: PedigreeLink[] }) {
+  const lines = pedigreeLines(code, links);
+  const pad = ["pl-0", "pl-3", "pl-6", "pl-9", "pl-12"] as const;
+  return (
+    <div className="rounded-xl bg-muted/70 p-3">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {lines.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">No parents linked.</p> : null}
+      <ul className="mt-2 space-y-1 text-sm">
+        {lines.map((line) => (
+          <li key={`${line.generation}-${line.role}-${line.code}`} className={pad[line.generation] ?? "pl-12"}>
+            <span className="text-muted-foreground">{line.role}</span> {line.code}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
