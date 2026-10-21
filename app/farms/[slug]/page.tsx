@@ -21,8 +21,8 @@ export default async function PublicFarmPage({
   const published = await db
     .select({ listing: listings, animal: animals, breed: breeds.name })
     .from(listings)
-    .innerJoin(animals, eq(animals.id, listings.animalId))
-    .innerJoin(breeds, eq(breeds.id, animals.breedId))
+    .leftJoin(animals, eq(animals.id, listings.animalId))
+    .leftJoin(breeds, eq(breeds.id, animals.breedId))
     .where(and(eq(listings.farmId, farm.id), eq(listings.published, "yes")));
 
   return (
@@ -41,13 +41,24 @@ export default async function PublicFarmPage({
         <ul className="grid gap-3 sm:grid-cols-2">
           {published.map(({ listing, animal, breed }) => (
             <li key={listing.id}>
-              <Link href={`/farms/${slug}/${animal.code}`} className="block rounded-2xl border border-border bg-card p-5 shadow-sm">
-                <span className="font-medium">{animal.name ?? animal.code}</span>
-                <span className="mt-1 block text-sm text-muted-foreground">
-                  {animal.code} · {breed} · {listing.category}
-                  {listing.price ? ` · ₹${Number(listing.price).toLocaleString("en-IN")}` : ""}
-                </span>
-              </Link>
+              {animal ? (
+                <Link href={`/farms/${slug}/${animal.code}`} className="block rounded-2xl border border-border bg-card p-5 shadow-sm">
+                  <span className="font-medium">{animal.name ?? animal.code}</span>
+                  <span className="mt-1 block text-sm text-muted-foreground">
+                    {animal.code} · {breed} · {listing.category}
+                    {listing.price ? ` · ₹${Number(listing.price).toLocaleString("en-IN")}` : ""}
+                  </span>
+                  {listing.publicNote ? <span className="mt-2 block text-sm">{listing.publicNote}</span> : null}
+                </Link>
+              ) : (
+                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                  <span className="font-medium capitalize">{listing.category}</span>
+                  <span className="mt-1 block text-sm text-muted-foreground">
+                    {listing.publicNote}
+                    {listing.price ? ` · ₹${Number(listing.price).toLocaleString("en-IN")}` : ""}
+                  </span>
+                </div>
+              )}
             </li>
           ))}
         </ul>

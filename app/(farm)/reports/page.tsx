@@ -16,6 +16,8 @@ const reports = [
   { id: "semen", label: "Semen", detail: "Straws by status", chart: "status" },
   { id: "weight", label: "Weight", detail: "Weighings by animal", chart: "weight" },
   { id: "finance", label: "Finance", detail: "Amount by type", chart: "money" },
+  { id: "embryos", label: "Embryos", detail: "Embryos by status", chart: "status" },
+  { id: "genetics", label: "Genetics", detail: "Offspring by sire", chart: "sire" },
 ] as const;
 
 type ReportId = (typeof reports)[number]["id"];
@@ -123,8 +125,10 @@ function chartSeries(kind: ReportId, rows: string[][]) {
         ? countBy(rows, 1)
         : kind === "health"
           ? countBy(rows, 0)
-          : kind === "semen"
-            ? countBy(rows, 1)
+            : kind === "semen" || kind === "embryos"
+              ? countBy(rows, 1)
+              : kind === "genetics"
+                ? countBy(rows, 0)
             : kind === "milk"
               ? sumBy(rows, 0, (row) => Number(row[2] || 0) + Number(row[3] || 0))
               : kind === "feed"

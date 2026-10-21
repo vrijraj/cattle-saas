@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { embryos, embryoTransfers } from "@/db/schema";
-import { saveEmbryo, transferEmbryo } from "@/app/(farm)/herd/actions";
+import { auditLogs, embryos, embryoTransfers } from "@/db/schema";
+import { recordFlush, saveEmbryo, transferEmbryo } from "@/app/(farm)/herd/actions";
 import { formatDisplayDate } from "@/lib/dates";
 import { farmAnimals } from "@/lib/herd";
 import { requireFarm } from "@/lib/farm-context";
@@ -15,6 +15,7 @@ export default async function EmbryosPage() {
   const farm = await requireFarm();
   const rows = await db.select().from(embryos).where(eq(embryos.farmId, farm.farmId));
   const transfers = await db.select().from(embryoTransfers).where(eq(embryoTransfers.farmId, farm.farmId));
+  const flushes = await db.select().from(auditLogs).where(eq(auditLogs.farmId, farm.farmId));
   const animals = await farmAnimals(farm.farmId);
   const females = animals.filter((animal) => animal.sex === "female");
   const inStock = rows.filter((embryo) => embryo.status === "in_stock");
@@ -26,12 +27,43 @@ export default async function EmbryosPage() {
     <div className="space-y-5">
       <Summary
         title="Embryos"
-        description="Embryos in storage and transfers to recipients."
+        description="Collection, oocytes, embryos in storage, and transfers to recipients."
         facts={[
           { label: "In stock", value: String(inStock.length) },
           { label: "Recorded", value: String(rows.length) },
         ]}
       />
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Collections</h2>
+          {canEdit ? (
+            <RecordDialog title="Record collection" button="Record collection">
+              <form action={recordFlush} className="grid gap-3">
+                <AnimalSelect animals={females} name="donorId" />
+                <input name="sireCode" placeholder="Sire code" className={inputClass} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input name="flushedOn" type="date" className={inputClass} />
+                  <input name="oocytes" inputMode="numeric" placeholder="Oocytes collected" className={inputClass} />
+                </div>
+                <input name="produced" inputMode="numeric" placeholder="Embryos produced" className={inputClass} />
+                <div className="flex justify-end">
+                  <Submit>Save collection</Submit>
+                </div>
+              </form>
+            </RecordDialog>
+          ) : null}
+        </div>
+        <Table headers={["Collection"]}>
+          {flushes.filter((row) => row.entity === "flush").length === 0 ? <EmptyRow cols={1}>No collection recorded.</EmptyRow> : null}
+          {flushes
+            .filter((row) => row.entity === "flush")
+            .map((row) => (
+              <tr key={row.id}>
+                <Td>{row.summary}</Td>
+              </tr>
+            ))}
+        </Table>
+      </section>
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold">Inventory</h2>

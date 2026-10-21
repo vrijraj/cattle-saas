@@ -10,6 +10,8 @@ import {
   FileBarChart,
   HeartPulse,
   LayoutDashboard,
+  Lightbulb,
+  Mail,
   ScrollText,
   Sparkles,
   Milk,
@@ -33,12 +35,14 @@ const links = [
   { href: "/feed", label: "Feed & nutrition", icon: Wheat },
   { href: "/semen", label: "Semen", icon: Droplets },
   { href: "/genetics", label: "Genetics", icon: Dna },
+  { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/embryos", label: "Embryos", icon: Sprout },
   { href: "/finance", label: "Finance", icon: Wallet },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/reports", label: "Reports", icon: FileBarChart },
   { href: "/audit", label: "Audit", icon: ScrollText },
   { href: "/shop", label: "Shop", icon: ShoppingBag },
+  { href: "/enquiries", label: "Enquiries", icon: Mail },
   { href: "/team", label: "Team", icon: Users },
 ];
 

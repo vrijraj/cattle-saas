@@ -585,6 +585,7 @@ export async function saveFinance(formData: FormData) {
       category,
       amount: amount.toFixed(2),
       entryOn: text(formData, "entryOn") || farmToday(farm.timezone),
+      animalId: text(formData, "animalId") || null,
       note: text(formData, "note") || null,
       createdBy: farm.userId,
     })
@@ -632,6 +633,37 @@ export async function transferEmbryo(formData: FormData) {
   redirect("/embryos");
 }
 
+export async function recordFlush(formData: FormData) {
+  const farm = await requireFarm();
+  if (!canUseGenetics(farm.roles)) redirect("/embryos?error=role");
+  const donor = await animalInFarm(farm.farmId, text(formData, "donorId"));
+  if (!donor) redirect("/embryos?error=animal");
+  const flushedOn = text(formData, "flushedOn") || farmToday(farm.timezone);
+  const oocytes = Math.max(0, Number(text(formData, "oocytes") || "0"));
+  const produced = Math.max(0, Math.min(20, Number(text(formData, "produced") || "0")));
+  const sireCode = text(formData, "sireCode") || null;
+  for (let index = 1; index <= produced; index += 1) {
+    await db.insert(embryos).values({
+      farmId: farm.farmId,
+      code: `FLUSH-${flushedOn.replaceAll("-", "")}-${index}`,
+      donorId: donor.id,
+      sireCode,
+      storage: "fresh",
+      location: `${oocytes} oocytes collected`,
+    });
+  }
+  await writeAudit(db, {
+    farmId: farm.farmId,
+    actorId: farm.userId,
+    action: "create",
+    entity: "flush",
+    entityId: donor.id,
+    summary: `OPU ${donor.code}: ${oocytes} oocytes, ${produced} embryos`,
+    after: { flushedOn, oocytes, produced, sireCode },
+  });
+  redirect("/embryos");
+}
+
 export async function saveListing(formData: FormData) {
   const farm = await requireFarm();
   if (!canPublish(farm.roles) && !canWriteAnimals(farm.roles)) redirect("/animals");
@@ -648,6 +680,22 @@ export async function saveListing(formData: FormData) {
     publicNote: text(formData, "publicNote") || null,
   });
   redirect(`/animals/${animal.code}?tab=listing`);
+}
+
+export async function saveStockListing(formData: FormData) {
+  const farm = await requireFarm();
+  if (!canPublish(farm.roles)) redirect("/shop?error=role");
+  const category = text(formData, "category") === "embryos" ? "embryos" : "semen";
+  const title = text(formData, "title");
+  if (!title) redirect("/shop?error=listing");
+  await db.insert(listings).values({
+    farmId: farm.farmId,
+    category,
+    price: text(formData, "price") || null,
+    published: "yes",
+    publicNote: title,
+  });
+  redirect("/shop");
 }
 
 export async function saveProduct(formData: FormData) {

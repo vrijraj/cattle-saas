@@ -13,6 +13,7 @@ import {
   straws,
   vaccinations,
   weights,
+  embryos,
 } from "@/db/schema";
 
 export async function reportRows(kind: string, farmId: string): Promise<string[][] | null> {
@@ -90,6 +91,17 @@ export async function reportRows(kind: string, farmId: string): Promise<string[]
     return [
       ["date", "code", "name", "kilograms", "note"],
       ...list.map((row) => [row.weighedOn, row.code, row.name ?? "", row.kilograms, row.note ?? ""]),
+    ];
+  }
+  if (kind === "embryos") {
+    const list = await db.select().from(embryos).where(eq(embryos.farmId, farmId));
+    return [["code", "status", "storage", "grade", "sire"], ...list.map((row) => [row.code, row.status, row.storage, row.grade ?? "", row.sireCode ?? ""])];
+  }
+  if (kind === "genetics") {
+    const herd = await db.select().from(animals).where(eq(animals.farmId, farmId));
+    return [
+      ["sire", "offspring code", "name", "sex", "dob"],
+      ...herd.filter((animal) => animal.geneticSireCode).map((animal) => [animal.geneticSireCode ?? "", animal.code, animal.name ?? "", animal.sex, animal.dob ?? ""]),
     ];
   }
   return null;

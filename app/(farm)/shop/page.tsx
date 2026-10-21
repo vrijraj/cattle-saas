@@ -1,24 +1,34 @@
 import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { orders, products } from "@/db/schema";
-import { saveProduct } from "@/app/(farm)/herd/actions";
+import { listings, orders, products } from "@/db/schema";
+import { saveProduct, saveStockListing } from "@/app/(farm)/herd/actions";
+import { updateOrderStatus } from "@/app/(farm)/shop/actions";
 import { requireFarm } from "@/lib/farm-context";
 import { canPublish } from "@/lib/permissions";
+import { FormSelect } from "@/components/form-select";
 import { RecordDialog } from "@/components/record-dialog";
 import { EmptyRow, inputClass, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
+
+const nextStatus: Record<string, string[]> = {
+  pending_payment: ["cancelled"],
+  paid: ["packed", "cancelled", "refunded"],
+  packed: ["shipped", "cancelled"],
+  shipped: ["completed"],
+};
 
 export default async function ShopAdminPage() {
   const farm = await requireFarm();
   const catalogue = await db.select().from(products).where(eq(products.farmId, farm.farmId));
   const orderRows = await db.select().from(orders).where(eq(orders.farmId, farm.farmId));
+  const catalogueListings = await db.select().from(listings).where(eq(listings.farmId, farm.farmId));
   const canAdd = canPublish(farm.roles);
 
   return (
     <div className="space-y-5">
       <Summary
         title="Shop"
-        description="Products published for the public catalogue."
+        description="Product stock is the sellable quantity. Selling it does not use farm AI straws. Live animals stay on the catalogue as enquiries."
         facts={[
           { label: "Products", value: String(catalogue.length) },
           { label: "Orders", value: String(orderRows.length) },
@@ -70,10 +80,54 @@ export default async function ShopAdminPage() {
               <Td>{order.phone}</Td>
               <Td>₹{Number(order.amount).toLocaleString("en-IN")}</Td>
               <Td>
-                <Pill tone={order.status === "paid" ? "good" : "warn"}>{order.status.replaceAll("_", " ")}</Pill>
+                <Pill tone={order.status === "paid" || order.status === "completed" ? "good" : "warn"}>{order.status.replaceAll("_", " ")}</Pill>
+                <p className="mt-1 text-xs text-muted-foreground">/farms/{farm.farmSlug}/orders/{order.id}</p>
+                {canAdd && (nextStatus[order.status]?.length ?? 0) > 0 ? (
+                  <form action={updateOrderStatus} className="mt-2 grid gap-2">
+                    <input type="hidden" name="id" value={order.id} />
+                    <FormSelect name="status" options={(nextStatus[order.status] ?? []).map((status) => ({ value: status, label: status.replaceAll("_", " ") }))} />
+                    <Submit>Update</Submit>
+                  </form>
+                ) : null}
               </Td>
             </tr>
           ))}
+        </Table>
+      </section>
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Semen and embryo listings</h2>
+          {canAdd ? (
+            <RecordDialog title="Publish listing" button="Publish listing">
+              <form action={saveStockListing} className="grid gap-3">
+                <FormSelect
+                  name="category"
+                  defaultValue="semen"
+                  options={[
+                    { value: "semen", label: "Semen" },
+                    { value: "embryos", label: "Embryos" },
+                  ]}
+                />
+                <input name="title" required placeholder="What the public page should say" className={inputClass} />
+                <input name="price" placeholder="Price" className={inputClass} />
+                <div className="flex justify-end">
+                  <Submit>Publish</Submit>
+                </div>
+              </form>
+            </RecordDialog>
+          ) : null}
+        </div>
+        <Table headers={["Category", "Text", "Price"]}>
+          {catalogueListings.filter((row) => !row.animalId).length === 0 ? <EmptyRow cols={3}>No semen or embryo listing yet.</EmptyRow> : null}
+          {catalogueListings
+            .filter((row) => !row.animalId)
+            .map((row) => (
+              <tr key={row.id}>
+                <Td className="capitalize">{row.category}</Td>
+                <Td>{row.publicNote ?? "—"}</Td>
+                <Td>{row.price ? `₹${Number(row.price).toLocaleString("en-IN")}` : "—"}</Td>
+              </tr>
+            ))}
         </Table>
       </section>
     </div>

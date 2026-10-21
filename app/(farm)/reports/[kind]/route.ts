@@ -14,6 +14,8 @@ const titles: Record<string, string> = {
   semen: "Semen inventory",
   weight: "Weight",
   finance: "Finance",
+  embryos: "Embryos",
+  genetics: "Offspring by sire",
 };
 
 export async function GET(request: Request, context: { params: Promise<{ kind: string }> }) {

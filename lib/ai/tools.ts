@@ -646,7 +646,7 @@ export function farmTools(scope: FarmScope) {
     execute: async () => {
       const workerOnly = scope.roles.length === 1 && scope.roles[0] === "worker";
       if (workerOnly) return denied("reports");
-      const kinds = ["cattle", "breeding", "milk", "health", "feed", "semen", "weight", "finance"].filter((kind) => {
+      const kinds = ["cattle", "breeding", "milk", "health", "feed", "semen", "weight", "finance", "embryos", "genetics"].filter((kind) => {
         if (kind === "health" && !canRecordHealth(scope.roles) && !scope.roles.includes("owner") && !scope.roles.includes("manager")) return false;
         if (kind === "finance" && !canViewFinance(scope.roles)) return false;
         return true;
@@ -682,11 +682,13 @@ export function farmTools(scope: FarmScope) {
         { task: "Feed stock and movements", path: "/feed" },
         { task: "Bulls and semen straws", path: "/semen" },
         { task: "Mating check", path: "/genetics" },
+        { task: "Rule-based insights", path: "/insights" },
         { task: "Embryos and transfers", path: "/embryos" },
         { task: "Income and expense", path: "/finance" },
         { task: "Open alerts", path: "/alerts" },
         { task: "Charts and CSV, Excel, PDF downloads", path: "/reports" },
         { task: "Products and orders", path: "/shop" },
+        { task: "Catalogue enquiries", path: "/enquiries" },
         { task: "Public catalogue", path: `/farms/${scope.farmSlug}` },
         { task: "Staff invites", path: "/team" },
         { task: "Audit log", path: "/audit" },
