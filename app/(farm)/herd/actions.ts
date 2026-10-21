@@ -33,6 +33,7 @@ import {
 import { writeAudit } from "@/lib/audit";
 import { calfSireFromConception } from "@/lib/calving-sire";
 import { embryoCodeSeries } from "@/lib/embryo-stock";
+import { canonicalCategory } from "@/lib/finance-suggestions";
 import { isFeedCategory, isFeedKind } from "@/lib/feed-stock";
 import { dryOffDueOn } from "@/lib/lactation";
 import { addDays, farmToday } from "@/lib/dates";
@@ -714,9 +715,18 @@ export async function saveFinance(formData: FormData) {
   const farm = await requireFarm();
   if (!canRecordFinance(farm.roles)) redirect("/finance?error=role");
   const amount = Number(text(formData, "amount"));
-  if (!Number.isFinite(amount) || amount < 0) redirect("/finance?error=amount");
-  const kind = text(formData, "kind") === "income" ? "income" : "expense";
-  const category = text(formData, "category") || "other";
+  if (!Number.isFinite(amount) || amount <= 0) redirect("/finance?error=amount");
+  const rawCategory = text(formData, "category");
+  const prefixed = rawCategory.split(":");
+  const kindFromPrefix = prefixed.length > 1 && (prefixed[0] === "income" || prefixed[0] === "expense") ? prefixed[0] : null;
+  const kind = kindFromPrefix ?? (text(formData, "kind") === "income" ? "income" : "expense");
+  const category = canonicalCategory(kind, kindFromPrefix ? prefixed.slice(1).join(":") : rawCategory);
+  if (!category) redirect("/finance?error=category");
+  const entryOn = text(formData, "entryOn") || farmToday(farm.timezone);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(entryOn)) redirect("/finance?error=date");
+  const requestedAnimal = text(formData, "animalId");
+  const animal = requestedAnimal ? await animalInFarm(farm.farmId, requestedAnimal) : null;
+  if (requestedAnimal && !animal) redirect("/finance?error=animal");
   const [row] = await db
     .insert(financeEntries)
     .values({
@@ -724,8 +734,8 @@ export async function saveFinance(formData: FormData) {
       kind,
       category,
       amount: amount.toFixed(2),
-      entryOn: text(formData, "entryOn") || farmToday(farm.timezone),
-      animalId: text(formData, "animalId") || null,
+      entryOn,
+      animalId: animal?.id ?? null,
       note: text(formData, "note") || null,
       createdBy: farm.userId,
     })
@@ -739,7 +749,7 @@ export async function saveFinance(formData: FormData) {
     summary: `${kind} ${category} ₹${amount.toFixed(2)}`,
     after: { kind, category, amount: amount.toFixed(2) },
   });
-  redirect("/finance");
+  redirect("/finance?saved=1");
 }
 
 function wholeNumber(value: string, max: number) {

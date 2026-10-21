@@ -7,6 +7,7 @@ import { animals, financeEntries } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { requireFarm } from "@/lib/farm-context";
 import { canRecordFinance } from "@/lib/permissions";
+import { canonicalCategory } from "@/lib/finance-suggestions";
 
 export async function confirmSuggestion(formData: FormData) {
   const farm = await requireFarm();
@@ -17,20 +18,23 @@ export async function confirmSuggestion(formData: FormData) {
   const amount = Number(formData.get("amount") ?? "");
   const entryOn = String(formData.get("entryOn") ?? "");
   const animalId = String(formData.get("animalId") ?? "");
-  if (!key.startsWith("suggested:") || !Number.isFinite(amount) || amount < 0 || !entryOn) redirect("/finance?error=amount");
-  const existing = await db.select({ note: financeEntries.note }).from(financeEntries).where(eq(financeEntries.farmId, farm.farmId));
-  if (existing.some((row) => row.note?.includes(key))) redirect("/finance");
+  if (!key.startsWith("suggested:") || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(entryOn)) redirect("/finance?error=amount");
+  const canonical = canonicalCategory(kind, category);
+  if (!canonical) redirect("/finance?error=category");
+  const existing = await db.select({ note: financeEntries.note, voidedAt: financeEntries.voidedAt }).from(financeEntries).where(eq(financeEntries.farmId, farm.farmId));
+  if (existing.some((row) => !row.voidedAt && row.note?.includes(key))) redirect("/finance");
   let linked: string | null = null;
   if (animalId) {
     const [animal] = await db.select({ id: animals.id }).from(animals).where(and(eq(animals.id, animalId), eq(animals.farmId, farm.farmId))).limit(1);
     linked = animal?.id ?? null;
+    if (!linked) redirect("/finance?error=animal");
   }
   const [row] = await db
     .insert(financeEntries)
     .values({
       farmId: farm.farmId,
       kind,
-      category,
+      category: canonical,
       amount: amount.toFixed(2),
       entryOn,
       animalId: linked,
@@ -44,8 +48,8 @@ export async function confirmSuggestion(formData: FormData) {
     action: "create",
     entity: "finance",
     entityId: row.id,
-    summary: `Confirmed ${category} ₹${amount.toFixed(2)}`,
-    after: { key, kind, category },
+    summary: `Confirmed ${canonical} ₹${amount.toFixed(2)}`,
+    after: { key, kind, category: canonical },
   });
-  redirect("/finance");
+  redirect("/finance?saved=1");
 }

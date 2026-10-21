@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { milkValueSuggestion } from "./finance-suggestions";
+import { allocatedFeedCost, animalResult, countsInAnimalBooks, milkValueSuggestion } from "./finance-suggestions";
 import { diseaseInsight, heatInsight, heatWindows, weightChanges } from "./insights";
 
 describe("finance suggestions", () => {
@@ -8,6 +8,15 @@ describe("finance suggestions", () => {
     expect(first?.amount).toBe(550);
     const again = milkValueSuggestion({ month: "2026-10", litres: 10, price: 55, existingNotes: [first?.key ?? ""] });
     expect(again).toBeNull();
+  });
+
+  it("keeps a confirmed milk row out of the animal books and charges only feed recorded on that animal", () => {
+    expect(countsInAnimalBooks("suggested:milk:2026-10")).toBe(false);
+    const result = animalResult({ litres: 91, price: 55, sale: 0, feed: 100, medicine: 40, breeding: 350 });
+    expect(result.milkValue).toBe(5005);
+    expect(result.total).toBe(5005 - 100 - 40 - 350);
+    expect(allocatedFeedCost([{ kind: "consumption", quantity: "10", unitCost: "28", note: "Jamuna · MIL-GIR-001" }], "MIL-GIR-001")).toBe(280);
+    expect(allocatedFeedCost([{ kind: "consumption", quantity: "10", unitCost: "28", note: "Herd" }], "MIL-GIR-001")).toBe(0);
   });
 });
 
