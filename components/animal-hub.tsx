@@ -25,6 +25,7 @@ import { clearIsolation, moveAnimal, setIsolation } from "@/app/(farm)/locations
 import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { lactationSummary } from "@/lib/lactation";
 import { PedigreeChart } from "@/components/pedigree-chart";
+import { MilkChart } from "@/components/milk-chart";
 import { WeightChart } from "@/components/weight-chart";
 import { RecordDialog } from "@/components/record-dialog";
 import { VoidRecord } from "@/components/void-record";
@@ -585,27 +586,46 @@ export async function AnimalHub({
   }
 
   if (tab === "milk") {
+    const recorded = milkRows.filter((row) => !row.voidedAt);
+    const lactationStart = calvingRows
+      .filter((row) => !row.voidedAt)
+      .map((row) => row.calvedOn)
+      .sort()
+      .at(-1);
+    const lactation = lactationStart ? recorded.filter((row) => row.recordedOn >= lactationStart) : recorded;
+    const points = [...lactation]
+      .sort((left, right) => left.recordedOn.localeCompare(right.recordedOn))
+      .map((row) => ({
+        date: formatDisplayDate(row.recordedOn),
+        litres: Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0),
+      }));
     return (
-      <Table headers={["Date", "Morning", "Evening", "Total"]}>
-        {milkRows.length === 0 ? (
-          <tr>
-            <td colSpan={4} className="px-4 py-8 text-sm text-muted-foreground">
-              No milk recorded for this animal.
-            </td>
-          </tr>
-        ) : null}
-        {milkRows.map((row) => {
-          const total = Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0);
-          return (
-            <tr key={row.id}>
-              <Td>{formatDisplayDate(row.recordedOn)}</Td>
-              <Td>{row.morningLitres ?? "—"}</Td>
-              <Td>{row.eveningLitres ?? "—"}</Td>
-              <Td className="font-medium">{total.toFixed(1)} L</Td>
+      <div className="space-y-4">
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <h2 className="font-semibold">This lactation</h2>
+          {points.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">No milk recorded for this lactation.</p> : <MilkChart points={points} />}
+        </section>
+        <Table headers={["Date", "Morning", "Evening", "Total"]}>
+          {recorded.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="px-4 py-8 text-sm text-muted-foreground">
+                No milk recorded for this animal.
+              </td>
             </tr>
-          );
-        })}
-      </Table>
+          ) : null}
+          {recorded.map((row) => {
+            const total = Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0);
+            return (
+              <tr key={row.id}>
+                <Td>{formatDisplayDate(row.recordedOn)}</Td>
+                <Td>{row.morningLitres ?? "—"}</Td>
+                <Td>{row.eveningLitres ?? "—"}</Td>
+                <Td className="font-medium">{total.toFixed(1)} L</Td>
+              </tr>
+            );
+          })}
+        </Table>
+      </div>
     );
   }
 

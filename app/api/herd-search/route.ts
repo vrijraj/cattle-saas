@@ -71,7 +71,7 @@ export async function GET(request: Request) {
       .where(eq(bulls.farmId, farm.farmId))
       .orderBy(bulls.code),
     db
-      .select({ id: alerts.id, title: alerts.title, body: alerts.body, status: alerts.status })
+      .select({ id: alerts.id, title: alerts.title, body: alerts.body, status: alerts.status, type: alerts.type })
       .from(alerts)
       .where(eq(alerts.farmId, farm.farmId)),
     db

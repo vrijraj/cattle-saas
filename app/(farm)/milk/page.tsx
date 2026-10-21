@@ -1,8 +1,10 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, gte, or } from "drizzle-orm";
+import Link from "next/link";
 import { db } from "@/db";
 import { alerts, animals, milkYields } from "@/db/schema";
-import { farmToday, formatDisplayDate } from "@/lib/dates";
+import { addDays, farmToday, formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
+import { milkDaySummary } from "@/lib/milk-sheet";
 import { canWriteMilk } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Notice, Summary } from "@/components/workspace";
@@ -34,8 +36,11 @@ export default async function MilkPage({
   const existing = await db
     .select()
     .from(milkYields)
-    .where(and(eq(milkYields.farmId, farm.farmId), eq(milkYields.recordedOn, today)));
-  const byAnimal = new Map(existing.map((row) => [row.animalId, row]));
+    .where(and(eq(milkYields.farmId, farm.farmId), gte(milkYields.recordedOn, addDays(today, -7))));
+  const summary = milkDaySummary(
+    herd.map((animal) => animal.id),
+    existing.filter((row) => row.recordedOn === today),
+  );
   const canSave = canWriteMilk(farm.roles);
   const drops = await db
     .select()
@@ -47,41 +52,65 @@ export default async function MilkPage({
         or(eq(alerts.type, "milk_drop"), eq(alerts.type, "herd_milk_drop")),
       ),
     );
-  const entered = herd.filter((animal) => byAnimal.has(animal.id));
-  const total = entered.reduce((sum, animal) => {
-    const row = byAnimal.get(animal.id);
-    return sum + Number(row?.morningLitres ?? 0) + Number(row?.eveningLitres ?? 0);
-  }, 0);
-  const average = entered.length ? total / entered.length : 0;
-  const completion = herd.length ? Math.round((entered.length / herd.length) * 100) : 0;
+  const byCode = new Map(herd.map((animal) => [animal.id, animal]));
+  const herdDays = new Map<string, number>();
+  for (const row of existing) {
+    if (row.voidedAt) continue;
+    const litres = Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0);
+    herdDays.set(row.recordedOn, (herdDays.get(row.recordedOn) ?? 0) + litres);
+  }
+  const recent = [...herdDays.entries()].sort(([left], [right]) => left.localeCompare(right));
 
   const stats = [
-    [total.toFixed(1) + " L", "Total milk today"],
-    [String(entered.length), "Cows milked"],
-    [average.toFixed(1) + " L", "Average per cow"],
-    [completion + "%", "Completion"],
+    [summary.total.toFixed(1) + " L", "Total milk today"],
+    [String(summary.entered), "Cows milked"],
+    [String(summary.notEntered), "Not entered"],
+    [summary.average.toFixed(1) + " L", "Average entered"],
   ];
 
   return (
     <div className="space-y-5">
       <Summary
         title="Milk log"
-        description={`Daily yield for each cow in milk · ${formatDisplayDate(today)}. A 30% drop against the previous 7 days opens an alert after day 14 in milk.`}
+        description={`Daily yield for each cow in milk · ${formatDisplayDate(today)}. A blank cow is not entered. A 30% drop against the previous 7 days opens an alert after day 14 in milk.`}
         facts={stats.map(([value, label]) => ({ label, value }))}
       />
-      {query.error ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
+      {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.saved ? <Notice>Milk for today is saved.</Notice> : null}
       {drops.length > 0 ? (
         <section className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
           <h2 className="font-semibold">Milk drop</h2>
           <ul className="space-y-2">
-            {drops.map((alert) => (
-              <li key={alert.id}>
-                <p className="text-sm font-medium">{alert.title}</p>
-                <p className="text-sm text-muted-foreground">{alert.body}</p>
+            {drops.map((alert) => {
+              const animal = alert.animalId ? byCode.get(alert.animalId) : undefined;
+              return (
+                <li key={alert.id}>
+                  {animal ? (
+                    <Link href={`/animals/${animal.code}?tab=milk`} className="text-sm font-medium hover:underline">
+                      {alert.title}
+                    </Link>
+                  ) : (
+                    <p className="text-sm font-medium">{alert.title}</p>
+                  )}
+                  <p className="text-sm text-muted-foreground">{alert.body}</p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+      {recent.length > 0 ? (
+        <section className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <h2 className="font-semibold">Herd total</h2>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {recent.map(([date, litres]) => (
+              <li key={date} className="rounded-xl bg-muted px-3 py-2">
+                <p className="text-xs text-muted-foreground">{formatDisplayDate(date)}</p>
+                <p className="font-medium">{litres.toFixed(1)} L</p>
               </li>
             ))}
           </ul>
+          <p className="text-xs text-muted-foreground">Each day adds only the cows that were entered. A missing cow is not counted as zero.</p>
         </section>
       ) : null}
       <form action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -97,20 +126,22 @@ export default async function MilkPage({
         ) : null}
         <ul className="divide-y divide-border">
           {herd.map((animal) => {
-            const row = byAnimal.get(animal.id);
+            const row = summary.active.get(animal.id);
             const sum = Number(row?.morningLitres ?? 0) + Number(row?.eveningLitres ?? 0);
             return (
               <li
                 key={animal.id}
                 className="grid grid-cols-2 items-end gap-3 p-4 lg:grid-cols-[7.5rem_minmax(0,1fr)_8rem_8rem_4.5rem] lg:items-center lg:py-3"
               >
-                <div className="min-w-0 self-center lg:col-start-2 lg:row-start-1">
-                  <p className="truncate font-medium">{animal.name ?? "Unnamed"}</p>
-                  <p className="text-xs text-muted-foreground lg:hidden">{animal.code}</p>
+                <div className="col-span-2 flex items-center justify-between gap-3 lg:contents">
+                  <Link href={`/animals/${animal.code}?tab=milk`} className="min-w-0 hover:underline lg:contents">
+                    <span className="hidden font-medium lg:block">{animal.code}</span>
+                    <span className="block truncate font-medium">{animal.name ?? "Unnamed"}</span>
+                    <span className="text-xs text-muted-foreground lg:hidden">{animal.code}</span>
+                  </Link>
+                  <p className="shrink-0 text-sm font-medium lg:order-1">{row ? `${sum.toFixed(1)} L` : "Not entered"}</p>
                 </div>
-                <p className="self-center text-right text-sm font-medium lg:col-start-5 lg:row-start-1 lg:text-left">{row ? `${sum.toFixed(1)} L` : "—"}</p>
-                <p className="hidden font-medium lg:col-start-1 lg:row-start-1 lg:block">{animal.code}</p>
-                <label className="grid gap-1 text-xs text-muted-foreground lg:col-start-3 lg:row-start-1">
+                <label className="grid gap-1 text-xs text-muted-foreground">
                   <span className="lg:sr-only">Morning (L)</span>
                   <input
                     name={`morning-${animal.id}`}
@@ -120,7 +151,7 @@ export default async function MilkPage({
                     className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground lg:h-10"
                   />
                 </label>
-                <label className="grid gap-1 text-xs text-muted-foreground lg:col-start-4 lg:row-start-1">
+                <label className="grid gap-1 text-xs text-muted-foreground">
                   <span className="lg:sr-only">Evening (L)</span>
                   <input
                     name={`evening-${animal.id}`}

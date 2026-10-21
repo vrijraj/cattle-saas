@@ -54,6 +54,9 @@ export async function saveMilk(formData: FormData) {
           set: {
             morningLitres: row.morning,
             eveningLitres: row.evening,
+            voidedAt: null,
+            voidReason: null,
+            voidedBy: null,
             updatedAt: new Date(),
           },
         })
