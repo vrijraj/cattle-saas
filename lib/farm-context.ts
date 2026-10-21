@@ -6,10 +6,10 @@ import { db } from "@/db";
 import { farmMembers, farms, users } from "@/db/schema";
 import { auth } from "@/lib/auth";
 
-export async function requireFarm() {
+export async function getFarm() {
   const session = await auth();
   const userId = session?.user?.id;
-  if (!userId) redirect("/signin");
+  if (!userId) return null;
 
   const [membership] = await db
     .select({
@@ -30,6 +30,12 @@ export async function requireFarm() {
     .where(eq(farmMembers.userId, userId))
     .limit(1);
 
-  if (!membership || membership.disabledAt) redirect("/signin");
+  if (!membership || membership.disabledAt) return null;
+  return membership;
+}
+
+export async function requireFarm() {
+  const membership = await getFarm();
+  if (!membership) redirect("/signin");
   return membership;
 }

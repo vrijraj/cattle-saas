@@ -26,6 +26,7 @@
     "@aws-sdk/client-s3": "^3.1154.0",
     "@base-ui/react": "^1.9.0",
     "@electric-sql/pglite": "^0.5.10",
+    "@google/adk": "^2.3.0",
     "@hookform/resolvers": "^6.0.0",
     "@node-rs/argon2": "^2.2.2",
     "class-variance-authority": "^0.7.1",

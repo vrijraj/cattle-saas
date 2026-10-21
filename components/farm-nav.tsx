@@ -11,6 +11,7 @@ import {
   HeartPulse,
   LayoutDashboard,
   ScrollText,
+  Sparkles,
   Milk,
   ShoppingBag,
   Sprout,
@@ -22,6 +23,7 @@ import {
 
 const links = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/ai", label: "Assistant", icon: Sparkles },
   { href: "/animals", label: "Cattle", icon: Beef },
   { href: "/breeding", label: "Breeding", icon: HeartPulse },
   { href: "/health", label: "Health", icon: Stethoscope },

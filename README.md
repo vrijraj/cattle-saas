@@ -10,6 +10,7 @@ The sample farm is **Shree Gir Dairy** (`shree-gir`). Product requirements are i
 - Auth.js (Credentials, JWT)
 - Drizzle ORM with embedded PGlite, or PostgreSQL
 - Tailwind CSS
+- Google ADK and Gemini for the farm assistant
 
 ## Requirements
 
@@ -84,6 +85,7 @@ The farm app runs with these left empty. Each feature explains itself in the UI 
 | Cloudflare R2 | Animal photos | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `R2_BUCKET_PRIVATE` |
 | ZeptoMail | Staff invite email | `ZEPTOMAIL_TOKEN`, `ZEPTOMAIL_FROM` |
 | Razorpay | Shop checkout | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` |
+| Gemini | Assistant at `/ai`, through Google ADK | `GEMINI_API_KEY` |
 
 Without ZeptoMail, an invite still creates a link the owner can copy. Without Razorpay, a cart becomes an order waiting for payment. Without R2, photo upload is refused and the profile says storage is not configured.
 
@@ -91,7 +93,9 @@ Without ZeptoMail, an invite still creates a link the owner can copy. Without Ra
 
 ## What the app covers
 
-**Farm workspace** (signed in): dashboard, cattle register and profile, dam-line family tree, heat / AI / pregnancy / calving, health, milk, feed, semen, mating check, embryos, finance, alerts, reports (CSV, PDF, Excel), shop products, team invites, and an audit log.
+**Farm workspace** (signed in): dashboard, cattle register and profile, dam-line family tree, heat / AI / pregnancy / calving, health, milk, feed, semen, mating check, embryos, finance, alerts, reports (CSV, PDF, Excel), shop products, team invites, an audit log, and an assistant at `/ai`.
+
+The assistant uses Google ADK with Gemini. It can look through the same records as the workspace and point to the screen where a change is saved. It does not create or edit records itself. Set `GEMINI_API_KEY` (from Google AI Studio) and restart the dev server. `GEMINI_MODEL` defaults to `gemini-flash-latest`. Without a key, `/ai` explains what to add.
 
 On a phone, the farm menu opens from the header. From the `md` breakpoint up, the same menu is a fixed sidebar.
 
