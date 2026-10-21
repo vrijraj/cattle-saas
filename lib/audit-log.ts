@@ -28,6 +28,8 @@ const entities: Record<string, string> = {
   alert: "Alert",
   notification: "Reminder",
   export: "Report",
+  invite: "Invite",
+  member: "Team member",
   location: "Location",
   location_move: "Shed move",
   order: "Order",
@@ -71,6 +73,8 @@ const destinations: Record<string, string> = {
   mating_check: "/breeding",
   milk: "/milk",
   animal: "/animals",
+  invite: "/team",
+  member: "/team",
 };
 
 export function auditActionLabel(action: string) {

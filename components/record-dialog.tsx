@@ -9,12 +9,14 @@ export function RecordDialog({
   button,
   notice,
   open = false,
+  quiet = false,
   children,
 }: {
   title: string;
   button: string;
   notice?: string;
   open?: boolean;
+  quiet?: boolean;
   children: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -33,7 +35,11 @@ export function RecordDialog({
       <button
         type="button"
         onClick={() => dialogRef.current?.showModal()}
-        className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground"
+        className={
+          quiet
+            ? "text-sm font-medium text-primary"
+            : "inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground"
+        }
       >
         {button}
       </button>

@@ -4,6 +4,7 @@ import { farms, invites, users } from "@/db/schema";
 import { PageTransition } from "@/components/page-transition";
 import { inputClass, Notice, Submit } from "@/components/workspace";
 import { auth } from "@/lib/auth";
+import { roleLabel } from "@/lib/team";
 import { acceptInvite } from "../actions";
 
 export default async function InvitePage({
@@ -31,7 +32,7 @@ export default async function InvitePage({
             <form action={acceptInvite} className="mt-5 grid gap-3">
               <input type="hidden" name="token" value={token} />
               <p className="text-sm text-muted-foreground">
-                {open.email} · {open.roles.map((role) => role.replaceAll("_", " ")).join(", ")}
+                {open.email} · {open.roles.map((role) => roleLabel[role] ?? role).join(", ")}
               </p>
               {query.error === "form" ? <Notice tone="danger">Enter your name and a password of at least 8 characters.</Notice> : null}
               {query.error === "expired" ? <Notice tone="danger">This invite has expired or was already used.</Notice> : null}
