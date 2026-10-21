@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { animals, bulls } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 import { matingFlags, type PedigreeLink } from "@/lib/mating";
+import { FormSelect } from "@/components/form-select";
 import { inputClass, Notice, Panel, pickTab, Submit, Summary, TabBar, Table, Td } from "@/components/workspace";
 
 const tabs = [
@@ -61,15 +62,13 @@ export default async function GeneticsPage({
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
         <Panel title="Mating check">
           <form className="grid gap-3">
-            <select name="female" defaultValue={query.female} className={inputClass}>
-              {herd
+            <FormSelect
+              name="female"
+              defaultValue={query.female}
+              options={herd
                 .filter((animal) => animal.sex === "female")
-                .map((animal) => (
-                  <option key={animal.id} value={animal.code}>
-                    {animal.code} · {animal.name}
-                  </option>
-                ))}
-            </select>
+                .map((animal) => ({ value: animal.code, label: `${animal.code} · ${animal.name ?? animal.code}` }))}
+            />
             <input name="bull" defaultValue={query.bull ?? ""} placeholder="Proposed bull or semen code" className={inputClass} />
             <Submit>Check mating</Submit>
           </form>

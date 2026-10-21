@@ -4,6 +4,7 @@ import { feedItems, feedMovements } from "@/db/schema";
 import { saveFeed } from "@/app/(farm)/herd/actions";
 import { formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
+import { FormSelect } from "@/components/form-select";
 import { RecordDialog } from "@/components/record-dialog";
 import { EmptyRow, inputClass, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
 
@@ -37,29 +38,34 @@ export default async function FeedPage() {
           <h2 className="text-base font-semibold">Stock</h2>
           <RecordDialog title="Record a movement" button="Record movement">
             <form action={saveFeed} className="grid gap-3">
-              <select name="itemId" className={inputClass}>
-                <option value="">New item, named below</option>
-                {items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+              <FormSelect
+                name="itemId"
+                defaultValue=""
+                options={[{ value: "", label: "New item, named below" }, ...items.map((item) => ({ value: item.id, label: item.name }))]}
+              />
               <input name="name" placeholder="New item name" className={inputClass} />
               <div className="grid gap-3 sm:grid-cols-2">
-                <select name="category" className={inputClass}>
-                  <option value="green">Green fodder</option>
-                  <option value="dry">Dry fodder</option>
-                  <option value="silage">Silage</option>
-                  <option value="concentrate">Concentrate</option>
-                  <option value="mineral">Mineral</option>
-                </select>
-                <select name="kind" className={inputClass}>
-                  <option value="opening">Opening</option>
-                  <option value="purchase">Purchase</option>
-                  <option value="consumption">Consumption</option>
-                  <option value="wastage">Wastage</option>
-                </select>
+                <FormSelect
+                  name="category"
+                  defaultValue="green"
+                  options={[
+                    { value: "green", label: "Green fodder" },
+                    { value: "dry", label: "Dry fodder" },
+                    { value: "silage", label: "Silage" },
+                    { value: "concentrate", label: "Concentrate" },
+                    { value: "mineral", label: "Mineral" },
+                  ]}
+                />
+                <FormSelect
+                  name="kind"
+                  defaultValue="opening"
+                  options={[
+                    { value: "opening", label: "Opening" },
+                    { value: "purchase", label: "Purchase" },
+                    { value: "consumption", label: "Consumption" },
+                    { value: "wastage", label: "Wastage" },
+                  ]}
+                />
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <input name="quantity" required placeholder="Quantity kg" className={inputClass} />

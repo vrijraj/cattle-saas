@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { createAnimal } from "@/app/(farm)/animals/actions";
 import { lactationLabel, lifeStageLabel, reproductionLabel, sexLabel } from "@/lib/labels";
+import { FormSelect } from "@/components/form-select";
 import { inputClass } from "@/components/workspace";
 
 const field = `mt-1 ${inputClass}`;
@@ -25,23 +26,11 @@ export function AnimalForm({
       </label>
       <label className="text-sm">
         Sex
-        <select name="sex" className={field} defaultValue="female">
-          {Object.entries(sexLabel).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <FormSelect name="sex" className={field} defaultValue="female" options={Object.entries(sexLabel).map(([value, label]) => ({ value, label }))} />
       </label>
       <label className="text-sm">
         Breed
-        <select name="breedId" className={field} required defaultValue={breeds[0]?.id}>
-          {breeds.map((breed) => (
-            <option key={breed.id} value={breed.id}>
-              {breed.name}
-            </option>
-          ))}
-        </select>
+        <FormSelect name="breedId" className={field} required defaultValue={breeds[0]?.id} options={breeds.map((breed) => ({ value: breed.id, label: breed.name }))} />
       </label>
       <label className="text-sm">
         Date of birth
@@ -53,44 +42,24 @@ export function AnimalForm({
       </label>
       <label className="text-sm">
         Life stage
-        <select name="lifeStage" className={field} defaultValue="heifer">
-          {Object.entries(lifeStageLabel).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <FormSelect name="lifeStage" className={field} defaultValue="heifer" options={Object.entries(lifeStageLabel).map(([value, label]) => ({ value, label }))} />
       </label>
       <label className="text-sm">
         Reproduction
-        <select name="reproduction" className={field} defaultValue="open">
-          {Object.entries(reproductionLabel).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <FormSelect name="reproduction" className={field} defaultValue="open" options={Object.entries(reproductionLabel).map(([value, label]) => ({ value, label }))} />
       </label>
       <label className="text-sm">
         Lactation
-        <select name="lactation" className={field} defaultValue="pre_lactation">
-          {Object.entries(lactationLabel).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <FormSelect name="lactation" className={field} defaultValue="pre_lactation" options={Object.entries(lactationLabel).map(([value, label]) => ({ value, label }))} />
       </label>
       <label className="text-sm">
         Location
-        <select name="locationId" className={field} defaultValue="">
-          <option value="">Unassigned</option>
-          {locations.map((location) => (
-            <option key={location.id} value={location.id}>
-              {location.name}
-            </option>
-          ))}
-        </select>
+        <FormSelect
+          name="locationId"
+          className={field}
+          defaultValue=""
+          options={[{ value: "", label: "Unassigned" }, ...locations.map((location) => ({ value: location.id, label: location.name }))]}
+        />
       </label>
       <label className="text-sm">
         Ear tag

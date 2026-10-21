@@ -4,6 +4,7 @@ import { bulls, semenBatches, straws } from "@/db/schema";
 import { saveBull, saveSemenBatch } from "@/app/(farm)/herd/actions";
 import { requireFarm } from "@/lib/farm-context";
 import { canUseGenetics } from "@/lib/permissions";
+import { FormSelect } from "@/components/form-select";
 import { RecordDialog } from "@/components/record-dialog";
 import { EmptyRow, inputClass, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
 
@@ -41,23 +42,25 @@ export default async function SemenPage({ searchParams }: { searchParams: Promis
           {canEdit ? (
             <RecordDialog title="Receive straws" button="Receive straws">
               <form action={saveSemenBatch} className="grid gap-3">
-                <select name="bullId" required className={inputClass}>
-                  {bullRows.map((bull) => (
-                    <option key={bull.id} value={bull.id}>
-                      {bull.code} · {bull.name}
-                    </option>
-                  ))}
-                </select>
+                <FormSelect
+                  name="bullId"
+                  required
+                  options={bullRows.map((bull) => ({ value: bull.id, label: `${bull.code} · ${bull.name}` }))}
+                />
                 <input name="batchNumber" required placeholder="Batch number" className={inputClass} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <input name="quantity" type="number" min={1} placeholder="Quantity" required className={inputClass} />
                   <input name="price" placeholder="Price per straw" className={inputClass} />
                 </div>
-                <select name="semenType" className={inputClass}>
-                  <option value="conventional">Conventional</option>
-                  <option value="sexed_female">Sexed female</option>
-                  <option value="sexed_male">Sexed male</option>
-                </select>
+                <FormSelect
+                  name="semenType"
+                  defaultValue="conventional"
+                  options={[
+                    { value: "conventional", label: "Conventional" },
+                    { value: "sexed_female", label: "Sexed female" },
+                    { value: "sexed_male", label: "Sexed male" },
+                  ]}
+                />
                 <input name="tank" placeholder="Tank" className={inputClass} />
                 <div className="flex justify-end">
                   <Submit>Create straws</Submit>

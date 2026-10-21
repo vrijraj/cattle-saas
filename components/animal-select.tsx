@@ -1,4 +1,4 @@
-import { inputClass } from "@/components/workspace";
+import { FormSelect } from "@/components/form-select";
 
 export function AnimalSelect({
   animals,
@@ -8,13 +8,13 @@ export function AnimalSelect({
   name?: string;
 }) {
   return (
-    <select name={name} required className={inputClass}>
-      {animals.map((animal) => (
-        <option key={animal.id} value={animal.id}>
-          {animal.code}
-          {animal.name ? ` · ${animal.name}` : ""}
-        </option>
-      ))}
-    </select>
+    <FormSelect
+      name={name}
+      required
+      options={animals.map((animal) => ({
+        value: animal.id,
+        label: animal.name ? `${animal.code} · ${animal.name}` : animal.code,
+      }))}
+    />
   );
 }

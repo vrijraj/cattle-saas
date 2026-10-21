@@ -20,6 +20,7 @@ import { PedigreeChart } from "@/components/pedigree-chart";
 import { WeightChart } from "@/components/weight-chart";
 import { RecordDialog } from "@/components/record-dialog";
 import { VoidRecord } from "@/components/void-record";
+import { FormSelect } from "@/components/form-select";
 import { EmptyRow, inputClass, Panel, Submit, Table, Td } from "@/components/workspace";
 import { lifeStageLabel, sexLabel } from "@/lib/labels";
 import { ancestorChart } from "@/lib/pedigree-tree";
@@ -214,22 +215,26 @@ export async function AnimalHub({
                       <input name="checkedOn" type="date" className={inputClass} />
                     </Field>
                     <Field label="Result">
-                      <select name="result" className={inputClass} defaultValue="pregnant">
-                        <option value="pregnant">Pregnant</option>
-                        <option value="not_pregnant">Not pregnant</option>
-                        <option value="doubtful">Doubtful</option>
-                      </select>
+                      <FormSelect
+                        name="result"
+                        defaultValue="pregnant"
+                        options={[
+                          { value: "pregnant", label: "Pregnant" },
+                          { value: "not_pregnant", label: "Not pregnant" },
+                          { value: "doubtful", label: "Doubtful" },
+                        ]}
+                      />
                     </Field>
                   </div>
                   <Field label="Insemination">
-                    <select name="inseminationId" className={inputClass}>
-                      <option value="">Select the insemination</option>
-                      {ais.map((row) => (
-                        <option key={row.id} value={row.id}>
-                          {formatDisplayDate(row.performedOn)} · {bullLabel(row)}
-                        </option>
-                      ))}
-                    </select>
+                    <FormSelect
+                      name="inseminationId"
+                      defaultValue=""
+                      options={[
+                        { value: "", label: "Select the insemination" },
+                        ...ais.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${bullLabel(row)}` })),
+                      ]}
+                    />
                   </Field>
                   <div className="flex justify-end pt-1">
                     <Submit>Save pregnancy check</Submit>
@@ -261,30 +266,39 @@ export async function AnimalHub({
                 <form action={recordCalving} className="space-y-3">
                   <input type="hidden" name="animalId" value={animal.id} />
                   <Field label="Insemination">
-                    <select name="inseminationId" required className={inputClass}>
-                      <option value="">Select the insemination</option>
-                      {ais.map((row) => (
-                        <option key={row.id} value={row.id}>
-                          {formatDisplayDate(row.performedOn)} · {bullLabel(row)}
-                        </option>
-                      ))}
-                    </select>
+                    <FormSelect
+                      name="inseminationId"
+                      required
+                      defaultValue=""
+                      options={[
+                        { value: "", label: "Select the insemination" },
+                        ...ais.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${bullLabel(row)}` })),
+                      ]}
+                    />
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Calved">
                       <input name="calvedOn" type="date" className={inputClass} />
                     </Field>
                     <Field label="Outcome">
-                      <select name="outcome" className={inputClass}>
-                        <option value="live">Live calf</option>
-                        <option value="dead">Dead calf</option>
-                      </select>
+                      <FormSelect
+                        name="outcome"
+                        defaultValue="live"
+                        options={[
+                          { value: "live", label: "Live calf" },
+                          { value: "dead", label: "Dead calf" },
+                        ]}
+                      />
                     </Field>
                     <Field label="Calf sex">
-                      <select name="calfSex" className={inputClass}>
-                        <option value="female">Female</option>
-                        <option value="male">Male</option>
-                      </select>
+                      <FormSelect
+                        name="calfSex"
+                        defaultValue="female"
+                        options={[
+                          { value: "female", label: "Female" },
+                          { value: "male", label: "Male" },
+                        ]}
+                      />
                     </Field>
                     <Field label="Calf name">
                       <input name="calfName" className={inputClass} />

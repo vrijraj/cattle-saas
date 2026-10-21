@@ -7,6 +7,7 @@ import { farmAnimals } from "@/lib/herd";
 import { requireFarm } from "@/lib/farm-context";
 import { canUseGenetics } from "@/lib/permissions";
 import { AnimalSelect } from "@/components/animal-select";
+import { FormSelect } from "@/components/form-select";
 import { RecordDialog } from "@/components/record-dialog";
 import { EmptyRow, inputClass, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
 
@@ -42,10 +43,14 @@ export default async function EmbryosPage() {
                 <input name="sireCode" placeholder="Sire code" className={inputClass} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <input name="grade" placeholder="Grade 1–5" className={inputClass} />
-                  <select name="storage" className={inputClass}>
-                    <option value="fresh">Fresh</option>
-                    <option value="frozen">Frozen</option>
-                  </select>
+                  <FormSelect
+                    name="storage"
+                    defaultValue="fresh"
+                    options={[
+                      { value: "fresh", label: "Fresh" },
+                      { value: "frozen", label: "Frozen" },
+                    ]}
+                  />
                 </div>
                 <input name="location" placeholder="Tank location" className={inputClass} />
                 <div className="flex justify-end">
@@ -76,13 +81,7 @@ export default async function EmbryosPage() {
           {canEdit ? (
             <RecordDialog title="Record transfer" button="Record transfer">
               <form action={transferEmbryo} className="grid gap-3">
-                <select name="embryoId" className={inputClass}>
-                  {inStock.map((embryo) => (
-                    <option key={embryo.id} value={embryo.id}>
-                      {embryo.code}
-                    </option>
-                  ))}
-                </select>
+                <FormSelect name="embryoId" options={inStock.map((embryo) => ({ value: embryo.id, label: embryo.code }))} />
                 <AnimalSelect animals={females} name="recipientId" />
                 <input name="transferredOn" type="date" className={inputClass} />
                 <div className="flex justify-end">

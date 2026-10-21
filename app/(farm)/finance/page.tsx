@@ -6,6 +6,7 @@ import { saveFinance } from "@/app/(farm)/herd/actions";
 import { formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canRecordFinance, canViewFinance } from "@/lib/permissions";
+import { FormSelect } from "@/components/form-select";
 import { RecordDialog } from "@/components/record-dialog";
 import { VoidRecord } from "@/components/void-record";
 import { EmptyRow, inputClass, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
@@ -39,10 +40,14 @@ export default async function FinancePage() {
           {canRecordFinance(farm.roles) ? (
             <RecordDialog title="Add entry" button="Add entry">
               <form action={saveFinance} className="grid gap-3">
-                <select name="kind" className={inputClass}>
-                  <option value="income">Income</option>
-                  <option value="expense">Expense</option>
-                </select>
+                <FormSelect
+                  name="kind"
+                  defaultValue="income"
+                  options={[
+                    { value: "income", label: "Income" },
+                    { value: "expense", label: "Expense" },
+                  ]}
+                />
                 <input name="category" required placeholder="Category, for example feed or milk" className={inputClass} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <input name="amount" required placeholder="Amount" className={inputClass} />
