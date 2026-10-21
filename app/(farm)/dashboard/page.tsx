@@ -96,10 +96,10 @@ export default async function DashboardPage() {
         <div className="relative z-10 max-w-xl">
           <p className="text-xs font-semibold tracking-[0.16em] text-primary">WELCOME BACK</p>
           <h1 className="mt-2 max-w-md text-3xl text-foreground sm:text-4xl">
-            Manage a healthier herd
+            Cattle Management System
           </h1>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
-            {farm.farmName}. Cattle, milk, breeding, and what is due — {formatDisplayDate(today)}.
+            {farm.farmName}. Cattle, milk, breeding, and what is due on {formatDisplayDate(today)}.
           </p>
         </div>
         <FarmMark />

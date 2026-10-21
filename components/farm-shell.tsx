@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Bell, Leaf, LogOut, ScanLine } from "lucide-react";
 import { signOut } from "@/lib/auth";
+import { AccountMenu } from "@/components/account-menu";
 import { FarmDrawer } from "@/components/farm-drawer";
 import { FarmNav } from "@/components/farm-nav";
 import { HerdSearch } from "@/components/herd-search";
@@ -40,7 +41,7 @@ export function FarmShell({
     .slice(0, 2)
     .toUpperCase();
 
-  function SignOutButton() {
+  function SignOutButton({ menu = false }: { menu?: boolean }) {
     return (
       <form
         action={async () => {
@@ -48,9 +49,17 @@ export function FarmShell({
           await signOut({ redirectTo: "/signin" });
         }}
       >
-        <button className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-muted-foreground hover:bg-muted" type="submit">
+        <button
+          className={
+            menu
+              ? "flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium hover:bg-muted"
+              : "flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-muted-foreground hover:bg-muted"
+          }
+          type="submit"
+          role={menu ? "menuitem" : undefined}
+        >
           <LogOut className="size-4" />
-          Sign out
+          {menu ? "Log out" : "Sign out"}
         </button>
       </form>
     );
@@ -85,13 +94,7 @@ export function FarmShell({
             <Bell className="size-4" />
             <span className="sr-only">Alerts</span>
           </Link>
-          <div className="hidden shrink-0 items-center gap-2 rounded-full border border-border bg-card py-1 pr-3 pl-1 sm:flex">
-            <span className="grid size-10 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{initials}</span>
-            <div>
-              <p className="text-sm font-medium leading-tight">{userName}</p>
-              <p className="text-xs text-muted-foreground">{role}</p>
-            </div>
-          </div>
+          <AccountMenu userName={userName} role={role} initials={initials} logout={<SignOutButton menu />} />
         </header>
         <main className="min-w-0 max-w-full overflow-x-clip px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6">
           <PageTransition>{children}</PageTransition>
