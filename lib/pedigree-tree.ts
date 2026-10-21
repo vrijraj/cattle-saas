@@ -21,12 +21,15 @@ export type PedigreeNode = {
   href: string | null;
 };
 
+export const PEDIGREE_GENERATIONS = 8;
+
 export type AncestorChart = {
   self: PedigreeNode;
   parents: PedigreeNode[];
   grandparents: PedigreeNode[];
   greatGrandparents: PedigreeNode[];
   fourthGeneration: PedigreeNode[];
+  generations: PedigreeNode[][];
 };
 
 export type HerdNode = {
@@ -86,16 +89,20 @@ export function ancestorChart(animal: AnimalLink, herd: AnimalLink[], bulls: Bul
     damCode: animal.geneticDamId ? (byId.get(animal.geneticDamId)?.code ?? null) : null,
     damName: animal.geneticDamId ? (byId.get(animal.geneticDamId)?.name ?? null) : null,
   });
-  const grandparents = selfParents.flatMap((parent) => pair(parent.parents));
-  const greatGrandparents = grandparents.flatMap((parent) => pair(parent.parents));
-  const fourthGeneration = greatGrandparents.flatMap((parent) => pair(parent.parents));
+  const generations: PedigreeNode[][] = [];
+  let level = selfParents;
+  for (let generation = 0; generation < PEDIGREE_GENERATIONS; generation += 1) {
+    generations.push(level.map((parent) => parent.node));
+    level = level.flatMap((parent) => pair(parent.parents));
+  }
 
   return {
     self: { code: animal.code, name: animal.name, href: `/animals/${animal.code}` },
-    parents: selfParents.map((parent) => parent.node),
-    grandparents: grandparents.map((parent) => parent.node),
-    greatGrandparents: greatGrandparents.map((parent) => parent.node),
-    fourthGeneration: fourthGeneration.map((parent) => parent.node),
+    parents: generations[0] ?? [],
+    grandparents: generations[1] ?? [],
+    greatGrandparents: generations[2] ?? [],
+    fourthGeneration: generations[3] ?? [],
+    generations,
   };
 }
 

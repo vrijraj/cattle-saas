@@ -48,7 +48,9 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
     ...chart.parents.map((node, index) => ({ label: index === 0 ? "Sire" : "Dam", node })),
     ...chart.grandparents.map((node, index) => ({ label: `Grandparent ${index + 1}`, node })),
     ...chart.greatGrandparents.map((node, index) => ({ label: `Great-grandparent ${index + 1}`, node })),
-    ...chart.fourthGeneration.filter((node) => node.code).map((node, index) => ({ label: `4th generation ${index + 1}`, node })),
+    ...chart.generations.slice(3).flatMap((nodes, index) =>
+      nodes.filter((node) => node.code).map((node, nodeIndex) => ({ label: `${index + 4}th generation ${nodeIndex + 1}`, node })),
+    ),
   ];
   blocks.forEach((block, index) => {
     const y = 730 - index * 22;

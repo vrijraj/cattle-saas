@@ -43,6 +43,28 @@ describe("ancestorChart", () => {
     expect(chart.grandparents[3].href).toBe("/animals/MIL-GIR-001");
     expect(chart.greatGrandparents).toHaveLength(8);
     expect(chart.fourthGeneration).toHaveLength(16);
+    expect(chart.generations).toHaveLength(8);
+  });
+
+  it("follows a sire line past the 4th generation", () => {
+    const animal: AnimalLink = {
+      id: "z",
+      code: "MIL-GIR-099",
+      name: "Line",
+      geneticDamId: null,
+      geneticSireCode: "A",
+      geneticSireName: "A",
+      presence: "on_farm",
+    };
+    const bulls: BullLink[] = ["A", "B", "C", "D", "E", "F", "G"].map((code, index, codes) => ({
+      code,
+      name: code,
+      sireCode: codes[index + 1] ?? null,
+      damCode: null,
+    }));
+    const chart = ancestorChart(animal, [animal], bulls);
+    expect(chart.generations[5][0].code).toBe("F");
+    expect(chart.generations[6][0].code).toBe("G");
   });
 });
 

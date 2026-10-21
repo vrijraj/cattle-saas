@@ -965,18 +965,17 @@ function parentOptions(rows: { code: string; name: string | null }[], emptyLabel
 }
 
 function ordinal(generation: number) {
-  if (generation === 1) return "1st";
-  if (generation === 2) return "2nd";
-  if (generation === 3) return "3rd";
+  const mod100 = generation % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${generation}th`;
+  const mod10 = generation % 10;
+  if (mod10 === 1) return `${generation}st`;
+  if (mod10 === 2) return `${generation}nd`;
+  if (mod10 === 3) return `${generation}rd`;
   return `${generation}th`;
 }
 
 function generationTargets(chart: AncestorChart) {
-  const levels = [
-    [1, chart.parents],
-    [2, chart.grandparents],
-    [3, chart.greatGrandparents],
-  ] as const;
+  const levels = chart.generations.slice(0, -1).map((nodes, index) => [index + 1, nodes] as const);
   const seen = new Set<string>();
   const options: { value: string; label: string }[] = [];
   for (const [generation, nodes] of levels) {
