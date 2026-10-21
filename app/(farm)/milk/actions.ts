@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { animals, milkYields } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { farmToday } from "@/lib/dates";
+import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canWriteMilk } from "@/lib/permissions";
 import { syncMilkDrops } from "@/lib/sync-milk-drops";
@@ -24,16 +24,16 @@ export async function saveMilk(formData: FormData) {
 
   const today = farmToday(farm.timezone);
   const herd = await db
-    .select({ id: animals.id })
+    .select({ id: animals.id, code: animals.code })
     .from(animals)
     .where(and(eq(animals.farmId, farm.farmId), eq(animals.presence, "on_farm"), eq(animals.lactation, "lactating")));
 
-  const rows: { id: string; morning: string | null; evening: string | null }[] = [];
+  const rows: { id: string; code: string; morning: string | null; evening: string | null }[] = [];
   for (const animal of herd) {
     const morning = parseLitres(formData.get(`morning-${animal.id}`));
     const evening = parseLitres(formData.get(`evening-${animal.id}`));
     if ("error" in morning || "error" in evening) redirect("/milk?error=range");
-    rows.push({ id: animal.id, morning: morning.litres, evening: evening.litres });
+    rows.push({ id: animal.id, code: animal.code, morning: morning.litres, evening: evening.litres });
   }
 
   await db.transaction(async (tx) => {
@@ -67,7 +67,7 @@ export async function saveMilk(formData: FormData) {
         action: "update",
         entity: "milk",
         entityId: saved.id,
-        summary: `Milk updated for ${today}`,
+        summary: `Milk for ${row.code} on ${formatDisplayDate(today)}: ${[row.morning ? `${row.morning} L morning` : "", row.evening ? `${row.evening} L evening` : ""].filter(Boolean).join(", ") || "no litres entered"}`,
         after: { recordedOn: today, morning: row.morning, evening: row.evening },
       });
     }
