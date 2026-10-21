@@ -6,16 +6,26 @@ import { breedingRegister } from "@/lib/breeding-register";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canViewGenetics } from "@/lib/permissions";
-import { EmptyRow, Notice, Summary, Table, Td } from "@/components/workspace";
+import { PanelTabs } from "@/components/panel-tabs";
+import { EmptyRow, Notice, pickTab, Summary, Table, Td } from "@/components/workspace";
 
 const errors: Record<string, string> = {
   role: "Your role cannot record this breeding event.",
   animal: "Choose a female on this farm.",
 };
 
+const tabs = [
+  { id: "due", label: "Due" },
+  { id: "pregnant", label: "Pregnant" },
+  { id: "heat", label: "Heat" },
+  { id: "inseminations", label: "Inseminations" },
+  { id: "checks", label: "Checks" },
+  { id: "calvings", label: "Calvings" },
+];
+
 export const metadata = { title: "Breeding records" };
 
-export default async function BreedingPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function BreedingPage({ searchParams }: { searchParams: Promise<{ error?: string; tab?: string }> }) {
   const farm = await requireFarm();
   const query = await searchParams;
   const herd = await db.select().from(animals).where(eq(animals.farmId, farm.farmId));
@@ -30,6 +40,7 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
   );
   const openGenetics = canViewGenetics(farm.roles);
   const notice = query.error ? errors[query.error] : undefined;
+  const tab = pickTab(query.tab, tabs, "due");
 
   function animalLink(animalId: string) {
     const animal = byId.get(animalId);
@@ -43,7 +54,7 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <Summary
         title="Breeding"
         description="Heat, insemination, pregnancy checks, and calving for this farm. Each row opens the animal's breeding record."
@@ -56,8 +67,18 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
       />
       {notice ? <Notice tone="danger">{notice}</Notice> : null}
 
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Due</h2>
+      <PanelTabs
+        initialTab={tab}
+        tabs={[
+          { id: "due", label: "Due", count: register.due.length },
+          { id: "pregnant", label: "Pregnant", count: register.pregnant.length },
+          { id: "heat", label: "Heat", count: register.heats.length },
+          { id: "inseminations", label: "Inseminations", count: register.inseminations.length },
+          { id: "checks", label: "Checks", count: register.checks.length },
+          { id: "calvings", label: "Calvings", count: register.calvings.length },
+        ]}
+        panels={{
+          due: (
         <Table headers={["Animal", "Follow-up", "Date"]}>
           {register.due.length === 0 ? <EmptyRow cols={3}>Nothing is due in the next 30 days.</EmptyRow> : null}
           {register.due.map((row) => (
@@ -68,10 +89,8 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
             </tr>
           ))}
         </Table>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Pregnant</h2>
+          ),
+          pregnant: (
         <Table headers={["Animal", "Expected calving"]}>
           {register.pregnant.length === 0 ? <EmptyRow cols={2}>No pregnant animals.</EmptyRow> : null}
           {register.pregnant.map((animal) => {
@@ -84,10 +103,8 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
             );
           })}
         </Table>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Heat</h2>
+          ),
+          heat: (
         <Table headers={["Date", "Animal", "Signs"]}>
           {register.heats.length === 0 ? <EmptyRow cols={3}>No heat recorded.</EmptyRow> : null}
           {register.heats.map((row) => (
@@ -98,10 +115,8 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
             </tr>
           ))}
         </Table>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Inseminations</h2>
+          ),
+          inseminations: (
         <Table headers={["Date", "Animal", "Bull", "Attempt", "Straw", "Result"]}>
           {register.inseminations.length === 0 ? <EmptyRow cols={6}>No AI recorded yet.</EmptyRow> : null}
           {register.inseminations.map((row) => {
@@ -134,10 +149,8 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
             );
           })}
         </Table>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Pregnancy checks</h2>
+          ),
+          checks: (
         <Table headers={["Date", "Animal", "Result"]}>
           {register.checks.length === 0 ? <EmptyRow cols={3}>No pregnancy check recorded.</EmptyRow> : null}
           {register.checks.map((row) => (
@@ -148,10 +161,8 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
             </tr>
           ))}
         </Table>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">Calvings</h2>
+          ),
+          calvings: (
         <Table headers={["Date", "Dam", "Outcome", "Calf"]}>
           {register.calvings.length === 0 ? <EmptyRow cols={4}>No calving recorded.</EmptyRow> : null}
           {register.calvings.map((row) => {
@@ -174,7 +185,9 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
             );
           })}
         </Table>
-      </section>
+          ),
+        }}
+      />
     </div>
   );
 }
