@@ -1,6 +1,5 @@
 import { requireFarm } from "@/lib/farm-context";
-import { canRecordHealth, canViewFinance, canViewGenetics } from "@/lib/permissions";
-import { reportRows } from "@/lib/report-data";
+import { canOpenReport, reportRows, reportWindow } from "@/lib/report-data";
 import { csvFile, excelFile, pdfFile } from "@/lib/report-files";
 import { writeAudit } from "@/lib/audit";
 import { db } from "@/db";
@@ -21,18 +20,22 @@ const titles: Record<string, string> = {
 export async function GET(request: Request, context: { params: Promise<{ kind: string }> }) {
   const farm = await requireFarm();
   const { kind } = await context.params;
-  if (kind === "health" && !canRecordHealth(farm.roles) && !farm.roles.includes("owner") && !farm.roles.includes("manager")) {
-    return new Response("Forbidden", { status: 403 });
-  }
-  if (kind === "finance" && !canViewFinance(farm.roles)) return new Response("Forbidden", { status: 403 });
-  if (kind === "genetics" && !canViewGenetics(farm.roles)) return new Response("Forbidden", { status: 403 });
-  if (kind === "embryos" && !canViewGenetics(farm.roles)) return new Response("Forbidden", { status: 403 });
-  if (farm.roles.length === 1 && farm.roles[0] === "worker") return new Response("Forbidden", { status: 403 });
-
-  const lines = await reportRows(kind, farm.farmId);
+  if (!titles[kind]) return new Response("Unknown report", { status: 404 });
+  if (!canOpenReport(kind, farm.roles)) return new Response("Forbidden", { status: 403 });
+  const url = new URL(request.url);
+  const window = reportWindow(url.searchParams.get("from") ?? undefined, url.searchParams.get("to") ?? undefined);
+  const scope = {
+    roles: farm.roles,
+    from: window.from,
+    to: window.to,
+    presence: url.searchParams.get("presence") ?? undefined,
+    sex: url.searchParams.get("sex") ?? undefined,
+    breed: url.searchParams.get("breed") ?? undefined,
+  };
+  const lines = await reportRows(kind, farm.farmId, scope);
   if (!lines) return new Response("Unknown report", { status: 404 });
 
-  const format = new URL(request.url).searchParams.get("format") ?? "csv";
+  const format = url.searchParams.get("format") ?? "csv";
   await writeAudit(db, {
     farmId: farm.farmId,
     actorId: farm.userId,
@@ -40,7 +43,7 @@ export async function GET(request: Request, context: { params: Promise<{ kind: s
     entity: "export",
     entityId: kind,
     summary: `Downloaded ${titles[kind] ?? kind} as ${format}`,
-    after: { kind, format },
+    after: { kind, format, from: scope.from ?? null, to: scope.to ?? null, presence: scope.presence ?? null, sex: scope.sex ?? null, breed: scope.breed ?? null },
   });
   if (format === "xlsx") {
     const body = await excelFile(lines);

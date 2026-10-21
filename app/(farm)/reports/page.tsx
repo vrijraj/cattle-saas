@@ -1,46 +1,69 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
 import { Download } from "lucide-react";
+import { db } from "@/db";
+import { breeds } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 import { formatDisplayDate } from "@/lib/dates";
-import { canRecordHealth, canViewFinance, canViewGenetics, canViewReports } from "@/lib/permissions";
-import { reportRows } from "@/lib/report-data";
-import { EmptyRow, pickTab, Summary, TabBar, Table, Td } from "@/components/workspace";
+import { presenceLabel, sexLabel } from "@/lib/labels";
+import { canViewGenetics, canViewReports, canViewSemen } from "@/lib/permissions";
+import { canOpenReport, chartFor, reportRows, reportWindow } from "@/lib/report-data";
+import { EmptyRow, Summary, TabBar, Table, Td } from "@/components/workspace";
 
 const reports = [
-  { id: "cattle", label: "Cattle", detail: "Animals by breed", chart: "breed" },
-  { id: "breeding", label: "Breeding", detail: "Inseminations by bull", chart: "bull" },
-  { id: "milk", label: "Milk", detail: "Litres by day", chart: "milk" },
-  { id: "health", label: "Health", detail: "Records by type", chart: "type" },
-  { id: "feed", label: "Feed", detail: "Quantity by item", chart: "feed" },
-  { id: "semen", label: "Semen", detail: "Straws by status", chart: "status" },
-  { id: "weight", label: "Weight", detail: "Weighings by animal", chart: "weight" },
-  { id: "finance", label: "Finance", detail: "Amount by type", chart: "money" },
-  { id: "embryos", label: "Embryos", detail: "Embryos by status", chart: "status" },
-  { id: "genetics", label: "Genetics", detail: "Bull performance", chart: "sire" },
+  { id: "cattle", label: "Cattle", detail: "Animals by breed, including animals that have left the farm." },
+  { id: "breeding", label: "Breeding", detail: "Inseminations, pregnancy checks, and calvings." },
+  { id: "milk", label: "Milk", detail: "Morning and evening litres by animal. A voided entry is left out." },
+  { id: "health", label: "Health", detail: "Treatments, vaccines, and deworming." },
+  { id: "feed", label: "Feed", detail: "Stock movements. The chart is the quantity on hand." },
+  { id: "semen", label: "Semen", detail: "Straws by status." },
+  { id: "weight", label: "Weight", detail: "Weighings by animal." },
+  { id: "finance", label: "Finance", detail: "Income and expense. Voided rows stay in the table and out of the chart." },
+  { id: "embryos", label: "Embryos", detail: "Embryos by status." },
+  { id: "genetics", label: "Genetics", detail: "Bull performance." },
 ] as const;
 
 type ReportId = (typeof reports)[number]["id"];
 
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+const dated = new Set<ReportId>(["breeding", "milk", "health", "feed", "weight", "finance"]);
+
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; from?: string; to?: string; presence?: string; sex?: string; breed?: string }>;
+}) {
   const farm = await requireFarm();
   if (!canViewReports(farm.roles)) redirect("/dashboard");
-  const visible = reports.filter((report) => canOpen(report.id, farm.roles));
+  const visible = reports.filter((report) => canOpenReport(report.id, farm.roles));
   const query = await searchParams;
-  const tab = pickTab(query.tab, visible, visible[0]?.id ?? "cattle") as ReportId;
+  const tab = (visible.some((report) => report.id === query.tab) ? query.tab : visible[0]?.id ?? "cattle") as ReportId;
   const current = visible.find((report) => report.id === tab) ?? visible[0];
-  const lines = current ? await reportRows(current.id, farm.farmId) : null;
+  const window = reportWindow(query.from, query.to);
+  const scope = { roles: farm.roles, from: window.from, to: window.to, presence: query.presence, sex: query.sex, breed: query.breed };
+  const lines = current ? await reportRows(current.id, farm.farmId, scope) : null;
   const header = lines?.[0] ?? [];
   const body = lines?.slice(1) ?? [];
-  const series = current ? chartSeries(current.id, body) : [];
+  const series = current ? chartFor(current.id, body) : [];
   const preview = body.slice(0, 8);
+  const breedRows = current?.id === "cattle" ? await db.select().from(breeds).where(eq(breeds.farmId, farm.farmId)) : [];
+  const genetics = canViewGenetics(farm.roles);
+  const semen = canViewSemen(farm.roles);
+  const filtered = Boolean(window.from || window.to || query.presence || query.sex || query.breed);
 
   return (
     <div className="space-y-5">
       <Summary
         title="Reports"
-        description="Each register has a chart and a download for CSV, Excel, or PDF."
+        description="Each register has a chart and a download for CSV, Excel, or PDF. The file uses the filters on this page."
         facts={[{ label: "Rows", value: String(body.length) }]}
+        action={
+          filtered && current ? (
+            <Link href={`/reports?tab=${current.id}`} className="inline-flex h-10 items-center rounded-full border border-border px-4 text-sm font-medium">
+              Clear
+            </Link>
+          ) : null
+        }
       />
       <TabBar tabs={visible.map((report) => ({ id: report.id, label: report.label }))} current={tab} base="/reports" />
 
@@ -52,14 +75,57 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
               <p className="mt-1 text-sm text-muted-foreground">{current.detail}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <DownloadLink href={`/reports/${current.id}`} label="Download CSV" />
-              <DownloadLink href={`/reports/${current.id}?format=pdf`} label="Download PDF" />
-              <DownloadLink href={`/reports/${current.id}?format=xlsx`} label="Download Excel" primary />
+              <DownloadLink href={fileHref(current.id, "", scope)} label="Download CSV" />
+              <DownloadLink href={fileHref(current.id, "pdf", scope)} label="Download PDF" />
+              <DownloadLink href={fileHref(current.id, "xlsx", scope)} label="Download Excel" primary />
             </div>
           </div>
 
+          {current.id === "cattle" || dated.has(current.id) ? (
+            <form className="flex flex-wrap items-end gap-2" method="get">
+              <input name="tab" type="hidden" value={current.id} />
+              {dated.has(current.id) ? (
+                <>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-muted-foreground">From</span>
+                    <input className="h-10 rounded-lg border border-border bg-background px-3" name="from" type="date" defaultValue={window.from ?? ""} />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-muted-foreground">To</span>
+                    <input className="h-10 rounded-lg border border-border bg-background px-3" name="to" type="date" defaultValue={window.to ?? ""} />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <FilterSelect name="presence" label="Presence" value={query.presence} options={presenceLabel} />
+                  <FilterSelect name="sex" label="Sex" value={query.sex} options={sexLabel} />
+                  <label className="text-sm">
+                    <span className="mb-1 block text-muted-foreground">Breed</span>
+                    <select className="h-10 rounded-lg border border-border bg-background px-3" name="breed" defaultValue={query.breed ?? ""}>
+                      <option value="">All breeds</option>
+                      {breedRows.map((breed) => (
+                        <option key={breed.id} value={breed.id}>
+                          {breed.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              )}
+              <button className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground" type="submit">
+                Apply
+              </button>
+            </form>
+          ) : null}
+
           {series.length === 0 ? (
-            <p className="rounded-xl bg-muted px-4 py-8 text-sm text-muted-foreground">Nothing recorded in this register yet.</p>
+            <p className="rounded-xl bg-muted px-4 py-8 text-sm text-muted-foreground">
+              {filtered && body.length === 0
+                ? "Nothing is filled in for this filter."
+                : current.id === "finance" && body.length > 0
+                  ? "The chart uses active rows. Voided rows stay in the table."
+                  : "Nothing recorded in this register yet."}
+            </p>
           ) : (
             <ul className="space-y-3">
               {series.map((item) => (
@@ -82,19 +148,81 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
               <tr key={`${row[0]}-${index}`}>
                 {row.map((cell, cellIndex) => (
                   <Td key={`${cellIndex}`} className="whitespace-nowrap">
-                    {cell || "—"}
+                    <ReportCell value={cell} genetics={genetics} semen={semen} />
                   </Td>
                 ))}
               </tr>
             ))}
           </Table>
           {body.length > preview.length ? (
-            <p className="text-sm text-muted-foreground">Showing {preview.length} of {body.length} rows. Download the file for the full register.</p>
+            <p className="text-sm text-muted-foreground">
+              Showing {preview.length} of {body.length} rows. Download the file for the full register.
+              {window.from || window.to ? ` Dates run ${window.from ? formatDisplayDate(window.from) : "from the start"} to ${window.to ? formatDisplayDate(window.to) : "the latest"}.` : ""}
+            </p>
           ) : null}
         </section>
       ) : null}
     </div>
   );
+}
+
+function FilterSelect({ name, label, value, options }: { name: string; label: string; value?: string; options: Record<string, string> }) {
+  return (
+    <label className="text-sm">
+      <span className="mb-1 block text-muted-foreground">{label}</span>
+      <select className="h-10 rounded-lg border border-border bg-background px-3" name={name} defaultValue={value ?? ""}>
+        <option value="">All</option>
+        {Object.entries(options).map(([option, text]) => (
+          <option key={option} value={option}>
+            {text}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function ReportCell({ value, genetics, semen }: { value: string; genetics: boolean; semen: boolean }) {
+  if (!value) return <>—</>;
+  const parts = value.split(/(\s·\s|\s+)/);
+  return (
+    <>
+      {parts.map((part, index) => {
+        const href = codeHref(part, genetics, semen);
+        return href ? (
+          <Link key={`${part}-${index}`} href={href} className="hover:underline">
+            {part}
+          </Link>
+        ) : (
+          <span key={`${part}-${index}`}>{part}</span>
+        );
+      })}
+    </>
+  );
+}
+
+function codeHref(value: string, genetics: boolean, semen: boolean) {
+  if (!/^[A-Z]{2,6}(?:-[A-Z0-9]+)+$/.test(value)) return null;
+  if (value.startsWith("STR-")) return `/scan?code=${encodeURIComponent(value)}`;
+  if (value.startsWith("BULL-")) {
+    if (genetics) return `/genetics?tab=bulls&sire=${encodeURIComponent(value)}`;
+    if (semen) return `/semen?q=${encodeURIComponent(value)}`;
+    return null;
+  }
+  if (value.startsWith("MIL-") || value.startsWith("NAV-")) return `/animals/${value}`;
+  return null;
+}
+
+function fileHref(kind: string, format: string, scope: { from?: string; to?: string; presence?: string; sex?: string; breed?: string }) {
+  const query = new URLSearchParams();
+  if (format) query.set("format", format);
+  if (scope.from) query.set("from", scope.from);
+  if (scope.to) query.set("to", scope.to);
+  if (scope.presence) query.set("presence", scope.presence);
+  if (scope.sex) query.set("sex", scope.sex);
+  if (scope.breed) query.set("breed", scope.breed);
+  const text = query.toString();
+  return `/reports/${kind}${text ? `?${text}` : ""}`;
 }
 
 function DownloadLink({ href, label, primary = false }: { href: string; label: string; primary?: boolean }) {
@@ -109,72 +237,4 @@ function DownloadLink({ href, label, primary = false }: { href: string; label: s
       {label}
     </Link>
   );
-}
-
-function canOpen(kind: ReportId, roles: string[]) {
-  if (kind === "health" && !canRecordHealth(roles) && !roles.includes("owner") && !roles.includes("manager")) return false;
-  if (kind === "finance" && !canViewFinance(roles)) return false;
-  if (kind === "genetics" && !canViewGenetics(roles)) return false;
-  if (kind === "embryos" && !canViewGenetics(roles)) return false;
-  return true;
-}
-
-function chartSeries(kind: ReportId, rows: string[][]) {
-  const counted =
-    kind === "cattle"
-      ? countBy(rows, 2)
-      : kind === "breeding" || kind === "weight"
-        ? countBy(rows, 1)
-        : kind === "health"
-          ? countBy(rows, 0)
-            : kind === "semen" || kind === "embryos"
-              ? countBy(rows, 1)
-              : kind === "genetics"
-                ? sumBy(rows, 0, (row) => Number(row[2] || 0))
-            : kind === "milk"
-              ? sumBy(rows, 0, (row) => Number(row[2] || 0) + Number(row[3] || 0))
-              : kind === "feed"
-                ? sumBy(rows, 1, (row) => Number(row[3] || 0))
-                : sumBy(rows, 1, (row) => Number(row[3] || 0));
-
-  const top = [...counted.entries()]
-    .filter(([label]) => label !== "")
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8);
-  const max = Math.max(...top.map(([, value]) => value), 1);
-  return top.map(([label, value]) => ({
-    label: prettyLabel(kind, label),
-    display: prettyValue(kind, value),
-    width: Math.max(6, Math.round((value / max) * 100)),
-  }));
-}
-
-function countBy(rows: string[][], index: number) {
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    const key = row[index] || "Unknown";
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
-}
-
-function sumBy(rows: string[][], index: number, valueOf: (row: string[]) => number) {
-  const totals = new Map<string, number>();
-  for (const row of rows) {
-    const key = row[index] || "Unknown";
-    totals.set(key, (totals.get(key) ?? 0) + valueOf(row));
-  }
-  return totals;
-}
-
-function prettyLabel(kind: ReportId, label: string) {
-  if (kind === "milk" && /^\d{4}-\d{2}-\d{2}$/.test(label)) return formatDisplayDate(label);
-  return label.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function prettyValue(kind: ReportId, value: number) {
-  if (kind === "finance") return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-  if (kind === "milk" || kind === "feed") return value.toLocaleString("en-IN", { maximumFractionDigits: 1 });
-  if (kind === "weight") return `${value} records`;
-  return String(value);
 }
