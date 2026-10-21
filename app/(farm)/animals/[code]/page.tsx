@@ -33,7 +33,7 @@ export default async function AnimalProfilePage({
   searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams: Promise<{ tab?: string; event?: string; error?: string }>;
+  searchParams: Promise<{ tab?: string; event?: string; error?: string; edit?: string }>;
 }) {
   const farm = await requireFarm();
   const { code } = await params;
@@ -190,6 +190,7 @@ export default async function AnimalProfilePage({
         sireLabel={sireLabel}
         tab={tab}
         breedingError={query.error}
+        pedigreeEdit={query.edit}
         canBreed={canRecordBreeding(farm.roles)}
         canHealth={canRecordHealth(farm.roles)}
         canList={canPublish(farm.roles)}

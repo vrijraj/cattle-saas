@@ -10,6 +10,8 @@ export function RecordDialog({
   notice,
   open = false,
   quiet = false,
+  hiddenButton = false,
+  onDismiss,
   children,
 }: {
   title: string;
@@ -17,24 +19,40 @@ export function RecordDialog({
   notice?: string;
   open?: boolean;
   quiet?: boolean;
+  hiddenButton?: boolean;
+  onDismiss?: () => void;
   children: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
+  function show() {
+    const top = window.scrollY;
+    dialogRef.current?.showModal();
+    window.scrollTo({ top });
+  }
+
   useEffect(() => {
-    if (open) dialogRef.current?.showModal();
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open) {
+      const top = window.scrollY;
+      dialog.showModal();
+      window.scrollTo({ top });
+    } else if (dialog.open) dialog.close();
   }, [open]);
 
   function close() {
     dialogRef.current?.close();
+    onDismiss?.();
   }
 
   return (
     <>
+      {hiddenButton ? null : (
       <button
         type="button"
-        onClick={() => dialogRef.current?.showModal()}
+        onClick={show}
         className={
           quiet
             ? "text-sm font-medium text-primary"
@@ -43,6 +61,7 @@ export function RecordDialog({
       >
         {button}
       </button>
+      )}
       <dialog
         ref={dialogRef}
         aria-labelledby={titleId}

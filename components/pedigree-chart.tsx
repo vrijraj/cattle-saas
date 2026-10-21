@@ -6,33 +6,39 @@ type Slot = {
   node: PedigreeNode;
   role: string;
   next: Slot[];
+  editTarget?: string;
+  editLabel?: string;
 };
 
 export function PedigreeChart({
   chart,
   offspring,
   action,
+  editable = false,
+  onEdit,
 }: {
   chart: AncestorChart;
   offspring: { code: string; name: string | null }[];
   action?: ReactNode;
+  editable?: boolean;
+  onEdit?: (target: string) => void;
 }) {
-  const ancestors = buildLevel(chart.parents, ["Sire", "Dam"], [chart.grandparents, chart.greatGrandparents, chart.fourthGeneration], 1);
+  const ancestors = buildLevel(chart.parents, ["Sire", "Dam"], [chart.grandparents, chart.greatGrandparents, chart.fourthGeneration], 1, "self", editable);
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Pedigree</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Daughters and sons on the left. The sire sits above the dam on the right. A line stops where a parent is not linked.</p>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">Offspring on the left. The 1st generation is the sire and dam, then the 2nd, 3rd, and 4th stand further right. Set parents on a card to fill the next column.</p>
         </div>
         {action}
       </div>
       <div className="mt-5 overflow-x-auto rounded-xl bg-muted/70 p-4">
         <div className="flex items-center">
           <Offspring nodes={offspring} />
-          <AnimalCard node={chart.self} role="This animal" emphasis />
-          <AncestorList slots={ancestors} />
+          <AnimalCard node={chart.self} role="This animal" emphasis editTarget={editable ? "self" : undefined} editLabel="Set 1st generation" onEdit={onEdit} />
+          <AncestorList slots={ancestors} onEdit={onEdit} />
         </div>
       </div>
       {offspring.length === 0 ? <p className="mt-4 text-sm text-muted-foreground">No offspring linked yet.</p> : null}
@@ -40,19 +46,27 @@ export function PedigreeChart({
   );
 }
 
-function buildLevel(nodes: PedigreeNode[], roles: string[], below: PedigreeNode[][], depth: number): Slot[] {
+function generationName(depth: number) {
+  if (depth === 1) return "1st";
+  if (depth === 2) return "2nd";
+  if (depth === 3) return "3rd";
+  return "4th";
+}
+
+function buildLevel(nodes: PedigreeNode[], roles: string[], below: PedigreeNode[][], depth: number, parentEdit: string, editable: boolean): Slot[] {
   const [nextGen, ...rest] = below;
   return nodes.flatMap((node, index) => {
     const known = Boolean(node.code);
-    if (!known && depth > 1) return [];
     const start = index * 2;
     const pair = nextGen ? nextGen.slice(start, start + 2) : [];
     const scopedRest = rest.map((row, step) => {
       const span = 2 ** (step + 2);
       return row.slice(index * span, index * span + span);
     });
-    const next = known && depth < 4 && pair.some((item) => item.code) ? buildLevel(pair, ["Sire", "Dam"], scopedRest, depth + 1) : [];
-    return [{ node, role: roles[index] ?? "Ancestor", next }];
+    const next = known && depth < 4 ? buildLevel(pair, ["Sire", "Dam"], scopedRest, depth + 1, node.code ?? parentEdit, editable) : [];
+    const editTarget = !editable || depth >= 4 ? undefined : known ? node.code ?? undefined : depth === 1 ? "self" : parentEdit;
+    const editLabel = !editTarget ? undefined : known ? `Add ${generationName(depth + 1)}` : `Set ${generationName(depth)}`;
+    return [{ node, role: `${generationName(depth)} · ${roles[index] ?? "Ancestor"}`, next, editTarget, editLabel }];
   });
 }
 
@@ -87,13 +101,13 @@ function Offspring({ nodes }: { nodes: { code: string; name: string | null }[] }
   );
 }
 
-function AncestorList({ slots }: { slots: Slot[] }) {
+function AncestorList({ slots, onEdit }: { slots: Slot[]; onEdit?: (target: string) => void }) {
   if (slots.length === 0) return null;
   if (slots.length === 1) {
     return (
       <>
         <span aria-hidden className="h-px w-8 shrink-0 bg-primary/40" />
-        <Branch slot={slots[0]} />
+        <Branch slot={slots[0]} onEdit={onEdit} />
       </>
     );
   }
@@ -110,7 +124,7 @@ function AncestorList({ slots }: { slots: Slot[] }) {
               }`}
             />
             <span aria-hidden className="h-px w-6 shrink-0 bg-primary/40" />
-            <Branch slot={slot} />
+            <Branch slot={slot} onEdit={onEdit} />
           </li>
         ))}
       </ul>
@@ -118,16 +132,30 @@ function AncestorList({ slots }: { slots: Slot[] }) {
   );
 }
 
-function Branch({ slot }: { slot: Slot }) {
+function Branch({ slot, onEdit }: { slot: Slot; onEdit?: (target: string) => void }) {
   return (
     <div className="flex items-center">
-      <AnimalCard node={slot.node} role={slot.role} />
-      <AncestorList slots={slot.next} />
+      <AnimalCard node={slot.node} role={slot.role} editTarget={slot.editTarget} editLabel={slot.editLabel} onEdit={onEdit} />
+      <AncestorList slots={slot.next} onEdit={onEdit} />
     </div>
   );
 }
 
-function AnimalCard({ node, role, emphasis = false }: { node: PedigreeNode; role: string; emphasis?: boolean }) {
+function AnimalCard({
+  node,
+  role,
+  emphasis = false,
+  editTarget,
+  editLabel,
+  onEdit,
+}: {
+  node: PedigreeNode;
+  role: string;
+  emphasis?: boolean;
+  editTarget?: string;
+  editLabel?: string;
+  onEdit?: (target: string) => void;
+}) {
   const known = Boolean(node.code);
   const title = known ? (node.name ?? node.code) : "Not linked";
   const showCode = Boolean(node.code && node.name && node.name !== node.code);
@@ -137,16 +165,20 @@ function AnimalCard({ node, role, emphasis = false }: { node: PedigreeNode; role
   const body = (
     <>
       <span className="block text-[11px] text-muted-foreground">{role}</span>
-      <span className={`mt-0.5 block truncate text-sm font-semibold ${known ? "" : "text-muted-foreground"}`}>{title}</span>
+      {node.href ? (
+        <Link href={node.href} className={`mt-0.5 block truncate text-sm font-semibold ${known ? "" : "text-muted-foreground"}`}>
+          {title}
+        </Link>
+      ) : (
+        <span className={`mt-0.5 block truncate text-sm font-semibold ${known ? "" : "text-muted-foreground"}`}>{title}</span>
+      )}
       {showCode ? <span className="block truncate text-xs text-muted-foreground">{node.code}</span> : null}
+      {editTarget && onEdit ? (
+        <button type="button" onClick={() => onEdit(editTarget)} className="mt-2 text-xs font-medium text-primary">
+          {editLabel ?? "Set parents"}
+        </button>
+      ) : null}
     </>
   );
-  if (node.href) {
-    return (
-      <Link href={node.href} className={className}>
-        {body}
-      </Link>
-    );
-  }
   return <div className={className}>{body}</div>;
 }
