@@ -542,8 +542,8 @@ export async function AnimalHub({
   ];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-      <div className="space-y-4">
+    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+      <div className="min-w-0 space-y-4">
         <Panel title="Basic information">
           <dl className="grid gap-4 sm:grid-cols-2">
             {identity.map(([label, value]) => (
@@ -604,9 +604,9 @@ function ActivityList({ title, events }: { title: string; events: { when: string
       <ul className="divide-y divide-border">
         {events.length === 0 ? <li className="py-2 text-sm text-muted-foreground">Nothing recorded yet.</li> : null}
         {events.map((event) => (
-          <li key={`${event.when}-${event.label}`} className="flex gap-4 py-3 text-sm">
-            <span className="w-28 shrink-0 text-muted-foreground">{formatDisplayDate(event.when)}</span>
-            <span>{event.label}</span>
+          <li key={`${event.when}-${event.label}`} className="flex gap-3 py-3 text-sm">
+            <span className="w-24 shrink-0 text-muted-foreground">{formatDisplayDate(event.when)}</span>
+            <span className="min-w-0">{event.label}</span>
           </li>
         ))}
       </ul>

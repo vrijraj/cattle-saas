@@ -1,45 +1,172 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Download } from "lucide-react";
 import { requireFarm } from "@/lib/farm-context";
-import { Summary } from "@/components/workspace";
+import { formatDisplayDate } from "@/lib/dates";
+import { canRecordHealth, canViewFinance } from "@/lib/permissions";
+import { reportRows } from "@/lib/report-data";
+import { EmptyRow, pickTab, Summary, TabBar, Table, Td } from "@/components/workspace";
 
 const reports = [
-  ["cattle", "Cattle register", "Identity, status, sire, and dam"],
-  ["breeding", "Breeding and AI", "Inseminations and pregnancy work"],
-  ["milk", "Milk", "Recorded yields"],
-  ["health", "Health and vaccination", "Treatments and doses"],
-  ["feed", "Feed stock", "Items and movements"],
-  ["semen", "Semen inventory", "Straws and tanks"],
-  ["finance", "Finance", "Income and expense"],
-];
+  { id: "cattle", label: "Cattle", detail: "Animals by breed", chart: "breed" },
+  { id: "breeding", label: "Breeding", detail: "Inseminations by bull", chart: "bull" },
+  { id: "milk", label: "Milk", detail: "Litres by day", chart: "milk" },
+  { id: "health", label: "Health", detail: "Records by type", chart: "type" },
+  { id: "feed", label: "Feed", detail: "Quantity by item", chart: "feed" },
+  { id: "semen", label: "Semen", detail: "Straws by status", chart: "status" },
+  { id: "finance", label: "Finance", detail: "Amount by type", chart: "money" },
+] as const;
 
-export default async function ReportsPage() {
-  await requireFarm();
+type ReportId = (typeof reports)[number]["id"];
+
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const farm = await requireFarm();
+  if (farm.roles.length === 1 && farm.roles[0] === "worker") redirect("/dashboard");
+  const visible = reports.filter((report) => canOpen(report.id, farm.roles));
+  const query = await searchParams;
+  const tab = pickTab(query.tab, visible, visible[0]?.id ?? "cattle") as ReportId;
+  const current = visible.find((report) => report.id === tab) ?? visible[0];
+  const lines = current ? await reportRows(current.id, farm.farmId) : null;
+  const header = lines?.[0] ?? [];
+  const body = lines?.slice(1) ?? [];
+  const series = current ? chartSeries(current.id, body) : [];
+  const preview = body.slice(0, 8);
+
   return (
     <div className="space-y-5">
       <Summary
         title="Reports"
-        description="Download each register as CSV, Excel, or PDF. The same role rules as the screen apply."
-        facts={[{ label: "Registers", value: String(reports.length) }]}
+        description="Each register has a chart and a download for CSV, Excel, or PDF."
+        facts={[{ label: "Rows", value: String(body.length) }]}
       />
-      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {reports.map(([kind, label, detail]) => (
-          <li key={kind} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <p className="font-medium">{label}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
-            <p className="mt-4 flex gap-3 text-sm font-medium">
-              <Link href={`/reports/${kind}`} className="text-primary">
-                CSV
-              </Link>
-              <Link href={`/reports/${kind}?format=xlsx`} className="text-primary">
-                Excel
-              </Link>
-              <Link href={`/reports/${kind}?format=pdf`} className="text-primary">
-                PDF
-              </Link>
-            </p>
-          </li>
-        ))}
-      </ul>
+      <TabBar tabs={visible.map((report) => ({ id: report.id, label: report.label }))} current={tab} base="/reports" />
+
+      {current ? (
+        <section className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">{current.label}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{current.detail}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <DownloadLink href={`/reports/${current.id}`} label="Download CSV" />
+              <DownloadLink href={`/reports/${current.id}?format=pdf`} label="Download PDF" />
+              <DownloadLink href={`/reports/${current.id}?format=xlsx`} label="Download Excel" primary />
+            </div>
+          </div>
+
+          {series.length === 0 ? (
+            <p className="rounded-xl bg-muted px-4 py-8 text-sm text-muted-foreground">Nothing recorded in this register yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {series.map((item) => (
+                <li key={item.label}>
+                  <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+                    <span className="truncate font-medium">{item.label}</span>
+                    <span className="shrink-0 text-muted-foreground">{item.display}</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${item.width}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <Table headers={header.length > 0 ? header : ["Register"]}>
+            {preview.length === 0 ? <EmptyRow cols={Math.max(header.length, 1)}>No rows to show.</EmptyRow> : null}
+            {preview.map((row, index) => (
+              <tr key={`${row[0]}-${index}`}>
+                {row.map((cell, cellIndex) => (
+                  <Td key={`${cellIndex}`} className="whitespace-nowrap">
+                    {cell || "—"}
+                  </Td>
+                ))}
+              </tr>
+            ))}
+          </Table>
+          {body.length > preview.length ? (
+            <p className="text-sm text-muted-foreground">Showing {preview.length} of {body.length} rows. Download the file for the full register.</p>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
+}
+
+function DownloadLink({ href, label, primary = false }: { href: string; label: string; primary?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-medium ${
+        primary ? "bg-primary text-primary-foreground" : "border border-border bg-background"
+      }`}
+    >
+      <Download className="size-4" />
+      {label}
+    </Link>
+  );
+}
+
+function canOpen(kind: ReportId, roles: string[]) {
+  if (kind === "health" && !canRecordHealth(roles) && !roles.includes("owner") && !roles.includes("manager")) return false;
+  if (kind === "finance" && !canViewFinance(roles)) return false;
+  return true;
+}
+
+function chartSeries(kind: ReportId, rows: string[][]) {
+  const counted =
+    kind === "cattle"
+      ? countBy(rows, 2)
+      : kind === "breeding"
+        ? countBy(rows, 1)
+        : kind === "health"
+          ? countBy(rows, 0)
+          : kind === "semen"
+            ? countBy(rows, 1)
+            : kind === "milk"
+              ? sumBy(rows, 0, (row) => Number(row[2] || 0) + Number(row[3] || 0))
+              : kind === "feed"
+                ? sumBy(rows, 1, (row) => Number(row[3] || 0))
+                : sumBy(rows, 1, (row) => Number(row[3] || 0));
+
+  const top = [...counted.entries()]
+    .filter(([label]) => label !== "")
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+  const max = Math.max(...top.map(([, value]) => value), 1);
+  return top.map(([label, value]) => ({
+    label: prettyLabel(kind, label),
+    display: prettyValue(kind, value),
+    width: Math.max(6, Math.round((value / max) * 100)),
+  }));
+}
+
+function countBy(rows: string[][], index: number) {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const key = row[index] || "Unknown";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function sumBy(rows: string[][], index: number, valueOf: (row: string[]) => number) {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    const key = row[index] || "Unknown";
+    totals.set(key, (totals.get(key) ?? 0) + valueOf(row));
+  }
+  return totals;
+}
+
+function prettyLabel(kind: ReportId, label: string) {
+  if (kind === "milk" && /^\d{4}-\d{2}-\d{2}$/.test(label)) return formatDisplayDate(label);
+  return label.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function prettyValue(kind: ReportId, value: number) {
+  if (kind === "finance") return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  if (kind === "milk" || kind === "feed") return value.toLocaleString("en-IN", { maximumFractionDigits: 1 });
+  return String(value);
 }

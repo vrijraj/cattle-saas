@@ -38,6 +38,12 @@
   --font-display: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -80,6 +86,33 @@ dialog[open] {
   animation: dialog-in 180ms ease-out;
 }
 
+dialog.nav-drawer {
+  margin: 0;
+  margin-right: auto;
+  height: 100dvh;
+  max-height: none;
+  width: min(18rem, 84vw);
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0 1.25rem 1.25rem 0;
+  padding: 0;
+  background: var(--card);
+  color: var(--foreground);
+}
+
+dialog.nav-drawer[open] {
+  animation: drawer-in 220ms ease-out;
+}
+
+@keyframes drawer-in {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 0;
+  }
+}
+
 dialog[open]::backdrop {
   animation: page-fade 180ms ease-out;
 }
@@ -104,7 +137,8 @@ dialog[open]::backdrop {
   }
 
   dialog[open],
-  dialog[open]::backdrop {
+  dialog[open]::backdrop,
+  dialog.nav-drawer[open] {
     animation: none;
   }
 }

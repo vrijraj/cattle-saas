@@ -58,7 +58,7 @@ export default async function GeneticsPage({
         ))}
       </Table>
       ) : (
-      <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
         <Panel title="Mating check">
           <form className="grid gap-3">
             <select name="female" defaultValue={query.female} className={inputClass}>

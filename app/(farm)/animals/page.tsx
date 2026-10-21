@@ -125,7 +125,7 @@ export default async function AnimalsPage({
 
       {tab === "tree" ? <HerdTree forest={herdForest(rows)} /> : null}
       {tab === "herd" ? (
-        <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
             <form action="/animals" className="lg:w-80">
               {view !== "all" ? <input type="hidden" name="view" value={view} /> : null}
@@ -158,7 +158,33 @@ export default async function AnimalsPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <ul className="divide-y divide-border md:hidden">
+            {visible.length === 0 ? <li className="px-4 py-8 text-sm text-muted-foreground">No cattle match this filter.</li> : null}
+            {visible.map((animal) => {
+              const status = rowStatus(animal);
+              return (
+                <li key={animal.id}>
+                  <Link href={`/animals/${animal.code}`} className="flex items-center gap-3 px-4 py-3">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-sm font-semibold text-primary">
+                      {(animal.name ?? animal.code).slice(0, 1)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{animal.name ?? "Unnamed"}</span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        {animal.code} · {animal.breedName} · {ageLabel(animal.dob, today)}
+                      </span>
+                      <span className="mt-1.5 flex min-w-0 items-center gap-2">
+                        <Pill tone={status.tone}>{status.label}</Pill>
+                        <span className="truncate text-xs text-muted-foreground">{animal.locationName ?? "Unassigned"}</span>
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[860px] text-left text-sm">
               <thead className="bg-muted/80 text-xs text-muted-foreground">
                 <tr>

@@ -61,58 +61,56 @@ export default async function MilkPage({
       />
       {query.error ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.saved ? <Notice>Milk for today is saved.</Notice> : null}
-      <form action={saveMilk} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="bg-muted text-xs text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 font-medium">Cattle ID</th>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Morning (L)</th>
-                <th className="px-4 py-3 font-medium">Evening (L)</th>
-                <th className="px-4 py-3 font-medium">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {herd.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-muted-foreground">
-                    No lactating animals on the farm.
-                  </td>
-                </tr>
-              ) : null}
-              {herd.map((animal) => {
-                const row = byAnimal.get(animal.id);
-                const sum = Number(row?.morningLitres ?? 0) + Number(row?.eveningLitres ?? 0);
-                return (
-                  <tr key={animal.id} className="border-t border-border">
-                    <td className="px-4 py-3 font-medium">{animal.code}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{animal.name ?? "Unnamed"}</td>
-                    <td className="px-4 py-3">
-                      <input
-                        name={`morning-${animal.id}`}
-                        inputMode="decimal"
-                        defaultValue={row?.morningLitres ?? ""}
-                        disabled={!canSave}
-                        className="h-10 w-24 rounded-lg border border-border bg-background px-3"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        name={`evening-${animal.id}`}
-                        inputMode="decimal"
-                        defaultValue={row?.eveningLitres ?? ""}
-                        disabled={!canSave}
-                        className="h-10 w-24 rounded-lg border border-border bg-background px-3"
-                      />
-                    </td>
-                    <td className="px-4 py-3">{row ? sum.toFixed(1) : "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <form action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        {herd.length === 0 ? <p className="px-4 py-8 text-sm text-muted-foreground">No lactating animals on the farm.</p> : null}
+        {herd.length > 0 ? (
+          <div className="hidden grid-cols-[7.5rem_minmax(0,1fr)_8rem_8rem_4.5rem] gap-3 bg-muted px-4 py-3 text-xs font-medium text-muted-foreground lg:grid">
+            <span>Cattle ID</span>
+            <span>Name</span>
+            <span>Morning (L)</span>
+            <span>Evening (L)</span>
+            <span>Total</span>
+          </div>
+        ) : null}
+        <ul className="divide-y divide-border">
+          {herd.map((animal) => {
+            const row = byAnimal.get(animal.id);
+            const sum = Number(row?.morningLitres ?? 0) + Number(row?.eveningLitres ?? 0);
+            return (
+              <li
+                key={animal.id}
+                className="grid grid-cols-2 items-end gap-3 p-4 lg:grid-cols-[7.5rem_minmax(0,1fr)_8rem_8rem_4.5rem] lg:items-center lg:py-3"
+              >
+                <div className="min-w-0 self-center lg:col-start-2 lg:row-start-1">
+                  <p className="truncate font-medium">{animal.name ?? "Unnamed"}</p>
+                  <p className="text-xs text-muted-foreground lg:hidden">{animal.code}</p>
+                </div>
+                <p className="self-center text-right text-sm font-medium lg:col-start-5 lg:row-start-1 lg:text-left">{row ? `${sum.toFixed(1)} L` : "—"}</p>
+                <p className="hidden font-medium lg:col-start-1 lg:row-start-1 lg:block">{animal.code}</p>
+                <label className="grid gap-1 text-xs text-muted-foreground lg:col-start-3 lg:row-start-1">
+                  <span className="lg:sr-only">Morning (L)</span>
+                  <input
+                    name={`morning-${animal.id}`}
+                    inputMode="decimal"
+                    defaultValue={row?.morningLitres ?? ""}
+                    disabled={!canSave}
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground lg:h-10"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs text-muted-foreground lg:col-start-4 lg:row-start-1">
+                  <span className="lg:sr-only">Evening (L)</span>
+                  <input
+                    name={`evening-${animal.id}`}
+                    inputMode="decimal"
+                    defaultValue={row?.eveningLitres ?? ""}
+                    disabled={!canSave}
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground lg:h-10"
+                  />
+                </label>
+              </li>
+            );
+          })}
+        </ul>
         {canSave && herd.length > 0 ? (
           <div className="border-t border-border px-4 py-3">
             <Button type="submit" className="h-10 rounded-full px-5">

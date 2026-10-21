@@ -66,10 +66,10 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <section className="relative overflow-hidden rounded-3xl bg-[#e7f6ee] px-6 py-7 md:px-8">
+      <section className="relative overflow-hidden rounded-3xl bg-[#e7f6ee] px-5 py-6 md:px-8 md:py-7">
         <div className="relative z-10 max-w-xl">
           <p className="text-xs font-semibold tracking-[0.16em] text-primary">WELCOME BACK</p>
-          <h1 className="mt-2 max-w-md text-4xl font-semibold tracking-tight text-foreground">
+          <h1 className="mt-2 max-w-md text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
             Manage a healthier herd
           </h1>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
@@ -79,15 +79,15 @@ export default async function DashboardPage() {
         <FarmMark />
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map((stat) => (
-          <article key={stat.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <article key={stat.label} className="rounded-2xl border border-border bg-card p-3.5 shadow-sm sm:p-4">
             <div className="flex items-start justify-between">
-              <span className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
+              <span className="grid size-9 place-items-center rounded-xl bg-secondary text-primary sm:size-10">
                 <stat.icon className="size-4" />
               </span>
             </div>
-            <p className="mt-4 text-3xl font-semibold tracking-tight">{stat.value}</p>
+            <p className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{stat.value}</p>
             <p className="text-sm text-muted-foreground">{stat.label}</p>
             <p className="mt-1 text-xs text-primary">{stat.hint}</p>
           </article>
@@ -97,7 +97,7 @@ export default async function DashboardPage() {
       <section className="grid gap-3 xl:grid-cols-3">
         <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <h2 className="font-semibold">Cattle overview</h2>
-          <div className="mt-5 flex items-center gap-6">
+          <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
             <div
               className="grid size-36 place-items-center rounded-full"
               style={{ background: breedSum ? `conic-gradient(${donut})` : "#e6ece8" }}
@@ -131,8 +131,8 @@ export default async function DashboardPage() {
           <ul className="mt-4 divide-y divide-border">
             {upcoming.length === 0 ? <li className="py-4 text-sm text-muted-foreground">No pregnant animals with a due date.</li> : null}
             {upcoming.slice(0, 5).map((animal) => (
-              <li key={animal.id} className="flex items-center justify-between gap-3 py-3">
-                <div>
+              <li key={animal.id} className="flex items-start justify-between gap-3 py-3">
+                <div className="min-w-0">
                   <Link href={`/animals/${animal.code}`} className="font-medium">
                     {animal.name ?? animal.code}
                   </Link>
@@ -180,7 +180,7 @@ function DueBadge({ today, due }: { today: string; due: string | null }) {
   const soon = days <= 30;
   const label = days < 0 ? `${Math.abs(days)} days overdue` : days === 0 ? "Due today" : `In ${days} days`;
   return (
-    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${soon || days < 0 ? "bg-secondary text-secondary-foreground" : "bg-muted text-muted-foreground"}`}>
+    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${soon || days < 0 ? "bg-secondary text-secondary-foreground" : "bg-muted text-muted-foreground"}`}>
       {label}
     </span>
   );

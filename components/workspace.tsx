@@ -16,7 +16,7 @@ export function PageHeader({
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
         {description ? <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {action}
@@ -36,7 +36,7 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={`rounded-2xl border border-border bg-card p-5 shadow-sm ${className}`}>
+    <section className={`min-w-0 max-w-full rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5 ${className}`}>
       {title ? <h2 className="text-base font-semibold">{title}</h2> : null}
       {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
       <div className={title || description ? "mt-4" : ""}>{children}</div>
@@ -56,9 +56,9 @@ export function Stat({ label, value, hint }: { label: string; value: string; hin
 
 export function Table({ headers, children }: { headers: string[]; children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <div className="max-w-full overflow-x-auto">
+        <table className="w-full min-w-[36rem] text-left text-sm">
           <thead className="bg-muted/80 text-xs text-muted-foreground">
             <tr>
               {headers.map((header) => (
@@ -114,10 +114,10 @@ export function Summary({
   facts?: { label: string; value: string }[];
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <section className="min-w-0 max-w-full rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
           {description ? <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p> : null}
         </div>
         {action}

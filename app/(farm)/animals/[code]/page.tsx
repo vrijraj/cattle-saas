@@ -64,13 +64,13 @@ export default async function AnimalProfilePage({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <div className="flex items-start gap-4">
+      <section className="min-w-0 max-w-full rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <div className="flex items-start gap-3 sm:gap-4">
           {record.photoKey ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={`/animals/${record.code}/photo`} alt="" className="size-16 shrink-0 rounded-2xl object-cover sm:size-20" />
+            <img src={`/animals/${record.code}/photo`} alt="" className="size-14 shrink-0 rounded-2xl object-cover sm:size-20" />
           ) : (
-            <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-secondary text-2xl font-semibold text-primary sm:size-20">
+            <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-secondary text-xl font-semibold text-primary sm:size-20 sm:text-2xl">
               {(record.name ?? record.code).slice(0, 1)}
             </span>
           )}
@@ -78,24 +78,20 @@ export default async function AnimalProfilePage({
             <Link href="/animals" className="text-sm text-primary">
               Cattle
             </Link>
-            <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-tight">{record.name ?? "Unnamed"}</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {record.code} · {animal.breedName}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Pill tone={record.presence === "on_farm" ? "good" : "neutral"}>{presenceLabel[record.presence]}</Pill>
-                  <Pill tone={record.reproduction === "pregnant" ? "warn" : "neutral"}>{reproductionLabel[record.reproduction]}</Pill>
-                  <Pill>{lactationLabel[record.lactation]}</Pill>
-                </div>
-              </div>
-              <Link href={`/animals/${record.code}/qr`} className="rounded-xl border border-border p-1.5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/animals/${record.code}/qr`} alt="" className="size-14" />
-              </Link>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">{record.name ?? "Unnamed"}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {record.code} · {animal.breedName}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Pill tone={record.presence === "on_farm" ? "good" : "neutral"}>{presenceLabel[record.presence]}</Pill>
+              <Pill tone={record.reproduction === "pregnant" ? "warn" : "neutral"}>{reproductionLabel[record.reproduction]}</Pill>
+              <Pill>{lactationLabel[record.lactation]}</Pill>
             </div>
           </div>
+          <Link href={`/animals/${record.code}/qr`} className="shrink-0 rounded-xl border border-border p-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/animals/${record.code}/qr`} alt="" className="size-11 sm:size-14" />
+          </Link>
         </div>
         <dl className="mt-5 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 xl:grid-cols-3">
           {highlights.map(([label, value]) => (
@@ -108,7 +104,7 @@ export default async function AnimalProfilePage({
         {canWriteAnimals(farm.roles) ? (
           <form action={savePhoto} className="mt-5 flex flex-wrap items-center gap-3 border-t border-border pt-4">
             <input type="hidden" name="code" value={record.code} />
-            <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required className={`${inputClass} h-auto py-2`} />
+            <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required className={`${inputClass} h-auto min-w-0 max-w-full py-2 file:max-w-full`} />
             <Submit>Save photo</Submit>
           </form>
         ) : null}

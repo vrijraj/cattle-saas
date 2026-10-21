@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Bell, Leaf, Search } from "lucide-react";
+import { Bell, Leaf, LogOut, Search } from "lucide-react";
 import { signOut } from "@/lib/auth";
+import { FarmDrawer } from "@/components/farm-drawer";
 import { FarmNav } from "@/components/farm-nav";
 import { PageTransition } from "@/components/page-transition";
 
@@ -26,38 +27,47 @@ export function FarmShell({
     .slice(0, 2)
     .toUpperCase();
 
+  function SignOutButton() {
+    return (
+      <form
+        action={async () => {
+          "use server";
+          await signOut({ redirectTo: "/signin" });
+        }}
+      >
+        <button className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-muted-foreground hover:bg-muted" type="submit">
+          <LogOut className="size-4" />
+          Sign out
+        </button>
+      </form>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background md:grid md:grid-cols-[248px_1fr]">
-      <aside className="border-b border-border bg-card md:sticky md:top-0 md:flex md:h-screen md:flex-col md:self-start md:overflow-hidden md:border-r md:border-b-0">
+      <aside className="sticky top-0 hidden h-screen flex-col self-start overflow-hidden border-r border-border bg-card md:flex">
         <div className="flex items-center gap-3 px-4 py-5">
           <span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
             <Leaf className="size-5" />
           </span>
-          <div>
-            <p className="text-sm font-semibold leading-tight">{farmName}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight">{farmName}</p>
             <p className="text-xs text-muted-foreground">Farm portal</p>
           </div>
         </div>
         <FarmNav showTeam={showTeam} showAudit={showAudit} />
-        <form
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/signin" });
-          }}
-          className="mt-auto hidden px-3 py-4 md:block"
-        >
-          <button className="h-10 w-full rounded-xl px-3 text-left text-sm text-muted-foreground hover:bg-muted" type="submit">
-            Sign out
-          </button>
-        </form>
+        <div className="mt-auto border-t border-border px-3 py-3">
+          <SignOutButton />
+        </div>
       </aside>
       <div className="min-w-0">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-card/90 px-4 py-3 backdrop-blur">
-          <form action="/animals" className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-muted px-4 md:mx-auto md:max-w-xl">
+        <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-card/95 px-3 py-3 backdrop-blur sm:gap-3 sm:px-4">
+          <FarmDrawer farmName={farmName} userName={userName} role={role} initials={initials} showTeam={showTeam} showAudit={showAudit} signOut={<SignOutButton />} />
+          <form action="/animals" className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-muted px-3 sm:h-11 sm:px-4 md:mx-auto md:max-w-xl">
             <Search className="size-4 shrink-0 text-muted-foreground" />
             <input
               name="q"
-              placeholder="Search cattle by ID, name, or breed"
+              placeholder="Search cattle"
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </form>
@@ -65,17 +75,15 @@ export function FarmShell({
             <Bell className="size-4" />
             <span className="sr-only">Alerts</span>
           </Link>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="grid size-10 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-              {initials}
-            </span>
-            <div className="hidden sm:block">
+          <div className="hidden shrink-0 items-center gap-2 sm:flex">
+            <span className="grid size-10 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{initials}</span>
+            <div>
               <p className="text-sm font-medium leading-tight">{userName}</p>
               <p className="text-xs text-muted-foreground">{role}</p>
             </div>
           </div>
         </header>
-        <main className="px-4 py-5 md:px-6 md:py-6">
+        <main className="min-w-0 max-w-full overflow-x-clip px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6">
           <PageTransition>{children}</PageTransition>
         </main>
       </div>

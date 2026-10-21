@@ -38,11 +38,20 @@ const links = [
   { href: "/team", label: "Team", icon: Users },
 ];
 
-export function FarmNav({ showTeam = false, showAudit = false }: { showTeam?: boolean; showAudit?: boolean }) {
+export function FarmNav({
+  showTeam = false,
+  showAudit = false,
+  variant = "sidebar",
+}: {
+  showTeam?: boolean;
+  showAudit?: boolean;
+  variant?: "sidebar" | "drawer";
+}) {
   const pathname = usePathname();
   const items = links.filter((link) => (link.href !== "/team" || showTeam) && (link.href !== "/audit" || showAudit));
+  const stacked = variant === "drawer";
   return (
-    <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:block md:min-h-0 md:flex-1 md:space-y-1 md:overflow-y-auto md:px-3">
+    <nav className={stacked ? "flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-3" : "hidden min-h-0 flex-1 space-y-1 overflow-y-auto px-3 md:block"}>
       {items.map((link) => {
         const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
         const Icon = link.icon;
@@ -50,7 +59,7 @@ export function FarmNav({ showTeam = false, showAudit = false }: { showTeam?: bo
           <Link
             key={link.href}
             href={link.href}
-            className={`inline-flex h-10 shrink-0 items-center gap-3 rounded-xl px-3 text-sm font-medium md:flex ${
+            className={`flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium ${
               active ? "bg-secondary text-secondary-foreground" : "text-foreground/70 hover:bg-muted"
             }`}
           >
