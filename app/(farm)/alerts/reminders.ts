@@ -7,11 +7,12 @@ import { alerts } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { sendChannel } from "@/lib/channels";
 import { requireFarm } from "@/lib/farm-context";
+import { canReadAlert } from "@/lib/permissions";
 
 export async function sendReminders() {
   const farm = await requireFarm();
   if (!farm.roles.some((role) => role === "owner" || role === "manager" || role === "admin")) redirect("/alerts?error=role");
-  const open = await db.select().from(alerts).where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open")));
+  const open = (await db.select().from(alerts).where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open")))).filter((alert) => canReadAlert(farm.roles, alert.type));
   for (const alert of open) {
     for (const channel of ["whatsapp", "sms"] as const) {
       const result = await sendChannel(channel, `${alert.title}. ${alert.body}`);

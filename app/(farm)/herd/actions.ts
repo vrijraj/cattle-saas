@@ -440,6 +440,10 @@ export async function recordVaccine(formData: FormData) {
     summary: `Vaccine for ${animal.code}: ${vaccine}`,
     after: { vaccine, nextDue: nextDue || null },
   });
+  await db
+    .update(alerts)
+    .set({ status: "done" })
+    .where(and(eq(alerts.animalId, animal.id), eq(alerts.type, "vaccine_due"), eq(alerts.status, "open")));
   if (nextDue) {
     await db.insert(alerts).values({
       farmId: farm.farmId,
@@ -478,6 +482,21 @@ export async function recordDeworming(formData: FormData) {
     summary: `Deworming for ${animal.code}: ${product}`,
     after: { product },
   });
+  await db
+    .update(alerts)
+    .set({ status: "done" })
+    .where(and(eq(alerts.animalId, animal.id), eq(alerts.type, "deworming_due"), eq(alerts.status, "open")));
+  const nextDue = text(formData, "nextDueOn");
+  if (nextDue) {
+    await db.insert(alerts).values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      type: "deworming_due",
+      title: "Deworming due",
+      body: `${animal.code} ${product} due ${nextDue}.`,
+      dueOn: nextDue,
+    });
+  }
   redirect(`/animals/${animal.code}?tab=health`);
 }
 

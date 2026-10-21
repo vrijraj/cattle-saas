@@ -66,9 +66,16 @@ export function canViewHeatWindow(roles: string[]) {
 }
 
 const CLINICAL_ALERTS = new Set(["medication_due", "health_followup"]);
+const BREEDING_ALERTS = new Set(["pd_due", "ai_followup", "calving_due", "dry_off", "heat_expected"]);
+const STOCK_ALERTS = new Set(["vaccine_due", "deworming_due", "deworm_due", "withdrawal", "milk_drop", "herd_milk_drop"]);
 
 export function canReadAlert(roles: string[], type: string) {
-  return canSeeClinical(roles) || !CLINICAL_ALERTS.has(type);
+  if (BREEDING_ALERTS.has(type)) return hasRole(roles, ["owner", "manager", "vet", "ai_technician", "genetics", "admin"]);
+  if (type === "milk_drop" || type === "herd_milk_drop" || type === "withdrawal") return hasRole(roles, ["owner", "manager", "vet", "worker", "admin"]);
+  if (CLINICAL_ALERTS.has(type) || STOCK_ALERTS.has(type)) return canSeeClinical(roles);
+  if (type === "low_feed" || type === "custom") return hasRole(roles, ["owner", "manager", "admin"]);
+  if (type === "finance") return hasRole(roles, ["owner", "manager", "accountant", "admin"]);
+  return hasRole(roles, ["owner", "manager", "admin"]);
 }
 
 export function canRecordFinance(roles: string[]) {
