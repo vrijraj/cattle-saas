@@ -75,7 +75,7 @@ export default async function AnimalProfilePage({
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <Link href={`/animals?code=${record.code}`} className="text-sm text-primary">
+            <Link href="/animals" className="text-sm text-primary">
               Cattle
             </Link>
             <div className="mt-1 flex flex-wrap items-start justify-between gap-3">

@@ -123,7 +123,7 @@ export function Summary({
         {action}
       </div>
       {facts && facts.length > 0 ? (
-        <dl className="mt-5 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-border pt-4 xl:grid-cols-4">
           {facts.map((fact) => (
             <div key={fact.label}>
               <dt className="text-xs text-muted-foreground">{fact.label}</dt>
