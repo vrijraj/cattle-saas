@@ -7,20 +7,23 @@ import { EmptyRow, Pill, Summary, Table, Td } from "@/components/workspace";
 import { setMilkAlert } from "./actions";
 import { sendReminders } from "./reminders";
 
-export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string }> }) {
+export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string; q?: string }> }) {
   const farm = await requireFarm();
   const query = await searchParams;
-  const rows = await db
-    .select()
-    .from(alerts)
-    .where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open")))
-    .orderBy(asc(alerts.dueOn));
+  const term = query.q?.trim().toLowerCase() ?? "";
+  const rows = (
+    await db
+      .select()
+      .from(alerts)
+      .where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open")))
+      .orderBy(asc(alerts.dueOn))
+  ).filter((alert) => !term || alert.title.toLowerCase().includes(term) || alert.body.toLowerCase().includes(term));
 
   return (
     <div className="space-y-5">
       <Summary
         title="Alerts"
-        description="Open reminders for vaccines, pregnancy checks, calving, milk drops, and medicine. WhatsApp and SMS are attempted when you send reminders. A failed send stays in the audit log and the alert stays open."
+        description={term ? `Open alerts matching “${query.q?.trim()}”.` : "Open reminders for vaccines, pregnancy checks, calving, milk drops, and medicine. WhatsApp and SMS are attempted when you send reminders. A failed send stays in the audit log and the alert stays open."}
         facts={[{ label: "Open", value: String(rows.length) }]}
       />
       {query.sent ? <p className="rounded-xl bg-muted px-4 py-3 text-sm">Reminder attempts are in the audit log. Alerts stay open until the work is done.</p> : null}
@@ -32,7 +35,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
         </form>
       ) : null}
       <Table headers={["Due", "Alert", "Detail", ""]}>
-        {rows.length === 0 ? <EmptyRow cols={4}>No open alerts.</EmptyRow> : null}
+        {rows.length === 0 ? <EmptyRow cols={4}>{term ? "No alerts match this search." : "No open alerts."}</EmptyRow> : null}
         {rows.map((alert) => {
           const milk = alert.type === "milk_drop" || alert.type === "herd_milk_drop";
           return (

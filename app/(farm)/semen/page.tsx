@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { db } from "@/db";
 import { bulls, semenBatches, straws } from "@/db/schema";
 import { saveBull, saveSemenBatch } from "@/app/(farm)/herd/actions";
@@ -32,19 +33,18 @@ export default async function SemenPage({ searchParams }: { searchParams: Promis
     <div className="space-y-5">
       <Summary
         title="Semen"
-        description="Straws in the tank, and the bulls they came from."
+        description={query ? `Showing semen matches for “${q?.trim()}”.` : "Straws in the tank, and the bulls they came from."}
         facts={[
           { label: "Available", value: String(available) },
           { label: "Bulls", value: String(bullRows.length) },
           { label: "Batches", value: String(batches.length) },
         ]}
         action={
-          <form action="/semen" className="flex w-full items-center gap-2 sm:w-80">
-            <input name="q" defaultValue={q ?? ""} placeholder="Search straw, tank, or bull" className={inputClass} />
-            <button type="submit" className="inline-flex h-11 shrink-0 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground">
-              Search
-            </button>
-          </form>
+          query ? (
+            <Link href="/semen" className="inline-flex h-10 items-center rounded-full border border-border px-4 text-sm font-medium">
+              Clear
+            </Link>
+          ) : null
         }
       />
       <section className="space-y-3">

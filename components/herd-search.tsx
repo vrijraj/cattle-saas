@@ -28,14 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-type Hit = {
-  code: string;
-  name: string | null;
-  breedName: string | null;
-  locationName: string | null;
-};
-
-type Kind = "page" | "animal";
+type Kind = "page" | "animal" | "straw" | "bull" | "alert" | "product" | "enquiry";
 
 type Item = {
   id: string;
@@ -47,9 +40,37 @@ type Item = {
   kind: Kind;
 };
 
-const RECENT_KEY = "farm-search-recent";
+type SearchBody = {
+  cattle: { code: string; name: string | null; breedName: string | null; locationName: string | null; earTag: string | null; match: string }[];
+  cattleCount: number;
+  straws: { code: string; bullName: string; status: string }[];
+  strawCount: number;
+  bulls: { code: string; name: string; breed: string | null }[];
+  bullCount: number;
+  alerts: { id: string; title: string; detail: string }[];
+  alertCount: number;
+  products: { id: string; name: string; category: string }[];
+  productCount: number;
+  enquiries: { id: string; name: string; about: string }[];
+  enquiryCount: number;
+};
 
-const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "audit" }[] = [
+const emptyBody: SearchBody = {
+  cattle: [],
+  cattleCount: 0,
+  straws: [],
+  strawCount: 0,
+  bulls: [],
+  bullCount: 0,
+  alerts: [],
+  alertCount: 0,
+  products: [],
+  productCount: 0,
+  enquiries: [],
+  enquiryCount: 0,
+};
+
+const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "audit" | "finance" | "reports" }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ai", label: "Assistant", icon: Sparkles },
   { href: "/animals", label: "Cattle", icon: Beef },
@@ -62,9 +83,9 @@ const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "a
   { href: "/genetics", label: "Genetics", icon: Dna },
   { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/embryos", label: "Embryos", icon: Sprout },
-  { href: "/finance", label: "Finance", icon: Wallet },
+  { href: "/finance", label: "Finance", icon: Wallet, gate: "finance" },
   { href: "/alerts", label: "Alerts", icon: Bell },
-  { href: "/reports", label: "Reports", icon: FileBarChart },
+  { href: "/reports", label: "Reports", icon: FileBarChart, gate: "reports" },
   { href: "/scan", label: "Scan", icon: ScanLine },
   { href: "/shop", label: "Shop", icon: ShoppingBag },
   { href: "/enquiries", label: "Enquiries", icon: Mail },
@@ -72,78 +93,212 @@ const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "a
   { href: "/team", label: "Team", icon: Users, gate: "team" },
 ];
 
-function pageIcon(href: string) {
-  return pages.find((page) => page.href === href)?.icon ?? LayoutDashboard;
+const kindIcon: Record<Kind, LucideIcon> = {
+  page: LayoutDashboard,
+  animal: Beef,
+  straw: Droplets,
+  bull: Dna,
+  alert: Bell,
+  product: ShoppingBag,
+  enquiry: Mail,
+};
+
+function recentKey(farmId: string) {
+  return `farm-search-recent:${farmId}`;
 }
 
-function readRecent(): Item[] {
+function pageIcon(href: string) {
+  const path = href.split("?")[0] ?? href;
+  return pages.find((page) => page.href === path)?.icon ?? LayoutDashboard;
+}
+
+function blocked(href: string, gates: Record<"team" | "audit" | "finance" | "reports", boolean>) {
+  const path = href.split("?")[0] ?? href;
+  const page = pages.find((item) => item.href === path);
+  return page?.gate ? !gates[page.gate] : false;
+}
+
+function readRecent(farmId: string, gates: Record<"team" | "audit" | "finance" | "reports", boolean>): Item[] {
   try {
-    const parsed = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as unknown;
+    const parsed = JSON.parse(localStorage.getItem(recentKey(farmId)) ?? "[]") as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.flatMap((entry) => {
       if (!entry || typeof entry !== "object") return [];
       const row = entry as { href?: unknown; title?: unknown; detail?: unknown; kind?: unknown };
       if (typeof row.href !== "string" || typeof row.title !== "string" || typeof row.detail !== "string") return [];
-      const kind: Kind = row.kind === "animal" ? "animal" : "page";
-      return [{ id: `recent:${row.href}`, href: row.href, title: row.title, detail: row.detail, section: "Recent", icon: kind === "animal" ? Beef : pageIcon(row.href), kind }];
+      if (blocked(row.href, gates)) return [];
+      const kind = (Object.keys(kindIcon) as Kind[]).includes(row.kind as Kind) ? (row.kind as Kind) : "page";
+      const icon = kind === "page" ? pageIcon(row.href) : kindIcon[kind];
+      return [{ id: `recent:${row.href}`, href: row.href, title: row.title, detail: row.detail, section: "Recent", icon, kind }];
     }).slice(0, 6);
   } catch {
     return [];
   }
 }
 
-function remember(item: Item) {
-  const stored = readRecent()
+function remember(farmId: string, item: Item) {
+  const stored = readRecent(farmId, { team: true, audit: true, finance: true, reports: true })
     .filter((entry) => entry.href !== item.href)
     .map((entry) => ({ href: entry.href, title: entry.title, detail: entry.detail, kind: entry.kind }));
-  localStorage.setItem(RECENT_KEY, JSON.stringify([{ href: item.href, title: item.title, detail: item.detail, kind: item.kind }, ...stored].slice(0, 6)));
+  localStorage.setItem(
+    recentKey(farmId),
+    JSON.stringify([{ href: item.href, title: item.title, detail: item.detail, kind: item.kind }, ...stored].slice(0, 6)),
+  );
+}
+
+function cattleDetail(animal: SearchBody["cattle"][number]) {
+  if (animal.match === "Ear tag" && animal.earTag) return `Ear tag ${animal.earTag} · ${animal.code}`;
+  if (animal.match === "Sire" || animal.match === "Sire code") return `Sire · ${animal.code}`;
+  if (animal.match === "Breed" && animal.breedName) return `Breed ${animal.breedName} · ${animal.code}`;
+  if (animal.match === "Shed") return `Shed ${animal.locationName ?? "Unassigned"} · ${animal.code}`;
+  return [animal.code, animal.breedName, animal.locationName ?? "Unassigned"].filter(Boolean).join(" · ");
 }
 
 export function HerdSearch({
   variant = "header",
+  farmId,
   showTeam = false,
   showAudit = false,
+  showFinance = false,
+  showReports = false,
 }: {
   variant?: "header" | "field";
+  farmId: string;
   showTeam?: boolean;
   showAudit?: boolean;
+  showFinance?: boolean;
+  showReports?: boolean;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const router = useRouter();
+  const gates = { team: showTeam, audit: showAudit, finance: showFinance, reports: showReports };
   const [value, setValue] = useState("");
-  const [results, setResults] = useState<Hit[]>([]);
+  const [body, setBody] = useState<SearchBody>(emptyBody);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [recent, setRecent] = useState<Item[]>([]);
   const [active, setActive] = useState(0);
 
   const term = value.trim();
   const query = term.toLowerCase();
-  const visiblePages = pages.filter((page) => (page.gate === "team" ? showTeam : page.gate === "audit" ? showAudit : true));
-  const pageItems: Item[] = visiblePages
+  const encoded = encodeURIComponent(term);
+  const pageItems: Item[] = pages
+    .filter((page) => !page.gate || gates[page.gate])
     .filter((page) => !query || page.label.toLowerCase().includes(query))
     .map((page) => ({ id: page.href, href: page.href, title: page.label, detail: "Page", section: "Pages", icon: page.icon, kind: "page" }));
-  const cattleItems: Item[] = results.map((animal) => ({
-    id: animal.code,
-    href: `/animals/${animal.code}`,
-    title: animal.name ?? "Unnamed",
-    detail: [animal.code, animal.breedName, animal.locationName ?? "Unassigned"].filter(Boolean).join(" · "),
-    section: "Cattle",
-    icon: Beef,
-    kind: "animal" as const,
-  }));
-  const items: Item[] = term ? [...pageItems, ...cattleItems] : recent.length > 0 ? recent : pageItems.slice(0, 7);
-  const listKey = items.map((item) => item.id).join("|");
+  const recordItems: Item[] = term
+    ? [
+        ...body.cattle.map((animal) => ({
+          id: `cattle:${animal.code}`,
+          href: `/animals/${animal.code}`,
+          title: animal.name ?? "Unnamed",
+          detail: cattleDetail(animal),
+          section: "Cattle",
+          icon: Beef,
+          kind: "animal" as const,
+        })),
+        ...(body.cattleCount > 0
+          ? [
+              {
+                id: "cattle-all",
+                href: `/animals?q=${encoded}`,
+                title: body.cattleCount === 1 ? "1 animal in the herd" : `${body.cattleCount} animals in the herd`,
+                detail: "Open the cattle register",
+                section: "Cattle",
+                icon: Beef,
+                kind: "page" as const,
+              },
+            ]
+          : []),
+        ...body.straws.map((straw) => ({
+          id: `straw:${straw.code}`,
+          href: `/scan?code=${encodeURIComponent(straw.code)}`,
+          title: straw.code,
+          detail: `${straw.bullName} · ${straw.status}`,
+          section: "Straws",
+          icon: Droplets,
+          kind: "straw" as const,
+        })),
+        ...(body.strawCount > body.straws.length
+          ? [
+              {
+                id: "straw-all",
+                href: `/semen?q=${encoded}`,
+                title: `${body.strawCount} straws`,
+                detail: "Open the semen register",
+                section: "Straws",
+                icon: Droplets,
+                kind: "page" as const,
+              },
+            ]
+          : []),
+        ...body.bulls.map((bull) => ({
+          id: `bull:${bull.code}`,
+          href: `/semen?q=${encodeURIComponent(bull.code)}`,
+          title: bull.name,
+          detail: [bull.code, bull.breed].filter(Boolean).join(" · "),
+          section: "Bulls",
+          icon: Dna,
+          kind: "bull" as const,
+        })),
+        ...body.alerts.map((alert) => ({
+          id: `alert:${alert.id}`,
+          href: `/alerts?q=${encodeURIComponent(alert.title)}`,
+          title: alert.title,
+          detail: alert.detail,
+          section: "Alerts",
+          icon: Bell,
+          kind: "alert" as const,
+        })),
+        ...(body.alertCount > body.alerts.length
+          ? [
+              {
+                id: "alert-all",
+                href: `/alerts?q=${encoded}`,
+                title: `${body.alertCount} alerts`,
+                detail: "Open alerts",
+                section: "Alerts",
+                icon: Bell,
+                kind: "page" as const,
+              },
+            ]
+          : []),
+        ...body.products.map((product) => ({
+          id: `product:${product.id}`,
+          href: `/shop?q=${encodeURIComponent(product.name)}`,
+          title: product.name,
+          detail: product.category,
+          section: "Products",
+          icon: ShoppingBag,
+          kind: "product" as const,
+        })),
+        ...body.enquiries.map((enquiry) => ({
+          id: `enquiry:${enquiry.id}`,
+          href: `/enquiries?q=${encodeURIComponent(enquiry.name)}`,
+          title: enquiry.name,
+          detail: enquiry.about,
+          section: "Enquiries",
+          icon: Mail,
+          kind: "enquiry" as const,
+        })),
+      ]
+    : [];
+  const items: Item[] = term ? [...pageItems, ...recordItems] : recent.length > 0 ? recent : pageItems.slice(0, 7);
 
   useEffect(() => {
     setActive(0);
-  }, [listKey]);
+    setBody(emptyBody);
+  }, [term]);
+
+  useEffect(() => {
+    setActive((current) => (items.length === 0 ? 0 : Math.min(current, items.length - 1)));
+  }, [items.length]);
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>("[data-active='true']")?.scrollIntoView({ block: "nearest" });
-  }, [active, listKey]);
+  }, [active]);
 
   useEffect(() => {
     if (!term) return;
@@ -153,8 +308,7 @@ export function HerdSearch({
       try {
         const response = await fetch(`/api/herd-search?q=${encodeURIComponent(term)}`, { signal: controller.signal });
         if (!response.ok) throw new Error("search failed");
-        const body = (await response.json()) as { results?: Hit[] };
-        setResults(body.results ?? []);
+        setBody((await response.json()) as SearchBody);
         setState("ready");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -183,10 +337,10 @@ export function HerdSearch({
 
   function open() {
     setValue("");
-    setResults([]);
+    setBody(emptyBody);
     setState("idle");
     setActive(0);
-    setRecent(readRecent());
+    setRecent(readRecent(farmId, gates));
     dialogRef.current?.showModal();
     inputRef.current?.focus();
   }
@@ -198,7 +352,7 @@ export function HerdSearch({
   }
 
   function choose(item: Item) {
-    remember(item);
+    remember(farmId, item);
     close();
     router.push(item.href);
   }
@@ -255,26 +409,26 @@ export function HerdSearch({
               const next = event.target.value;
               setValue(next);
               if (!next.trim()) {
-                setResults([]);
+                setBody(emptyBody);
                 setState("idle");
               }
             }}
-            placeholder="Search cattle, pages, or codes"
+            placeholder="Search cattle, straws, alerts, or pages"
             className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-white/40"
             autoFocus
             role="combobox"
             aria-expanded="true"
-            aria-controls="search-results"
+            aria-controls={`${titleId}-results`}
             aria-activedescendant={items[active] ? `search-item-${items[active].id}` : undefined}
           />
           <kbd className="rounded-md border border-white/15 px-1.5 py-0.5 text-[10px] text-white/70">Esc</kbd>
         </label>
-        <div id="search-results" ref={listRef} role="listbox" className="max-h-[min(22rem,50vh)] overflow-y-auto p-2">
-          {term && state === "loading" && items.length === 0 ? <p className="px-2 py-8 text-center text-sm text-white/55">Searching…</p> : null}
-          {term && state === "error" ? <p className="px-2 py-8 text-center text-sm text-[#fdba74]">Search is unavailable. Try again.</p> : null}
-          {term && state !== "loading" && state !== "error" && items.length === 0 ? (
-            <p className="px-2 py-8 text-center text-sm text-white/55">No results for “{term}”.</p>
+        <div id={`${titleId}-results`} ref={listRef} role="listbox" className="max-h-[min(22rem,50vh)] overflow-y-auto p-2">
+          {term && state === "loading" && recordItems.length === 0 && pageItems.length === 0 ? (
+            <p className="px-2 py-8 text-center text-sm text-white/55">Searching…</p>
           ) : null}
+          {term && state === "error" ? <p className="px-2 py-8 text-center text-sm text-[#fdba74]">Search is unavailable. Try again.</p> : null}
+          {term && state === "ready" && items.length === 0 ? <p className="px-2 py-8 text-center text-sm text-white/55">No results for “{term}”.</p> : null}
           {items.map((item, index) => {
             const showSection = item.section !== section;
             section = item.section;

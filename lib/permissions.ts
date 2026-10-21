@@ -72,3 +72,7 @@ export function canManageTeam(roles: string[]) {
 export function canViewAudit(roles: string[]) {
   return hasRole(roles, ["owner", "manager", "admin"]);
 }
+
+export function canViewReports(roles: string[]) {
+  return !(roles.length === 1 && roles[0] === "worker");
+}

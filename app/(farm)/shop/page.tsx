@@ -17,9 +17,13 @@ const nextStatus: Record<string, string[]> = {
   shipped: ["completed"],
 };
 
-export default async function ShopAdminPage() {
+export default async function ShopAdminPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const farm = await requireFarm();
-  const catalogue = await db.select().from(products).where(eq(products.farmId, farm.farmId));
+  const query = await searchParams;
+  const term = query.q?.trim().toLowerCase() ?? "";
+  const catalogue = (await db.select().from(products).where(eq(products.farmId, farm.farmId))).filter(
+    (product) => !term || product.name.toLowerCase().includes(term) || product.category.toLowerCase().includes(term),
+  );
   const orderRows = await db.select().from(orders).where(eq(orders.farmId, farm.farmId));
   const catalogueListings = await db.select().from(listings).where(eq(listings.farmId, farm.farmId));
   const canAdd = canPublish(farm.roles);
@@ -28,7 +32,7 @@ export default async function ShopAdminPage() {
     <div className="space-y-5">
       <Summary
         title="Shop"
-        description="Product stock is the sellable quantity. Selling it does not use farm AI straws. Live animals stay on the catalogue as enquiries."
+        description={term ? `Products matching “${query.q?.trim()}”.` : "Product stock is the sellable quantity. Selling it does not use farm AI straws. Live animals stay on the catalogue as enquiries."}
         facts={[
           { label: "Products", value: String(catalogue.length) },
           { label: "Orders", value: String(orderRows.length) },
@@ -59,7 +63,7 @@ export default async function ShopAdminPage() {
           ) : null}
         </div>
       <Table headers={["Product", "Category", "Price", "Stock"]}>
-        {catalogue.length === 0 ? <EmptyRow cols={4}>No products yet.</EmptyRow> : null}
+        {catalogue.length === 0 ? <EmptyRow cols={4}>{term ? "No products match this search." : "No products yet."}</EmptyRow> : null}
         {catalogue.map((product) => (
           <tr key={product.id}>
             <Td className="font-medium">{product.name}</Td>

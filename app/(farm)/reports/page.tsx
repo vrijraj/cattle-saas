@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Download } from "lucide-react";
 import { requireFarm } from "@/lib/farm-context";
 import { formatDisplayDate } from "@/lib/dates";
-import { canRecordHealth, canViewFinance } from "@/lib/permissions";
+import { canRecordHealth, canViewFinance, canViewReports } from "@/lib/permissions";
 import { reportRows } from "@/lib/report-data";
 import { EmptyRow, pickTab, Summary, TabBar, Table, Td } from "@/components/workspace";
 
@@ -24,7 +24,7 @@ type ReportId = (typeof reports)[number]["id"];
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const farm = await requireFarm();
-  if (farm.roles.length === 1 && farm.roles[0] === "worker") redirect("/dashboard");
+  if (!canViewReports(farm.roles)) redirect("/dashboard");
   const visible = reports.filter((report) => canOpen(report.id, farm.roles));
   const query = await searchParams;
   const tab = pickTab(query.tab, visible, visible[0]?.id ?? "cattle") as ReportId;
