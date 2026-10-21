@@ -158,6 +158,16 @@ dialog[open]::backdrop {
   }
 }
 
+.loader-spin {
+  animation: loader-spin 0.7s linear infinite;
+}
+
+@keyframes loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(*),
   ::view-transition-new(*),
@@ -168,7 +178,8 @@ dialog[open]::backdrop {
 
   dialog[open],
   dialog[open]::backdrop,
-  dialog.nav-drawer[open] {
+  dialog.nav-drawer[open],
+  .loader-spin {
     animation: none;
   }
 }

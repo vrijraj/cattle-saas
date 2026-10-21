@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import type { ComponentType } from "react";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell,
@@ -113,7 +114,7 @@ export function FarmNav({
                     active ? "bg-card text-foreground ring-1 ring-border" : "text-foreground/75 hover:bg-card/70"
                   }`}
                 >
-                  <Icon className="size-4" />
+                  <NavMark icon={Icon} />
                   {link.label}
                 </Link>
               );
@@ -123,4 +124,10 @@ export function FarmNav({
       ))}
     </nav>
   );
+}
+
+function NavMark({ icon: Icon }: { icon: ComponentType<{ className?: string }> }) {
+  const { pending } = useLinkStatus();
+  if (pending) return <span className="loader-spin size-4 rounded-full border-2 border-primary/25 border-t-primary" />;
+  return <Icon className="size-4" />;
 }
