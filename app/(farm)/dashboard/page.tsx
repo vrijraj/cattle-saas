@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
-import { Bell, Droplets, Heart, Milk, Wheat } from "lucide-react";
+import { and, eq, gte } from "drizzle-orm";
+import { Beef, Bell, Droplets, Milk, Sun, Wheat } from "lucide-react";
 import { db } from "@/db";
-import { alerts, animals, breeds, feedItems, feedMovements, locations } from "@/db/schema";
+import { alerts, animals, breeds, feedItems, feedMovements, locations, milkYields } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
-import { farmToday, formatDisplayDate } from "@/lib/dates";
+import { addDays, farmToday, formatDisplayDate } from "@/lib/dates";
 import { feedBalance, feedIsLow } from "@/lib/feed-stock";
 import { herdCounts } from "@/lib/herd-stats";
+import { lactationLabel, reproductionLabel } from "@/lib/labels";
 import { canReadAlert } from "@/lib/permissions";
 
 const breedColors = ["#157347", "#7dce78", "#e0a106", "#3d8bfd", "#8b6cc4", "#94a3a0"];
@@ -75,6 +76,29 @@ export default async function DashboardPage() {
     })
     .filter((row) => row.low)
     .sort((left, right) => left.item.name.localeCompare(right.item.name));
+  const onFarm = herd.filter((animal) => animal.presence === "on_farm");
+  const lactationBars = countLabels(onFarm.map((animal) => lactationLabel[animal.lactation]));
+  const reproductionBars = countLabels(onFarm.map((animal) => reproductionLabel[animal.reproduction]));
+  const shedBars = countLabels(onFarm.map((animal) => (animal.locationId ? (shedName.get(animal.locationId) ?? "Unassigned") : "Unassigned")));
+  const milkStart = addDays(today, -6);
+  const milkRows = await db
+    .select({
+      recordedOn: milkYields.recordedOn,
+      morningLitres: milkYields.morningLitres,
+      eveningLitres: milkYields.eveningLitres,
+      voidedAt: milkYields.voidedAt,
+    })
+    .from(milkYields)
+    .where(and(eq(milkYields.farmId, farm.farmId), gte(milkYields.recordedOn, milkStart)));
+  const milkByDay = new Map<string, number>();
+  for (let offset = 0; offset < 7; offset += 1) milkByDay.set(addDays(milkStart, offset), 0);
+  for (const row of milkRows) {
+    if (row.voidedAt || !milkByDay.has(row.recordedOn)) continue;
+    const litres = Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0);
+    milkByDay.set(row.recordedOn, (milkByDay.get(row.recordedOn) ?? 0) + litres);
+  }
+  const milkDays = [...milkByDay.entries()];
+  const milkToday = milkDays.find(([day]) => day === today)?.[1] ?? 0;
   const isolated = herd
     .filter((animal) => animal.presence === "on_farm" && animal.isolationReason)
     .map((animal) => ({
@@ -84,10 +108,12 @@ export default async function DashboardPage() {
     }));
 
   const stats = [
-    { label: "Total cattle", value: counts.total, icon: Heart, hint: "On the farm" },
-    { label: "Lactating", value: counts.lactating, icon: Milk, hint: "In milk today" },
-    { label: "Pregnant", value: counts.pregnant, icon: Droplets, hint: "Confirmed pregnancies" },
-    { label: "Open alerts", value: openAlerts.length, icon: Bell, hint: "Still due" },
+    { label: "On farm", value: String(counts.total), icon: Beef, hint: "Animals present" },
+    { label: "Lactating", value: String(counts.lactating), icon: Milk, hint: "In milk today" },
+    { label: "Dry", value: String(counts.dry), icon: Sun, hint: "Between lactations" },
+    { label: "Pregnant", value: String(counts.pregnant), icon: Droplets, hint: "Confirmed pregnancies" },
+    { label: "Milk today", value: `${milkToday.toFixed(1)} L`, icon: Milk, hint: formatDisplayDate(today) },
+    { label: "Open alerts", value: String(openAlerts.length), icon: Bell, hint: "Still due" },
   ];
 
   return (
@@ -105,7 +131,7 @@ export default async function DashboardPage() {
         <FarmMark />
       </section>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         {stats.map((stat) => (
           <article key={stat.label} className="rounded-2xl border border-border bg-card p-3.5 sm:p-4">
             <div className="flex items-start justify-between">
@@ -121,6 +147,16 @@ export default async function DashboardPage() {
       </section>
 
       <section className="grid gap-3 xl:grid-cols-3">
+        <article className="rounded-2xl border border-border bg-card p-5 xl:col-span-2">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Milk, last 7 days</h2>
+            <Link href="/milk" className="text-sm text-primary">
+              Milk register
+            </Link>
+          </div>
+          <MilkLine days={milkDays} />
+        </article>
+
         <article className="rounded-2xl border border-border bg-card p-5">
           <h2 className="font-semibold">Cattle overview</h2>
           <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
@@ -145,6 +181,26 @@ export default async function DashboardPage() {
               ))}
             </ul>
           </div>
+        </article>
+
+        <article className="rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-semibold">Lactation</h2>
+          <BarList rows={lactationBars} />
+        </article>
+
+        <article className="rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-semibold">Reproduction</h2>
+          <BarList rows={reproductionBars} />
+        </article>
+
+        <article className="rounded-2xl border border-border bg-card p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Sheds</h2>
+            <Link href="/locations" className="text-sm text-primary">
+              View all
+            </Link>
+          </div>
+          <BarList rows={shedBars} />
         </article>
 
         <article className="rounded-2xl border border-border bg-card p-5">
@@ -242,6 +298,85 @@ export default async function DashboardPage() {
         </article>
       </section>
     </div>
+  );
+}
+
+function MilkLine({ days }: { days: [string, number][] }) {
+  const width = 640;
+  const height = 148;
+  const top = 16;
+  const bottom = 8;
+  const max = Math.max(...days.map(([, litres]) => litres), 1);
+  const last = Math.max(days.length - 1, 1);
+  const points = days.map(([, litres], index) => ({
+    x: (index / last) * width,
+    y: top + (1 - litres / max) * (height - top - bottom),
+    litres,
+  }));
+  const line = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const area = `${line} L ${points.at(-1)?.x.toFixed(1) ?? 0} ${height - bottom} L ${points[0]?.x.toFixed(1) ?? 0} ${height - bottom} Z`;
+  return (
+    <div className="mt-4">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMinYMid meet"
+        style={{ aspectRatio: `${width} / ${height}` }}
+        className="block w-full overflow-visible"
+        role="img"
+        aria-label="Milk litres for the last 7 days"
+      >
+        <path d={area} fill="#157347" opacity="0.12" />
+        <path d={line} fill="none" stroke="#157347" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        {points.map((point, index) => (
+          <g key={days[index][0]}>
+            <circle cx={point.x} cy={point.y} r="4.5" fill="#ffffff" stroke="#157347" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+            <title>{`${formatDisplayDate(days[index][0])}: ${point.litres.toFixed(1)} L`}</title>
+          </g>
+        ))}
+      </svg>
+      <div className="relative mt-2 h-8">
+        {days.map(([day, litres], index) => {
+          const atStart = index === 0;
+          const atEnd = index === days.length - 1;
+          return (
+            <span
+              key={day}
+              className={`absolute top-0 w-14 text-[10px] text-muted-foreground ${atStart ? "left-0 text-left" : atEnd ? "right-0 text-right" : "left-0 -translate-x-1/2 text-center"}`}
+              style={atStart || atEnd ? undefined : { left: `${(index / last) * 100}%` }}
+            >
+              {formatDisplayDate(day).replace(/ \d{4}$/, "")}
+              <span className="mt-0.5 block font-medium text-foreground">{litres.toFixed(1)}</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function countLabels(labels: string[]) {
+  const totals = new Map<string, number>();
+  for (const label of labels) totals.set(label, (totals.get(label) ?? 0) + 1);
+  return [...totals.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+}
+
+function BarList({ rows }: { rows: [string, number][] }) {
+  const max = Math.max(...rows.map(([, count]) => count), 1);
+  if (rows.length === 0) return <p className="mt-4 text-sm text-muted-foreground">Nothing recorded yet.</p>;
+  return (
+    <ul className="mt-4 space-y-3">
+      {rows.map(([label, count]) => (
+        <li key={label}>
+          <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+            <span className="truncate">{label}</span>
+            <span className="font-medium">{count}</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(8, Math.round((count / max) * 100))}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
