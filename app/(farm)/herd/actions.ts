@@ -22,6 +22,7 @@ import {
   inseminations,
   milkYields,
   listings,
+  locations,
   pregnancyChecks,
   products,
   semenBatches,
@@ -31,6 +32,7 @@ import {
 } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { calfSireFromConception } from "@/lib/calving-sire";
+import { isFeedCategory, isFeedKind } from "@/lib/feed-stock";
 import { dryOffDueOn } from "@/lib/lactation";
 import { addDays, farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
@@ -38,6 +40,7 @@ import { issueAnimalCode } from "@/lib/issue-code";
 import {
   canPublish,
   canRecordBreeding,
+  canRecordFeed,
   canRecordFinance,
   canRecordHealth,
   canUseGenetics,
@@ -542,32 +545,80 @@ export async function saveSemenBatch(formData: FormData) {
 
 export async function saveFeed(formData: FormData) {
   const farm = await requireFarm();
+  if (!canRecordFeed(farm.roles)) redirect("/feed?error=role");
   const name = text(formData, "name");
   let itemId = text(formData, "itemId");
+  const category = text(formData, "category") || "other";
+  if (!isFeedCategory(category)) redirect("/feed?error=item");
   if (!itemId && name) {
+    const minimum = text(formData, "minimum");
+    if (minimum && (!Number.isFinite(Number(minimum)) || Number(minimum) < 0)) redirect("/feed?error=quantity");
     const [item] = await db
       .insert(feedItems)
       .values({
         farmId: farm.farmId,
         name,
-        category: text(formData, "category") || "other",
-        minimumQuantity: text(formData, "minimum") || null,
+        category,
+        minimumQuantity: minimum || null,
       })
       .returning();
     itemId = item.id;
   }
+  if (!itemId) redirect("/feed?error=item");
+  const [item] = await db
+    .select({ id: feedItems.id })
+    .from(feedItems)
+    .where(and(eq(feedItems.id, itemId), eq(feedItems.farmId, farm.farmId)))
+    .limit(1);
+  if (!item) redirect("/feed?error=item");
   const quantity = Number(text(formData, "quantity"));
-  if (!itemId || !Number.isFinite(quantity)) redirect("/feed?error=1");
+  if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) redirect("/feed?error=quantity");
+  const kind = text(formData, "kind") || "purchase";
+  if (!isFeedKind(kind)) redirect("/feed?error=kind");
+  const unitCost = text(formData, "unitCost");
+  if (unitCost && (!Number.isFinite(Number(unitCost)) || Number(unitCost) < 0)) redirect("/feed?error=cost");
+  const movedOn = text(formData, "movedOn") || farmToday(farm.timezone);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(movedOn)) redirect("/feed?error=date");
+
+  let note = text(formData, "note") || null;
+  const supplier = text(formData, "supplier");
+  const allocation = text(formData, "allocation");
+  if (kind === "purchase" && supplier) note = `Supplier · ${supplier}`;
+  if (kind === "consumption" || kind === "wastage") {
+    if (allocation === "herd") note = "Herd";
+    if (allocation.startsWith("shed:")) {
+      const [shed] = await db
+        .select({ name: locations.name })
+        .from(locations)
+        .where(and(eq(locations.id, allocation.slice(5)), eq(locations.farmId, farm.farmId)))
+        .limit(1);
+      if (!shed) redirect("/feed?error=target");
+      note = `Shed · ${shed.name}`;
+    }
+    if (allocation.startsWith("animal:")) {
+      const [animal] = await db
+        .select({ code: animals.code, name: animals.name })
+        .from(animals)
+        .where(and(eq(animals.code, allocation.slice(7)), eq(animals.farmId, farm.farmId)))
+        .limit(1);
+      if (!animal) redirect("/feed?error=target");
+      note = `${animal.name ?? animal.code} · ${animal.code}`;
+    }
+    if (allocation && allocation !== "herd" && !allocation.startsWith("shed:") && !allocation.startsWith("animal:")) {
+      redirect("/feed?error=target");
+    }
+  }
+
   await db.insert(feedMovements).values({
     farmId: farm.farmId,
     itemId,
-    kind: text(formData, "kind") || "purchase",
+    kind,
     quantity: quantity.toFixed(1),
-    unitCost: text(formData, "unitCost") || null,
-    movedOn: text(formData, "movedOn") || farmToday(farm.timezone),
-    note: text(formData, "note") || null,
+    unitCost: unitCost || null,
+    movedOn,
+    note,
   });
-  redirect("/feed");
+  redirect("/feed?saved=1");
 }
 
 export async function saveFinance(formData: FormData) {

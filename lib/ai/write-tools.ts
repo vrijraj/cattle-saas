@@ -299,7 +299,7 @@ export function writeTools(scope: FarmScope) {
       item: z.string().describe("Feed item name."),
       kind: z.enum(["opening", "purchase", "consumption", "wastage", "adjustment"]),
       quantity: z.number(),
-      category: z.enum(["green", "dry", "silage", "concentrate", "mineral"]).optional(),
+      category: z.enum(["green", "dry", "silage", "concentrate", "mineral", "other"]).optional(),
       movedOn: dateField,
       note: z.string().optional(),
     }),

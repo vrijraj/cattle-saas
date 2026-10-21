@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { and, eq } from "drizzle-orm";
-import { Bell, Droplets, Heart, Milk } from "lucide-react";
+import { Bell, Droplets, Heart, Milk, Wheat } from "lucide-react";
 import { db } from "@/db";
-import { alerts, animals, breeds, locations } from "@/db/schema";
+import { alerts, animals, breeds, feedItems, feedMovements, locations } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
+import { feedBalance, feedIsLow } from "@/lib/feed-stock";
 import { herdCounts } from "@/lib/herd-stats";
 import { canReadAlert } from "@/lib/permissions";
 
@@ -61,6 +62,17 @@ export default async function DashboardPage() {
     .sort((a, b) => (a.expectedCalving ?? "9999").localeCompare(b.expectedCalving ?? "9999"));
   const shedRows = await db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.farmId, farm.farmId));
   const shedName = new Map(shedRows.map((row) => [row.id, row.name]));
+  const [feed, feedMoves] = await Promise.all([
+    db.select().from(feedItems).where(eq(feedItems.farmId, farm.farmId)),
+    db.select().from(feedMovements).where(eq(feedMovements.farmId, farm.farmId)),
+  ]);
+  const lowFeed = feed
+    .map((item) => {
+      const balance = feedBalance(feedMoves.filter((movement) => movement.itemId === item.id));
+      return { item, balance, low: feedIsLow(balance, item.minimumQuantity) };
+    })
+    .filter((row) => row.low)
+    .sort((left, right) => left.item.name.localeCompare(right.item.name));
   const isolated = herd
     .filter((animal) => animal.presence === "on_farm" && animal.isolationReason)
     .map((animal) => ({
@@ -194,6 +206,33 @@ export default async function DashboardPage() {
                 <div>
                   <p className="text-sm font-medium">{alert.title}</p>
                   <p className="text-xs text-muted-foreground">{alert.body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </article>
+
+        <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Feed stock</h2>
+            <Link href="/feed" className="text-sm text-primary">
+              View all
+            </Link>
+          </div>
+          <ul className="mt-4 divide-y divide-border">
+            {lowFeed.length === 0 ? <li className="py-4 text-sm text-muted-foreground">Stock is above the minimum set for each item.</li> : null}
+            {lowFeed.map(({ item, balance }) => (
+              <li key={item.id} className="flex items-start gap-3 py-3">
+                <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
+                  <Wheat className="size-3.5" />
+                </span>
+                <div>
+                  <Link href="/feed" className="text-sm font-medium">
+                    {item.name}
+                  </Link>
+                  <p className="text-xs text-muted-foreground">
+                    {balance.toFixed(1)} {item.unit} on hand · minimum {item.minimumQuantity} {item.unit}
+                  </p>
                 </div>
               </li>
             ))}

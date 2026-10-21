@@ -27,6 +27,10 @@ export function canWriteMilk(roles: string[]) {
   return hasRole(roles, MILK_WRITE);
 }
 
+export function canRecordFeed(roles: string[]) {
+  return hasRole(roles, MILK_WRITE);
+}
+
 export function canViewHerd(roles: string[]) {
   return hasRole(roles, ROLES);
 }

@@ -38,6 +38,7 @@ import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { herdCounts } from "@/lib/herd-stats";
 import { lactationLabel, lifeStageLabel, presenceLabel, reproductionLabel, sexLabel } from "@/lib/labels";
 import { matingFlags, type PedigreeLink } from "@/lib/mating";
+import { feedBalance, feedIsLow } from "@/lib/feed-stock";
 import { writeTools } from "@/lib/ai/write-tools";
 import {
   canManageTeam,
@@ -55,8 +56,6 @@ export type FarmScope = {
   roles: string[];
   userName: string;
 };
-
-const feedSign: Record<string, number> = { opening: 1, purchase: 1, consumption: -1, wastage: -1, adjustment: 1 };
 
 function day(value: string | null | undefined) {
   return value ? formatDisplayDate(value) : null;
@@ -399,9 +398,7 @@ export function farmTools(scope: FarmScope) {
       return {
         href: "/feed",
         items: items.map((item) => {
-          const balance = movements
-            .filter((movement) => movement.itemId === item.id)
-            .reduce((sum, movement) => sum + Number(movement.quantity) * (feedSign[movement.kind] ?? 1), 0);
+          const balance = feedBalance(movements.filter((movement) => movement.itemId === item.id));
           const minimum = item.minimumQuantity ? Number(item.minimumQuantity) : null;
           return {
             name: item.name,
@@ -409,7 +406,7 @@ export function farmTools(scope: FarmScope) {
             balance: Math.round(balance * 10) / 10,
             unit: item.unit,
             minimum,
-            low: minimum !== null && balance <= minimum,
+            low: feedIsLow(balance, item.minimumQuantity),
           };
         }),
       };
