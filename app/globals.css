@@ -67,6 +67,11 @@ h1 {
   outline-offset: 2px;
 }
 
+.search-palette :focus-visible,
+.assistant-composer textarea:focus-visible {
+  outline: none;
+}
+
 tbody tr {
   transition: background-color 120ms ease;
 }

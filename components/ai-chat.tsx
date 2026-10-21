@@ -332,7 +332,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
         )}
       </div>
       <form onSubmit={onSubmit} className="border-t border-border px-4 py-3 sm:px-6">
-        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-card p-2">
+        <div className="assistant-composer mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-border bg-card p-2">
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}

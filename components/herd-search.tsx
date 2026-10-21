@@ -405,7 +405,7 @@ export function HerdSearch({
         onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
-        className="mx-auto mt-[10vh] mb-auto w-[min(36rem,calc(100%-1.5rem))] overflow-hidden rounded-xl border border-white/10 bg-[#1c2430] p-0 text-white backdrop:bg-[#1c2430]/70"
+        className="search-palette mx-auto mt-[10vh] mb-auto w-[min(36rem,calc(100%-1.5rem))] overflow-hidden rounded-xl border border-white/10 bg-[#1c2430] p-0 text-white backdrop:bg-[#1c2430]/70"
       >
         <h2 id={titleId} className="sr-only">
           Search
