@@ -43,6 +43,8 @@ async function main() {
   if (existing) {
     const { seedOperations } = await import("./operations");
     await seedOperations(db, existing.id);
+    const { seedLaunchGaps } = await import("./launch");
+    await seedLaunchGaps(db, existing.id);
     console.log("Sample farm ready. Sign in as asha@shreegir.test / demo-farm-2026");
     const { closeDb } = await import("../close");
     await closeDb();
@@ -149,6 +151,8 @@ async function main() {
 
   const { seedOperations } = await import("./operations");
   await seedOperations(db, farm.id);
+  const { seedLaunchGaps } = await import("./launch");
+  await seedLaunchGaps(db, farm.id);
   console.log("Seeded Shree Gir Dairy. Sign in as asha@shreegir.test / demo-farm-2026");
   const { closeDb } = await import("../close");
   await closeDb();

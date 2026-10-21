@@ -1,6 +1,6 @@
 import { date, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { users } from "./auth";
-import { animals } from "./animal";
+import { animals, locations } from "./animal";
 import { farms } from "./farm";
 
 function id() {
@@ -125,6 +125,36 @@ export const pregnancyChecks = pgTable("pregnancy_check", {
   checkedOn: date("checked_on").notNull(),
   result: text("result").notNull(),
   method: text("method"),
+  ...voidFields(),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+export const locationMoves = pgTable("location_move", {
+  id: id(),
+  farmId: text("farm_id")
+    .notNull()
+    .references(() => farms.id, { onDelete: "cascade" }),
+  animalId: text("animal_id")
+    .notNull()
+    .references(() => animals.id, { onDelete: "cascade" }),
+  locationId: text("location_id").references(() => locations.id),
+  movedOn: date("moved_on").notNull(),
+  note: text("note"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+export const dryOffs = pgTable("dry_off", {
+  id: id(),
+  farmId: text("farm_id")
+    .notNull()
+    .references(() => farms.id, { onDelete: "cascade" }),
+  animalId: text("animal_id")
+    .notNull()
+    .references(() => animals.id, { onDelete: "cascade" }),
+  driedOn: date("dried_on").notNull(),
+  note: text("note"),
   ...voidFields(),
   createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),

@@ -673,6 +673,7 @@ export function farmTools(scope: FarmScope) {
         { task: "Farm assistant", path: "/ai" },
         { task: "Scan an animal tag or straw and start an AI", path: "/scan" },
         { task: "Cattle register and family tree", path: "/animals" },
+        { task: "Sheds and location history", path: "/locations" },
         { task: "Add an animal", path: "/animals/new" },
         { task: "Animal profile, parentage, breeding, health, milk, listing", path: "/animals/{code}" },
         { task: "Heat, insemination, pregnancy check, calving registers", path: "/breeding" },

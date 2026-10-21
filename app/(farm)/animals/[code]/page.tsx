@@ -132,6 +132,8 @@ export default async function AnimalProfilePage({
         canBreed={canRecordBreeding(farm.roles)}
         canHealth={canRecordHealth(farm.roles)}
         canList={canPublish(farm.roles)}
+        canEdit={canWriteAnimals(farm.roles)}
+        timezone={farm.timezone}
       />
     </div>
   );

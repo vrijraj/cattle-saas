@@ -18,6 +18,7 @@ import {
   Users,
   Stethoscope,
   Wallet,
+  Warehouse,
   Wheat,
 } from "lucide-react";
 
@@ -25,6 +26,7 @@ const links = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ai", label: "Assistant", icon: Sparkles },
   { href: "/animals", label: "Cattle", icon: Beef },
+  { href: "/locations", label: "Sheds", icon: Warehouse },
   { href: "/breeding", label: "Breeding", icon: HeartPulse },
   { href: "/health", label: "Health", icon: Stethoscope },
   { href: "/milk", label: "Milk", icon: Milk },

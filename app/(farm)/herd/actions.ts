@@ -11,6 +11,7 @@ import {
   bulls,
   calvings,
   dewormings,
+  dryOffs,
   embryoTransfers,
   embryos,
   feedItems,
@@ -30,6 +31,7 @@ import {
 } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { calfSireFromConception } from "@/lib/calving-sire";
+import { dryOffDueOn } from "@/lib/lactation";
 import { addDays, farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { issueAnimalCode } from "@/lib/issue-code";
@@ -204,6 +206,17 @@ export async function recordPd(formData: FormData) {
         body: `${animal.code} expected calving ${expected} (calculated, ${gestation} days from ${ai?.performedOn}).`,
         dueOn: expected,
       });
+      if (animal.lactation === "lactating") {
+        const dryOn = dryOffDueOn(expected, animal.species);
+        await db.insert(alerts).values({
+          farmId: farm.farmId,
+          animalId: animal.id,
+          type: "dry_off",
+          title: "Dry-off due",
+          body: `${animal.code} dry-off due ${dryOn}, ${animal.species === "buffalo" ? 90 : 60} days before expected calving ${expected}.`,
+          dueOn: dryOn,
+        });
+      }
     }
   }
   if (result === "not_pregnant") {
@@ -302,12 +315,47 @@ export async function recordCalving(formData: FormData) {
   redirect(`/animals/${dam.code}?tab=breeding`);
 }
 
+export async function recordDryOff(formData: FormData) {
+  const farm = await requireFarm();
+  if (!canRecordBreeding(farm.roles)) redirect("/breeding?error=role");
+  const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
+  if (!animal || animal.sex === "male") redirect("/breeding?error=animal");
+  if (animal.lactation !== "lactating") redirect(`/animals/${animal.code}?tab=breeding&error=dry`);
+  const driedOn = text(formData, "driedOn") || farmToday(farm.timezone);
+  const [row] = await db
+    .insert(dryOffs)
+    .values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      driedOn,
+      note: text(formData, "note") || null,
+      createdBy: farm.userId,
+    })
+    .returning({ id: dryOffs.id });
+  await writeAudit(db, {
+    farmId: farm.farmId,
+    actorId: farm.userId,
+    action: "create",
+    entity: "dry_off",
+    entityId: row.id,
+    summary: `Dry-off for ${animal.code}`,
+    after: { driedOn },
+  });
+  await db.update(animals).set({ lactation: "dry", updatedAt: new Date() }).where(eq(animals.id, animal.id));
+  await db
+    .update(alerts)
+    .set({ status: "done" })
+    .where(and(eq(alerts.animalId, animal.id), eq(alerts.type, "dry_off"), eq(alerts.status, "open")));
+  redirect(`/animals/${animal.code}?tab=breeding`);
+}
+
 export async function recordHealth(formData: FormData) {
   const farm = await requireFarm();
   if (!canRecordHealth(farm.roles)) redirect("/health?error=role");
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal) redirect("/health?error=animal");
   const followUp = text(formData, "followUpOn");
+  const medicine = text(formData, "medicine");
   const problem = text(formData, "problem") || "Illness";
   const [row] = await db
     .insert(healthEvents)
@@ -319,7 +367,7 @@ export async function recordHealth(formData: FormData) {
       signs: text(formData, "signs") || null,
       diagnosis: text(formData, "diagnosis") || null,
       treatment: text(formData, "treatment") || null,
-      medicine: text(formData, "medicine") || null,
+      medicine: medicine || null,
       dose: text(formData, "dose") || null,
       route: text(formData, "route") || null,
       veterinarian: text(formData, "veterinarian") || farm.userName,
@@ -337,7 +385,16 @@ export async function recordHealth(formData: FormData) {
     summary: `Treatment for ${animal.code}: ${problem}`,
     after: { problem },
   });
-  if (followUp) {
+  if (followUp && medicine) {
+    await db.insert(alerts).values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      type: "medication_due",
+      title: "Medication due",
+      body: `${animal.code} ${medicine} dose due ${followUp}.`,
+      dueOn: followUp,
+    });
+  } else if (followUp) {
     await db.insert(alerts).values({
       farmId: farm.farmId,
       animalId: animal.id,

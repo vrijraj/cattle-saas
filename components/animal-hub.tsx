@@ -5,17 +5,22 @@ import {
   bulls,
   calvings,
   dewormings,
+  dryOffs,
   healthEvents,
   heats,
   inseminations,
   listings,
+  locationMoves,
+  locations,
   milkYields,
   pregnancyChecks,
   vaccinations,
   weights,
 } from "@/db/schema";
-import { recordAi, recordCalving, recordDeworming, recordHealth, recordHeat, recordPd, recordVaccine, recordWeight, saveListing } from "@/app/(farm)/herd/actions";
-import { formatDisplayDate } from "@/lib/dates";
+import { recordAi, recordCalving, recordDeworming, recordDryOff, recordHealth, recordHeat, recordPd, recordVaccine, recordWeight, saveListing } from "@/app/(farm)/herd/actions";
+import { clearIsolation, moveAnimal, setIsolation } from "@/app/(farm)/locations/actions";
+import { farmToday, formatDisplayDate } from "@/lib/dates";
+import { lactationSummary } from "@/lib/lactation";
 import { PedigreeChart } from "@/components/pedigree-chart";
 import { WeightChart } from "@/components/weight-chart";
 import { RecordDialog } from "@/components/record-dialog";
@@ -49,6 +54,8 @@ export async function AnimalHub({
   canBreed,
   canHealth,
   canList,
+  canEdit,
+  timezone,
 }: {
   animal: AnimalRow;
   breedName: string;
@@ -60,6 +67,8 @@ export async function AnimalHub({
   canBreed: boolean;
   canHealth: boolean;
   canList: boolean;
+  canEdit: boolean;
+  timezone: string;
 }) {
   const herd = await db.select().from(animals).where(eq(animals.farmId, animal.farmId));
   const bullRows = await db.select().from(bulls).where(eq(bulls.farmId, animal.farmId));
@@ -69,6 +78,9 @@ export async function AnimalHub({
   const aiRows = await db.select().from(inseminations).where(eq(inseminations.animalId, animal.id));
   const pdRows = await db.select().from(pregnancyChecks).where(eq(pregnancyChecks.animalId, animal.id));
   const calvingRows = await db.select().from(calvings).where(eq(calvings.damId, animal.id));
+  const dryRows = await db.select().from(dryOffs).where(eq(dryOffs.animalId, animal.id));
+  const moveRows = await db.select().from(locationMoves).where(eq(locationMoves.animalId, animal.id));
+  const shedRows = await db.select().from(locations).where(eq(locations.farmId, animal.farmId));
   const healthRows = await db.select().from(healthEvents).where(eq(healthEvents.animalId, animal.id));
   const vaccineRows = await db.select().from(vaccinations).where(eq(vaccinations.animalId, animal.id));
   const dewormRows = await db.select().from(dewormings).where(eq(dewormings.animalId, animal.id));
@@ -84,6 +96,7 @@ export async function AnimalHub({
     ...aiRows.map((row) => ({ when: row.performedOn, label: `AI · ${row.bullCode}${row.strawCode ? ` · ${row.strawCode}` : ""}`, group: "breeding" })),
     ...pdRows.map((row) => ({ when: row.checkedOn, label: `Pregnancy check · ${row.result.replaceAll("_", " ")}`, group: "breeding" })),
     ...calvingRows.map((row) => ({ when: row.calvedOn, label: `Calving · ${row.outcome}`, group: "breeding" })),
+    ...dryRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.driedOn, label: "Dry-off", group: "breeding" })),
     ...healthRows.map((row) => ({ when: row.eventOn, label: `Treatment · ${row.problem}`, group: "health" })),
     ...vaccineRows.map((row) => ({ when: row.givenOn, label: `Vaccine · ${row.vaccine}`, group: "health" })),
     ...dewormRows.map((row) => ({ when: row.givenOn, label: `Deworming · ${row.product}`, group: "health" })),
@@ -327,6 +340,40 @@ export async function AnimalHub({
             })}
           </Table>
         </section>
+
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Dry-off</h2>
+            {recordable && animal.lactation === "lactating" ? (
+              <RecordDialog title="Record dry-off" button="Record dry-off">
+                <form action={recordDryOff} className="space-y-3">
+                  <input type="hidden" name="animalId" value={animal.id} />
+                  <Field label="Dried off">
+                    <input name="driedOn" type="date" className={inputClass} />
+                  </Field>
+                  <Field label="Note">
+                    <input name="note" className={inputClass} />
+                  </Field>
+                  <div className="flex justify-end pt-1">
+                    <Submit>Save dry-off</Submit>
+                  </div>
+                </form>
+              </RecordDialog>
+            ) : null}
+          </div>
+          <Table headers={["Date", "Note"]}>
+            {dryRows.filter((row) => !row.voidedAt).length === 0 ? <EmptyRow cols={2}>No dry-off recorded.</EmptyRow> : null}
+            {dryRows
+              .filter((row) => !row.voidedAt)
+              .sort((a, b) => b.driedOn.localeCompare(a.driedOn))
+              .map((row) => (
+                <tr key={row.id}>
+                  <Td>{formatDisplayDate(row.driedOn)}</Td>
+                  <Td>{row.note ?? "—"}</Td>
+                </tr>
+              ))}
+          </Table>
+        </section>
       </div>
     );
   }
@@ -544,9 +591,19 @@ export async function AnimalHub({
     );
   }
 
+  const today = farmToday(timezone);
+  const milkFacts = lactationSummary({
+    calvedOn: calvingRows.filter((row) => !row.voidedAt).map((row) => row.calvedOn),
+    driedOn: dryRows.filter((row) => !row.voidedAt).map((row) => row.driedOn).sort().at(-1) ?? null,
+    state: animal.lactation,
+    today,
+  });
+  const shedName = new Map(shedRows.map((row) => [row.id, row.name]));
   const identity = [
     ["Sex", sexLabel[animal.sex]],
     ["Life stage", lifeStageLabel[animal.lifeStage]],
+    ["Lactation", milkFacts.number > 0 ? `Lactation ${milkFacts.number}` : "No calving yet"],
+    ["Days in milk", milkFacts.daysInMilk === null ? "—" : String(milkFacts.daysInMilk)],
     ["Location", locationName ?? "Unassigned"],
     ["Ear tag", animal.earTag ?? "—"],
     ["Colour", animal.colour ?? "—"],
@@ -567,6 +624,64 @@ export async function AnimalHub({
               </div>
             ))}
           </dl>
+        </Panel>
+        <Panel title="Shed history">
+          {canEdit ? (
+            <form action={moveAnimal} className="mb-4 grid gap-3">
+              <input type="hidden" name="animalId" value={animal.id} />
+              <FormSelect
+                name="locationId"
+                required
+                placeholder="Shed"
+                options={shedRows.filter((row) => row.active).map((row) => ({ value: row.id, label: row.name }))}
+              />
+              <input name="note" placeholder="Reason for the move" className={inputClass} />
+              <div className="flex justify-end">
+                <Submit>Move</Submit>
+              </div>
+            </form>
+          ) : null}
+          <Table headers={["Date", "Shed", "Note"]}>
+            {moveRows.length === 0 ? <EmptyRow cols={3}>No move recorded yet.</EmptyRow> : null}
+            {[...moveRows]
+              .sort((a, b) => b.movedOn.localeCompare(a.movedOn))
+              .map((row) => (
+                <tr key={row.id}>
+                  <Td>{formatDisplayDate(row.movedOn)}</Td>
+                  <Td>{row.locationId ? (shedName.get(row.locationId) ?? "Shed") : "—"}</Td>
+                  <Td>{row.note ?? "—"}</Td>
+                </tr>
+              ))}
+          </Table>
+        </Panel>
+        <Panel title="Isolation">
+          {animal.isolationReason ? (
+            <div className="space-y-3">
+              <p className="text-sm">
+                {animal.isolationReason}
+                {animal.isolatedOn ? ` · since ${formatDisplayDate(animal.isolatedOn)}` : ""}
+              </p>
+              {canEdit ? (
+                <form action={clearIsolation} className="grid gap-3">
+                  <input type="hidden" name="animalId" value={animal.id} />
+                  <input name="note" required placeholder="Why isolation ended" className={inputClass} />
+                  <div className="flex justify-end">
+                    <Submit>Clear isolation</Submit>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+          ) : canEdit ? (
+            <form action={setIsolation} className="grid gap-3">
+              <input type="hidden" name="animalId" value={animal.id} />
+              <input name="reason" required placeholder="Reason" className={inputClass} />
+              <div className="flex justify-end">
+                <Submit>Isolate</Submit>
+              </div>
+            </form>
+          ) : (
+            <p className="text-sm text-muted-foreground">Not isolated.</p>
+          )}
         </Panel>
         <Panel title="Weight">
           <WeightChart

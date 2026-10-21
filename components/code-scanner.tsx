@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Detector = { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> };
+type Detector = { detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>> };
 
 export function CodeScanner() {
   const router = useRouter();
@@ -60,6 +60,26 @@ export function CodeScanner() {
     };
   }, [router, scanning]);
 
+  async function readTagPhoto(file: File) {
+    const DetectorCtor = (window as unknown as { BarcodeDetector?: new (options: { formats: string[] }) => Detector }).BarcodeDetector;
+    if (!DetectorCtor) {
+      setNote("This browser cannot read a tag photo. Type the code.");
+      return;
+    }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const found = await new DetectorCtor({ formats: ["qr_code"] }).detect(bitmap);
+      const value = found[0]?.rawValue?.trim();
+      if (!value) {
+        setNote("No tag was found in that photo.");
+        return;
+      }
+      router.push(`/scan?code=${encodeURIComponent(value)}`);
+    } catch {
+      setNote("That photo could not be read. Type the code.");
+    }
+  }
+
   return (
     <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
       <button
@@ -88,6 +108,19 @@ export function CodeScanner() {
           Look up
         </button>
       </form>
+      <label className="grid gap-1 text-sm font-medium">
+        Photo of a tag
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="text-sm"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void readTagPhoto(file);
+          }}
+        />
+      </label>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, eq } from "drizzle-orm";
 import { Bell, Droplets, Heart, Milk } from "lucide-react";
 import { db } from "@/db";
-import { alerts, animals, breeds } from "@/db/schema";
+import { alerts, animals, breeds, locations } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { herdCounts } from "@/lib/herd-stats";
@@ -56,6 +56,15 @@ export default async function DashboardPage() {
   const upcoming = herd
     .filter((animal) => animal.presence === "on_farm" && animal.reproduction === "pregnant")
     .sort((a, b) => (a.expectedCalving ?? "9999").localeCompare(b.expectedCalving ?? "9999"));
+  const shedRows = await db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.farmId, farm.farmId));
+  const shedName = new Map(shedRows.map((row) => [row.id, row.name]));
+  const isolated = herd
+    .filter((animal) => animal.presence === "on_farm" && animal.isolationReason)
+    .map((animal) => ({
+      ...animal,
+      shed: animal.locationId ? (shedName.get(animal.locationId) ?? "Unassigned") : "Unassigned",
+      days: animal.isolatedOn ? Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${animal.isolatedOn}T00:00:00Z`)) / 86400000)) : null,
+    }));
 
   const stats = [
     { label: "Total cattle", value: counts.total, icon: Heart, hint: "On the farm" },
@@ -119,6 +128,24 @@ export default async function DashboardPage() {
               ))}
             </ul>
           </div>
+        </article>
+
+        <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <h2 className="font-semibold">Isolated</h2>
+          <ul className="mt-4 divide-y divide-border">
+            {isolated.length === 0 ? <li className="py-4 text-sm text-muted-foreground">No animal is isolated.</li> : null}
+            {isolated.map((animal) => (
+              <li key={animal.id} className="py-3">
+                <Link href={`/animals/${animal.code}`} className="font-medium">
+                  {animal.name ?? animal.code}
+                </Link>
+                <p className="text-xs text-muted-foreground">
+                  {animal.code} · {animal.isolationReason}
+                  {animal.days !== null ? ` · ${animal.days} days` : ""} · {animal.shed}
+                </p>
+              </li>
+            ))}
+          </ul>
         </article>
 
         <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
