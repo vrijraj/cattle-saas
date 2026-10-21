@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cattle
+      POSTGRES_PASSWORD: cattle
+      POSTGRES_DB: cattle
+    ports:
+      - "5432:5432"
+    volumes:
+      - cattle_pg:/var/lib/postgresql/data
+
+volumes:
+  cattle_pg:
