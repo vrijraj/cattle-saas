@@ -95,7 +95,7 @@ Without ZeptoMail, an invite still creates a link the owner can copy. Without Ra
 
 **Farm workspace** (signed in): dashboard, cattle register and profile, dam-line family tree, heat / AI / pregnancy / calving, health, milk, feed, semen, mating check, embryos, finance, alerts, reports (CSV, PDF, Excel), shop products, team invites, an audit log, and an assistant at `/ai`.
 
-The assistant at `/ai` uses Google ADK with Gemini function calls. It looks up the same records as the workspace. Heat, insemination, pregnancy, calving, health, milk, weight, feed, and finance can be saved from the chat after you confirm. Set `GEMINI_API_KEY` (from Google AI Studio) and restart the dev server. `GEMINI_MODEL` defaults to `gemini-flash-latest`. Without a key, `/ai` explains what to add. The chat stays in this browser tab until you choose New chat. A server restart starts a new model session.
+The assistant at `/ai` uses Google ADK with Gemini function calls. It looks up the same records as the workspace. After you confirm, it can add an animal, record breeding, health, milk, weight, feed, finance, semen, and embryos, publish a listing, add a shop product, invite staff, and void a record. Set `GEMINI_API_KEY` (from Google AI Studio) and restart the dev server. `GEMINI_MODEL` defaults to `gemini-flash-latest`. Without a key, `/ai` explains what to add. The conversation is kept in this browser and in `.data/ai-sessions.json`, so a server restart keeps the same chat until you choose New chat.
 
 On a phone, the farm menu opens from the header. From the `md` breakpoint up, the same menu is a fixed sidebar.
 

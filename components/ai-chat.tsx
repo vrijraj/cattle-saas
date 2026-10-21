@@ -57,6 +57,14 @@ const toolLabels: Record<string, string> = {
   record_milk: "Record milk",
   record_feed: "Record feed",
   record_finance: "Record finance",
+  add_animal: "Add animal",
+  void_record: "Void record",
+  receive_straws: "Receive straws",
+  add_embryo: "Add embryo",
+  record_embryo_transfer: "Record transfer",
+  publish_listing: "Publish listing",
+  add_product: "Add product",
+  invite_staff: "Invite staff",
 };
 
 function renderText(text: string) {
@@ -88,21 +96,21 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
 
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as { sessionId?: string; messages?: ChatMessage[] };
         sessionId.current = parsed.sessionId ?? null;
         setMessages((parsed.messages ?? []).filter((message) => !message.pending));
       }
     } catch {
-      sessionStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_KEY);
     }
     setReady(true);
   }, []);
 
   useEffect(() => {
     if (!ready) return;
-    sessionStorage.setItem(
+    localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ sessionId: sessionId.current, messages: messages.filter((message) => !message.pending) }),
     );
@@ -203,7 +211,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
   function reset() {
     abortRef.current?.abort();
     sessionId.current = null;
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
     setMessages([]);
     setNotice(configured ? null : "Add GEMINI_API_KEY to .env and restart the server.");
     setBusy(false);

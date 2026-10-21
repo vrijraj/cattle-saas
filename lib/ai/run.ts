@@ -1,15 +1,16 @@
 import "server-only";
 
-import { getFunctionCalls, InMemorySessionService, isFinalResponse, LlmAgent, Runner, StreamingMode } from "@google/adk";
+import { getFunctionCalls, isFinalResponse, LlmAgent, Runner, StreamingMode } from "@google/adk";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
+import { DurableSessionService, sessionFilePath } from "@/lib/ai/sessions";
 import { farmTools, type FarmScope } from "@/lib/ai/tools";
 
 const APP_NAME = "cattle-farm-assistant";
 
-const globalAi = globalThis as unknown as { cattleAiSessions?: InMemorySessionService };
+const globalAi = globalThis as unknown as { cattleAiSessions?: DurableSessionService };
 
 function sessions() {
-  globalAi.cattleAiSessions ??= new InMemorySessionService();
+  globalAi.cattleAiSessions ??= new DurableSessionService(sessionFilePath());
   return globalAi.cattleAiSessions;
 }
 
@@ -43,7 +44,7 @@ export async function* runFarmAssistant(scope: FarmScope, turn: AiTurn, sessionI
 
 Use function calls for every lookup and every save. Never answer a number, name, date, or status from memory. If a function says this role cannot open a register, say that and do not guess.
 
-Saving functions wait for the person to confirm. Call the function with the fields they asked for, then wait. Do not claim a record was saved until the function result says saved is true. You cannot void or delete records.
+Saving and voiding functions wait for the person to confirm. Call the function with the fields they asked for, then wait. Do not claim a record was saved or voided until the function result says saved is true. Do not disable staff.
 
 Mating checks are decision support. Repeat the disclaimer the function returns. For male cattle, reproduction and lactation are not applicable.
 
@@ -52,6 +53,7 @@ Answer in short paragraphs. Use the animal name and code together. When you ment
   });
 
   const store = sessions();
+  await store.whenReady();
   const existing = sessionId ? await store.getSession({ appName: APP_NAME, userId: scope.userId, sessionId }) : undefined;
   const session = existing ?? (await store.createSession({ appName: APP_NAME, userId: scope.userId }));
   yield { type: "session", id: session.id, fresh: !existing };
