@@ -20,12 +20,19 @@ export function ScreenTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
+function contentKey(pathname: string, search: URLSearchParams) {
+  const params = new URLSearchParams(search);
+  params.delete("tab");
+  const value = params.toString();
+  return value ? `${pathname}?${value}` : pathname;
+}
+
 function TransitionFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const search = useSearchParams();
 
   return (
-    <ViewTransition key={`${pathname}?${search.toString()}`} name="page-content" enter="none" exit="none" share="page" default="none" update="none">
+    <ViewTransition key={contentKey(pathname, search)} name="page-content" enter="none" exit="none" share="page" default="none" update="none">
       <div className="flex min-h-[calc(100dvh-6.5rem)] min-w-0 flex-col sm:min-h-[calc(100dvh-7rem)] md:min-h-[calc(100dvh-7.5rem)]">{children}</div>
     </ViewTransition>
   );

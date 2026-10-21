@@ -11,7 +11,8 @@ import { lifeStageLabel, presenceLabel } from "@/lib/labels";
 import { canManageTeam, canViewAudit, canViewFinance, canViewGenetics, canViewHealth, canViewReports, canViewSemen, canWriteAnimals } from "@/lib/permissions";
 import { matchesHerdQuery } from "@/lib/herd-query";
 import { herdForest } from "@/lib/pedigree-tree";
-import { pickTab, Pill, Summary, TabBar } from "@/components/workspace";
+import { HerdTabs } from "@/components/herd-tabs";
+import { pickTab, Pill, Summary } from "@/components/workspace";
 
 const views = [
   { id: "all", label: "All" },
@@ -22,11 +23,6 @@ const views = [
 ] as const;
 
 type ViewId = (typeof views)[number]["id"];
-
-const pageTabs = [
-  { id: "herd", label: "Herd" },
-  { id: "tree", label: "Family tree" },
-];
 
 export const metadata = { title: "Cattle" };
 
@@ -40,7 +36,7 @@ export default async function AnimalsPage({
   const today = farmToday(farm.timezone);
   const term = (query.q ?? "").trim().toLowerCase();
   const view = views.some((item) => item.id === query.view) ? (query.view as ViewId) : "all";
-  const tab = pickTab(query.tab, pageTabs, "herd");
+  const tab = pickTab(query.tab, [{ id: "herd" }, { id: "tree" }], "herd");
 
   const rows = await db
     .select({
@@ -120,10 +116,11 @@ export default async function AnimalsPage({
           ) : null
         }
       />
-      <TabBar tabs={pageTabs} current={tab} base="/animals" />
-
-      {tab === "tree" ? <HerdTree forest={herdForest(rows)} /> : null}
-      {tab === "herd" ? (
+      <HerdTabs
+        initialTab={tab}
+        tree={<HerdTree forest={herdForest(rows)} />}
+        herd={
+        <>
         <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card">
           <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
             <HerdSearch
@@ -252,7 +249,9 @@ export default async function AnimalsPage({
             </table>
           </div>
         </section>
-      ) : null}
+        </>
+        }
+      />
     </div>
   );
 }
