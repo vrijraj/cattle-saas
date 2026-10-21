@@ -8,7 +8,7 @@ import { isUnderOneYear } from "@/lib/herd-stats";
 import { HerdTree } from "@/components/herd-tree";
 import { HerdSearch } from "@/components/herd-search";
 import { lifeStageLabel, presenceLabel } from "@/lib/labels";
-import { canWriteAnimals } from "@/lib/permissions";
+import { canManageTeam, canViewAudit, canWriteAnimals } from "@/lib/permissions";
 import { matchesHerdQuery } from "@/lib/herd-query";
 import { herdForest } from "@/lib/pedigree-tree";
 import { pickTab, Pill, Summary, TabBar } from "@/components/workspace";
@@ -124,7 +124,7 @@ export default async function AnimalsPage({
       {tab === "herd" ? (
         <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
-            <HerdSearch variant="field" />
+            <HerdSearch variant="field" showTeam={canManageTeam(farm.roles)} showAudit={canViewAudit(farm.roles)} />
             <div className="flex flex-wrap gap-1.5">
               {views.map((item) => {
                 const active = view === item.id;
