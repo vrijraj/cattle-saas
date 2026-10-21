@@ -1,5 +1,5 @@
-import { PageTransition } from "@/components/page-transition";
+import { ScreenTransition } from "@/components/page-transition";
 
 export default function SignInLayout({ children }: { children: React.ReactNode }) {
-  return <PageTransition>{children}</PageTransition>;
+  return <ScreenTransition>{children}</ScreenTransition>;
 }

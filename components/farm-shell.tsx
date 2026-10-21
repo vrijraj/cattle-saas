@@ -5,7 +5,7 @@ import { AccountMenu } from "@/components/account-menu";
 import { FarmDrawer } from "@/components/farm-drawer";
 import { FarmNav } from "@/components/farm-nav";
 import { HerdSearch } from "@/components/herd-search";
-import { PageTransition } from "@/components/page-transition";
+import { PageTransition, ScreenTransition } from "@/components/page-transition";
 
 export function FarmShell({
   farmName,
@@ -66,7 +66,8 @@ export function FarmShell({
   }
 
   return (
-    <div className="min-h-screen bg-background md:grid md:grid-cols-[248px_1fr]">
+    <ScreenTransition>
+      <div className="min-h-screen bg-background md:grid md:grid-cols-[248px_1fr]">
       <aside className="sticky top-0 hidden h-screen flex-col self-start overflow-hidden border-r border-border bg-muted/50 md:flex">
         <div className="flex items-center gap-3 px-4 py-5">
           <span className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground">
@@ -100,6 +101,7 @@ export function FarmShell({
           <PageTransition>{children}</PageTransition>
         </main>
       </div>
-    </div>
+      </div>
+    </ScreenTransition>
   );
 }
