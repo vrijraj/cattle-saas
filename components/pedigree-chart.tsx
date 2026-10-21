@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import type { AncestorChart, PedigreeNode } from "@/lib/pedigree-tree";
 
@@ -10,16 +11,23 @@ type Slot = {
 export function PedigreeChart({
   chart,
   offspring,
+  action,
 }: {
   chart: AncestorChart;
   offspring: { code: string; name: string | null }[];
+  action?: ReactNode;
 }) {
-  const ancestors = buildLevel(chart.parents, ["Sire", "Dam"], [chart.grandparents, chart.greatGrandparents], 1);
+  const ancestors = buildLevel(chart.parents, ["Sire", "Dam"], [chart.grandparents, chart.greatGrandparents, chart.fourthGeneration], 1);
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5">
-      <h2 className="text-base font-semibold">Pedigree</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Daughters and sons on the left. The sire sits above the dam on the right. A line stops where a parent is not linked.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Pedigree</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Daughters and sons on the left. The sire sits above the dam on the right. A line stops where a parent is not linked.</p>
+        </div>
+        {action}
+      </div>
       <div className="mt-5 overflow-x-auto rounded-xl bg-muted/70 p-4">
         <div className="flex items-center">
           <Offspring nodes={offspring} />
@@ -43,7 +51,7 @@ function buildLevel(nodes: PedigreeNode[], roles: string[], below: PedigreeNode[
       const span = 2 ** (step + 2);
       return row.slice(index * span, index * span + span);
     });
-    const next = known && depth < 3 && pair.some((item) => item.code) ? buildLevel(pair, ["Sire", "Dam"], scopedRest, depth + 1) : [];
+    const next = known && depth < 4 && pair.some((item) => item.code) ? buildLevel(pair, ["Sire", "Dam"], scopedRest, depth + 1) : [];
     return [{ node, role: roles[index] ?? "Ancestor", next }];
   });
 }

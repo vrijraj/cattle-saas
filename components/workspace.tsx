@@ -27,19 +27,29 @@ export function PageHeader({
 export function Panel({
   title,
   description,
+  action,
   children,
   className = "",
 }: {
   title?: string;
   description?: string;
+  action?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
+  const heading = title || description || action;
   return (
     <section className={`min-w-0 max-w-full rounded-2xl border border-border bg-card p-4 sm:p-5 ${className}`}>
-      {title ? <h2 className="text-base font-semibold">{title}</h2> : null}
-      {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
-      <div className={title || description ? "mt-4" : ""}>{children}</div>
+      {heading ? (
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            {title ? <h2 className="text-base font-semibold">{title}</h2> : null}
+            {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+          </div>
+          {action}
+        </div>
+      ) : null}
+      <div className={heading ? "mt-4" : ""}>{children}</div>
     </section>
   );
 }

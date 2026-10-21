@@ -48,9 +48,11 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
     ...chart.parents.map((node, index) => ({ label: index === 0 ? "Sire" : "Dam", node })),
     ...chart.grandparents.map((node, index) => ({ label: `Grandparent ${index + 1}`, node })),
     ...chart.greatGrandparents.map((node, index) => ({ label: `Great-grandparent ${index + 1}`, node })),
+    ...chart.fourthGeneration.filter((node) => node.code).map((node, index) => ({ label: `4th generation ${index + 1}`, node })),
   ];
   blocks.forEach((block, index) => {
-    const y = 730 - index * 28;
+    const y = 730 - index * 22;
+    if (y < 48) return;
     const text = block.node.code ? latin(`${block.node.name ? `${block.node.name} · ` : ""}${block.node.code}`) : "Unknown";
     page.drawText(latin(block.label), { x: 48, y, size: 9, font: bold, color: ink });
     page.drawText(text, { x: 180, y, size: 11, font, color: ink });

@@ -1,9 +1,11 @@
 import { and, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
+import { updateAnimalDetails, updateAnimalPedigree, updateGenerationParents } from "@/app/(farm)/animals/actions";
 import {
   animals,
   auditLogs,
+  breeds,
   bulls,
   calvings,
   dewormings,
@@ -33,7 +35,7 @@ import { FormSelect } from "@/components/form-select";
 import { EmptyRow, inputClass, Panel, Submit, Table, Td } from "@/components/workspace";
 import { lifeStageLabel, sexLabel } from "@/lib/labels";
 import { canVoidMatingNote } from "@/lib/permissions";
-import { ancestorChart } from "@/lib/pedigree-tree";
+import { ancestorChart, type AncestorChart } from "@/lib/pedigree-tree";
 
 type AnimalRow = typeof animals.$inferSelect;
 
@@ -117,11 +119,86 @@ export async function AnimalHub({
   ].sort((a, b) => b.when.localeCompare(a.when));
 
   if (tab === "parentage") {
+    const pedigreeError = breedingError && pedigreeMessages[breedingError] ? pedigreeMessages[breedingError] : undefined;
+    const dams = herd
+      .filter((row) => row.id !== animal.id && (row.sex === "female" || row.id === animal.geneticDamId))
+      .sort((left, right) => (left.name ?? left.code).localeCompare(right.name ?? right.code));
+    const targets = generationTargets(chart);
+    const generationError = breedingError ? generationMessages[breedingError] : undefined;
+    const sireOptions = parentOptions([
+      ...bullRows.map((bull) => ({ code: bull.code, name: bull.name })),
+      ...herd.filter((row) => row.sex === "male").map((row) => ({ code: row.code, name: row.name })),
+    ]);
+    const damOptions = parentOptions(herd.filter((row) => row.sex === "female").map((row) => ({ code: row.code, name: row.name })));
     return (
+      <div className="space-y-4">
       <PedigreeChart
         chart={chart}
         offspring={offspring.map((row) => ({ code: row.code, name: row.name }))}
+        action={
+          canEdit ? (
+            <RecordDialog title="Edit pedigree" button="Edit pedigree" quiet open={Boolean(pedigreeError)} notice={pedigreeError}>
+              <form action={updateAnimalPedigree} className="grid gap-3 sm:grid-cols-2">
+                <input type="hidden" name="code" value={animal.code} />
+                <Field label="Dam">
+                  <FormSelect
+                    name="damId"
+                    className={inputClass}
+                    defaultValue={animal.geneticDamId ?? ""}
+                    options={[{ value: "", label: "Not linked" }, ...dams.map((row) => ({ value: row.id, label: row.name && row.name !== row.code ? `${row.name} · ${row.code}` : row.code }))]}
+                  />
+                </Field>
+                <Field label="Sire code">
+                  <input name="sireCode" defaultValue={animal.geneticSireCode ?? ""} placeholder="BULL-GIR-014" className={inputClass} />
+                </Field>
+                <Field label="Sire name">
+                  <input name="sireName" defaultValue={animal.geneticSireName ?? ""} className={inputClass} />
+                </Field>
+                <p className="text-xs text-muted-foreground sm:col-span-2">This sets the 1st generation sire and dam of {animal.name ?? animal.code}. Use Add generation for the 2nd, 3rd, and 4th.</p>
+                <div className="flex justify-end sm:col-span-2">
+                  <Submit>Save pedigree</Submit>
+                </div>
+              </form>
+            </RecordDialog>
+          ) : null
+        }
       />
+      <Panel
+        title="Generations"
+        description="1st generation is the sire and dam. Each following generation is the sire and dam of the one before it, through the 4th."
+        action={
+          canEdit && targets.length > 0 ? (
+            <RecordDialog title="Add generation" button="Add generation" quiet open={Boolean(generationError)} notice={generationError}>
+              <form action={updateGenerationParents} className="grid gap-3 sm:grid-cols-2">
+                <input type="hidden" name="code" value={animal.code} />
+                <div className="sm:col-span-2">
+                  <Field label="Add parents for">
+                    <FormSelect name="ancestor" className={inputClass} options={targets} />
+                  </Field>
+                </div>
+                <Field label="Sire">
+                  <FormSelect name="sireCode" className={inputClass} defaultValue="" options={sireOptions} />
+                </Field>
+                <Field label="Dam">
+                  <FormSelect name="damCode" className={inputClass} defaultValue="" options={damOptions} />
+                </Field>
+                <p className="text-xs text-muted-foreground sm:col-span-2">Leave unchanged keeps the current parent. Sires are the bulls and males. Dams are the cows on this farm.</p>
+                <div className="flex justify-end sm:col-span-2">
+                  <Submit>Save generation</Submit>
+                </div>
+              </form>
+            </RecordDialog>
+          ) : null
+        }
+      >
+        <ol className="list-decimal space-y-2 pl-5 text-sm">
+          <li>1st generation: choose Edit pedigree and set the sire and dam.</li>
+          <li>2nd generation: choose Add generation, pick that sire or dam, then choose their sire and dam.</li>
+          <li>3rd generation: pick one of those new parents and choose their sire and dam.</li>
+          <li>4th generation: do the same for the 3rd generation parents. The chart draws all four.</li>
+        </ol>
+      </Panel>
+      </div>
     );
   }
 
@@ -596,7 +673,7 @@ export async function AnimalHub({
     const points = [...lactation]
       .sort((left, right) => left.recordedOn.localeCompare(right.recordedOn))
       .map((row) => ({
-        date: formatDisplayDate(row.recordedOn),
+        date: row.recordedOn,
         litres: Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0),
       }));
     return (
@@ -679,6 +756,11 @@ export async function AnimalHub({
   }
 
   const today = farmToday(timezone);
+  const breedRows = await db.select({ id: breeds.id, name: breeds.name }).from(breeds).where(eq(breeds.farmId, animal.farmId));
+  const detailError = detailMessages[breedingError ?? ""];
+  const dams = herd
+    .filter((row) => row.id !== animal.id && (row.sex === "female" || row.id === animal.geneticDamId))
+    .sort((left, right) => (left.name ?? left.code).localeCompare(right.name ?? right.code));
   const milkFacts = lactationSummary({
     calvedOn: calvingRows.filter((row) => !row.voidedAt).map((row) => row.calvedOn),
     driedOn: dryRows.filter((row) => !row.voidedAt).map((row) => row.driedOn).sort().at(-1) ?? null,
@@ -702,7 +784,61 @@ export async function AnimalHub({
   return (
     <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
       <div className="min-w-0 space-y-4">
-        <Panel title="Basic information">
+        <Panel
+          title="Basic information"
+          action={
+            canEdit ? (
+              <RecordDialog title="Basic information" button="Edit details" quiet open={Boolean(detailError)} notice={detailError}>
+                <form action={updateAnimalDetails} className="grid gap-3 sm:grid-cols-2">
+                  <input type="hidden" name="code" value={animal.code} />
+                  <Field label="Name">
+                    <input name="name" defaultValue={animal.name ?? ""} className={inputClass} />
+                  </Field>
+                  <Field label="Sex">
+                    <FormSelect name="sex" className={inputClass} defaultValue={animal.sex} options={Object.entries(sexLabel).map(([value, label]) => ({ value, label }))} />
+                  </Field>
+                  <Field label="Breed">
+                    <FormSelect name="breedId" className={inputClass} defaultValue={animal.breedId} options={breedRows.map((breed) => ({ value: breed.id, label: breed.name }))} />
+                  </Field>
+                  <Field label="Date of birth">
+                    <input name="dob" type="date" defaultValue={animal.dob ?? ""} className={inputClass} />
+                  </Field>
+                  <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-2">
+                    <input name="dobEstimated" type="checkbox" defaultChecked={animal.dobEstimated} className="size-5" />
+                    Date of birth is estimated
+                  </label>
+                  <Field label="Ear tag">
+                    <input name="earTag" defaultValue={animal.earTag ?? ""} className={inputClass} />
+                  </Field>
+                  <Field label="Colour">
+                    <input name="colour" defaultValue={animal.colour ?? ""} className={inputClass} />
+                  </Field>
+                  <Field label="Marks">
+                    <input name="marks" defaultValue={animal.marks ?? ""} className={inputClass} />
+                  </Field>
+                  <Field label="Dam">
+                    <FormSelect
+                      name="damId"
+                      className={inputClass}
+                      defaultValue={animal.geneticDamId ?? ""}
+                      options={[{ value: "", label: "Not linked" }, ...dams.map((row) => ({ value: row.id, label: row.name && row.name !== row.code ? `${row.name} · ${row.code}` : row.code }))]}
+                    />
+                  </Field>
+                  <Field label="Sire code">
+                    <input name="sireCode" defaultValue={animal.geneticSireCode ?? ""} className={inputClass} />
+                  </Field>
+                  <Field label="Sire name">
+                    <input name="sireName" defaultValue={animal.geneticSireName ?? ""} className={inputClass} />
+                  </Field>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">Lactation number and days in milk follow calving and dry-off. The shed is changed with Move.</p>
+                  <div className="flex justify-end sm:col-span-2">
+                    <Submit>Save details</Submit>
+                  </div>
+                </form>
+              </RecordDialog>
+            ) : null
+          }
+        >
           <dl className="grid gap-4 sm:grid-cols-2">
             {identity.map(([label, value]) => (
               <div key={label}>
@@ -843,6 +979,72 @@ const breedingMessages: Record<string, string> = {
   bull: "Enter the bull code.",
   straw: "That straw is not available.",
   conception: "Choose the insemination for this calving.",
+};
+
+function parentOptions(rows: { code: string; name: string | null }[]) {
+  const seen = new Set<string>();
+  const options = rows
+    .filter((row) => {
+      if (seen.has(row.code)) return false;
+      seen.add(row.code);
+      return true;
+    })
+    .map((row) => ({
+      value: row.code,
+      label: row.name && row.name !== row.code ? `${row.name} · ${row.code}` : row.code,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+  return [{ value: "", label: "Leave unchanged" }, ...options];
+}
+
+function ordinal(generation: number) {
+  if (generation === 1) return "1st";
+  if (generation === 2) return "2nd";
+  if (generation === 3) return "3rd";
+  return `${generation}th`;
+}
+
+function generationTargets(chart: AncestorChart) {
+  const levels = [
+    [1, chart.parents],
+    [2, chart.grandparents],
+    [3, chart.greatGrandparents],
+  ] as const;
+  const seen = new Set<string>();
+  const options: { value: string; label: string }[] = [];
+  for (const [generation, nodes] of levels) {
+    nodes.forEach((node, index) => {
+      if (!node.code || seen.has(node.code)) return;
+      seen.add(node.code);
+      const role = index % 2 === 0 ? "sire" : "dam";
+      const who = node.name && node.name !== node.code ? `${node.name} · ${node.code}` : node.code;
+      options.push({
+        value: `${node.code}\t${node.name ?? ""}`,
+        label: `${ordinal(generation + 1)} generation under ${ordinal(generation)} ${role} ${who}`,
+      });
+    });
+  }
+  return options;
+}
+
+const generationMessages: Record<string, string> = {
+  generation: "Choose who you are adding parents for, and enter a sire or a dam.",
+  gendam: "That dam needs to be a cow already on this farm. Use her animal code.",
+  gensire: "The sire code cannot be the same animal.",
+};
+
+const pedigreeMessages: Record<string, string> = {
+  pedigree: "Check the sire and dam, then try again.",
+  dam: "Choose a dam from this farm. She cannot be this animal or one of her descendants.",
+  sire: "The sire code cannot be this animal.",
+};
+
+const detailMessages: Record<string, string> = {
+  details: "Check these details and try again.",
+  date: "Date of birth is not valid.",
+  eartag: "That ear tag is already used on this farm.",
+  dam: "Choose a dam from this farm. She cannot be this animal or one of her descendants.",
+  sire: "The sire code cannot be this animal.",
 };
 
 function pregnancyResult(result: string) {

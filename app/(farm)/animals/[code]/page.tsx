@@ -7,9 +7,12 @@ import { animals, breeds, locations } from "@/db/schema";
 import { formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { AnimalHub, profileTabs, type ProfileTab } from "@/components/animal-hub";
+import { FormSelect } from "@/components/form-select";
+import { RecordDialog } from "@/components/record-dialog";
 import { inputClass, Notice, Pill, Submit, TabBar } from "@/components/workspace";
 import { lactationLabel, lifeStageLabel, presenceLabel, reproductionLabel } from "@/lib/labels";
 import { canPublish, canRecordBreeding, canRecordHealth, canSeeClinical, canViewGenetics, canViewHealth, canWriteAnimals } from "@/lib/permissions";
+import { updateAnimalStatus } from "../actions";
 import { savePhoto } from "../photo-actions";
 
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }): Promise<Metadata> {
@@ -98,10 +101,52 @@ export default async function AnimalProfilePage({
             <p className="mt-1 text-sm text-muted-foreground">
               {record.code} · {animal.breedName}
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <Pill tone={record.presence === "on_farm" ? "good" : "neutral"}>{presenceLabel[record.presence]}</Pill>
               <Pill tone={record.reproduction === "pregnant" ? "warn" : "neutral"}>{reproductionLabel[record.reproduction]}</Pill>
               <Pill>{lactationLabel[record.lactation]}</Pill>
+              {canWriteAnimals(farm.roles) ? (
+                <RecordDialog title="Change status" button="Change status" quiet open={query.error === "status"} notice={query.error === "status" ? "Choose a status and try again." : undefined}>
+                  <form action={updateAnimalStatus} className="grid gap-3 sm:grid-cols-2">
+                    <input type="hidden" name="code" value={record.code} />
+                    <label className="text-sm">
+                      Presence
+                      <FormSelect name="presence" className={`mt-1 ${inputClass}`} defaultValue={record.presence} options={Object.entries(presenceLabel).map(([value, label]) => ({ value, label }))} />
+                    </label>
+                    <label className="text-sm">
+                      Life stage
+                      <FormSelect name="lifeStage" className={`mt-1 ${inputClass}`} defaultValue={record.lifeStage} options={Object.entries(lifeStageLabel).map(([value, label]) => ({ value, label }))} />
+                    </label>
+                    {record.sex === "male" ? (
+                      <>
+                        <input type="hidden" name="reproduction" value="not_applicable" />
+                        <input type="hidden" name="lactation" value="not_applicable" />
+                        <p className="text-sm text-muted-foreground sm:col-span-2">Reproduction and lactation stay not applicable for a male.</p>
+                      </>
+                    ) : (
+                      <>
+                        <label className="text-sm">
+                          Reproduction
+                          <FormSelect name="reproduction" className={`mt-1 ${inputClass}`} defaultValue={record.reproduction} options={Object.entries(reproductionLabel).filter(([value]) => value !== "not_applicable" || record.reproduction === "not_applicable").map(([value, label]) => ({ value, label }))} />
+                        </label>
+                        <label className="text-sm">
+                          Lactation
+                          <FormSelect name="lactation" className={`mt-1 ${inputClass}`} defaultValue={record.lactation} options={Object.entries(lactationLabel).filter(([value]) => value !== "not_applicable" || record.lactation === "not_applicable").map(([value, label]) => ({ value, label }))} />
+                        </label>
+                        <label className="text-sm sm:col-span-2">
+                          Expected calving
+                          <input name="expectedCalving" type="date" defaultValue={record.expectedCalving ?? ""} className={`mt-1 ${inputClass}`} />
+                        </label>
+                        <p className="text-xs text-muted-foreground sm:col-span-2">Expected calving is kept when reproduction is Pregnant.</p>
+                      </>
+                    )}
+                    <p className="text-xs text-muted-foreground sm:col-span-2">The cattle list shows Sold, Dead, or Transferred first, then Pregnant, then In milk or Dry, then the life stage.</p>
+                    <div className="flex justify-end sm:col-span-2">
+                      <Submit>Save status</Submit>
+                    </div>
+                  </form>
+                </RecordDialog>
+              ) : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">

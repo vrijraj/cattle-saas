@@ -26,6 +26,7 @@ export type AncestorChart = {
   parents: PedigreeNode[];
   grandparents: PedigreeNode[];
   greatGrandparents: PedigreeNode[];
+  fourthGeneration: PedigreeNode[];
 };
 
 export type HerdNode = {
@@ -87,12 +88,14 @@ export function ancestorChart(animal: AnimalLink, herd: AnimalLink[], bulls: Bul
   });
   const grandparents = selfParents.flatMap((parent) => pair(parent.parents));
   const greatGrandparents = grandparents.flatMap((parent) => pair(parent.parents));
+  const fourthGeneration = greatGrandparents.flatMap((parent) => pair(parent.parents));
 
   return {
     self: { code: animal.code, name: animal.name, href: `/animals/${animal.code}` },
     parents: selfParents.map((parent) => parent.node),
     grandparents: grandparents.map((parent) => parent.node),
     greatGrandparents: greatGrandparents.map((parent) => parent.node),
+    fourthGeneration: fourthGeneration.map((parent) => parent.node),
   };
 }
 

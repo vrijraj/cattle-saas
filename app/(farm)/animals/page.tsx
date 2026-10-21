@@ -262,8 +262,8 @@ function rowStatus(animal: {
   lactation: "not_applicable" | "pre_lactation" | "lactating" | "dry";
   lifeStage: "calf" | "heifer" | "cow" | "bull" | "steer";
 }) {
-  if (animal.reproduction === "pregnant") return { label: "Pregnant", tone: "warn" as const };
   if (animal.presence !== "on_farm") return { label: presenceLabel[animal.presence], tone: "neutral" as const };
+  if (animal.reproduction === "pregnant") return { label: "Pregnant", tone: "warn" as const };
   if (animal.lactation === "lactating") return { label: "In milk", tone: "good" as const };
   if (animal.lactation === "dry") return { label: "Dry", tone: "neutral" as const };
   return { label: lifeStageLabel[animal.lifeStage], tone: "neutral" as const };

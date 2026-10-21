@@ -42,6 +42,7 @@ describe("ancestorChart", () => {
     expect(chart.grandparents.map((node) => node.code)).toEqual(["BULL-GIR-002", null, "BULL-GIR-002", "MIL-GIR-001"]);
     expect(chart.grandparents[3].href).toBe("/animals/MIL-GIR-001");
     expect(chart.greatGrandparents).toHaveLength(8);
+    expect(chart.fourthGeneration).toHaveLength(16);
   });
 });
 
