@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { PEDIGREE_GENERATIONS, type AncestorChart, type PedigreeNode } from "@/lib/pedigree-tree";
 
@@ -53,11 +53,100 @@ function clampScale(value: number) {
 function PedigreeViewport({ children }: { children: ReactNode }) {
   const shell = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const scaleRef = useRef(1);
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const homeRef = useRef({ x: 0, y: 0 });
+  const goalRef = useRef(1);
+  const focusRef = useRef({ x: 0, y: 0, localX: 0, localY: 0 });
+  const motionRef = useRef<"zoom" | "home" | null>(null);
+  const zoomRaf = useRef(0);
   const [dragging, setDragging] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+
+  function place(nextScale: number, nextOffset: { x: number; y: number }) {
+    scaleRef.current = nextScale;
+    offsetRef.current = nextOffset;
+    if (surfaceRef.current) surfaceRef.current.style.transform = `translate(${nextOffset.x}px, ${nextOffset.y}px) scale(${nextScale})`;
+    if (labelRef.current) labelRef.current.textContent = `${Math.round(nextScale * 100)}%`;
+  }
+
+  function focusOn(point: { x: number; y: number } | null) {
+    const node = frame.current;
+    if (!node) return;
+    const px = point?.x ?? node.clientWidth / 2;
+    const py = point?.y ?? node.clientHeight / 2;
+    const originX = node.clientWidth / 2;
+    const originY = node.clientHeight / 2;
+    focusRef.current = {
+      x: px,
+      y: py,
+      localX: (px - originX - offsetRef.current.x) / scaleRef.current,
+      localY: (py - originY - offsetRef.current.y) / scaleRef.current,
+    };
+  }
+
+  function startMotion() {
+    if (zoomRaf.current) return;
+    let last = performance.now();
+    const tick = (now: number) => {
+      if (!motionRef.current) {
+        zoomRaf.current = 0;
+        return;
+      }
+      const blend = 1 - Math.exp(-Math.min(40, now - last) / 180);
+      last = now;
+      if (motionRef.current === "home") {
+        const home = homeRef.current;
+        const scale = scaleRef.current + (1 - scaleRef.current) * blend;
+        const offset = {
+          x: offsetRef.current.x + (home.x - offsetRef.current.x) * blend,
+          y: offsetRef.current.y + (home.y - offsetRef.current.y) * blend,
+        };
+        const done = Math.abs(scale - 1) < 0.001 && Math.abs(offset.x - home.x) < 0.4 && Math.abs(offset.y - home.y) < 0.4;
+        place(done ? 1 : scale, done ? home : offset);
+        if (done) {
+          motionRef.current = null;
+          zoomRaf.current = 0;
+          return;
+        }
+      } else {
+        const target = goalRef.current;
+        const scale = scaleRef.current + (target - scaleRef.current) * blend;
+        const done = Math.abs(target - scale) < 0.001;
+        const nextScale = done ? target : scale;
+        const node = frame.current;
+        const originX = (node?.clientWidth ?? 0) / 2;
+        const originY = (node?.clientHeight ?? 0) / 2;
+        const focus = focusRef.current;
+        place(nextScale, { x: focus.x - originX - focus.localX * nextScale, y: focus.y - originY - focus.localY * nextScale });
+        if (done) {
+          motionRef.current = null;
+          zoomRaf.current = 0;
+          return;
+        }
+      }
+      zoomRaf.current = requestAnimationFrame(tick);
+    };
+    zoomRaf.current = requestAnimationFrame(tick);
+  }
+
+  function zoomToward(delta: number, point: { x: number; y: number } | null) {
+    goalRef.current = clampScale(goalRef.current + delta);
+    focusOn(point);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const node = frame.current;
+      const focus = focusRef.current;
+      const originX = (node?.clientWidth ?? 0) / 2;
+      const originY = (node?.clientHeight ?? 0) / 2;
+      place(goalRef.current, { x: focus.x - originX - focus.localX * goalRef.current, y: focus.y - originY - focus.localY * goalRef.current });
+      return;
+    }
+    motionRef.current = "zoom";
+    startMotion();
+  }
 
   useEffect(() => {
     const node = frame.current;
@@ -65,7 +154,9 @@ function PedigreeViewport({ children }: { children: ReactNode }) {
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const rect = node.getBoundingClientRect();
-      zoomAround(event.deltaY < 0 ? 0.1 : -0.1, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? node.clientHeight : 1;
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      zoomToward(Math.max(-0.18, Math.min(0.18, -(event.deltaY * unit) / 700)), point);
     };
     node.addEventListener("wheel", onWheel, { passive: false });
     return () => node.removeEventListener("wheel", onWheel);
@@ -74,29 +165,43 @@ function PedigreeViewport({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement === shell.current);
     document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      cancelAnimationFrame(zoomRaf.current);
+    };
   }, []);
 
-  function zoomAround(delta: number, point?: { x: number; y: number }) {
-    const frameEl = frame.current;
-    setScale((current) => {
-      const next = clampScale(current + delta);
-      if (!frameEl || next === current) return next;
-      const rect = frameEl.getBoundingClientRect();
-      const px = point?.x ?? rect.width / 2;
-      const py = point?.y ?? rect.height / 2;
-      setOffset((place) => {
-        const contentX = (px - place.x) / current;
-        const contentY = (py - place.y) / current;
-        return { x: px - contentX * next, y: py - contentY * next };
-      });
-      return next;
-    });
+  useLayoutEffect(() => {
+    const node = frame.current;
+    const surface = node?.firstElementChild as HTMLElement | null;
+    const card = surface?.querySelector<HTMLElement>("[data-pedigree='self']");
+    if (!node || !surface || !card) return;
+    const view = node.getBoundingClientRect();
+    const box = card.getBoundingClientRect();
+    const current = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(surface.style.transform);
+    const home = {
+      x: Number(current?.[1] ?? 0) + (view.left + view.width / 2) - (box.left + box.width / 2),
+      y: Number(current?.[2] ?? 0) + (view.top + view.height / 2) - (box.top + box.height / 2),
+    };
+    homeRef.current = home;
+    place(1, home);
+  }, []);
+
+  function zoom(delta: number) {
+    zoomToward(delta, null);
   }
 
   function reset() {
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
+    goalRef.current = 1;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      motionRef.current = null;
+      cancelAnimationFrame(zoomRaf.current);
+      zoomRaf.current = 0;
+      place(1, homeRef.current);
+      return;
+    }
+    motionRef.current = "home";
+    startMotion();
   }
 
   async function toggleFullscreen() {
@@ -111,18 +216,22 @@ function PedigreeViewport({ children }: { children: ReactNode }) {
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("a, button")) return;
+    motionRef.current = null;
+    cancelAnimationFrame(zoomRaf.current);
+    zoomRaf.current = 0;
+    goalRef.current = clampScale(scaleRef.current);
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
       // A pointer that cannot be captured still drags from the move events.
     }
-    drag.current = { x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y };
+    drag.current = { x: event.clientX, y: event.clientY, ox: offsetRef.current.x, oy: offsetRef.current.y };
     setDragging(true);
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     if (!drag.current) return;
-    setOffset({
+    place(scaleRef.current, {
       x: drag.current.ox + event.clientX - drag.current.x,
       y: drag.current.oy + event.clientY - drag.current.y,
     });
@@ -136,11 +245,11 @@ function PedigreeViewport({ children }: { children: ReactNode }) {
   return (
     <div ref={shell} className={fullscreen ? "flex h-screen w-screen flex-col bg-background p-4" : "mt-5"}>
       <div className="mb-2 flex items-center justify-end gap-2">
-        <button type="button" onClick={() => zoomAround(-0.15)} className="grid size-9 place-items-center rounded-full border border-border bg-card text-sm" aria-label="Zoom out">
+        <button type="button" onClick={() => zoom(-0.15)} className="grid size-9 place-items-center rounded-full border border-border bg-card text-sm" aria-label="Zoom out">
           −
         </button>
-        <span className="w-12 text-center text-xs text-muted-foreground">{Math.round(scale * 100)}%</span>
-        <button type="button" onClick={() => zoomAround(0.15)} className="grid size-9 place-items-center rounded-full border border-border bg-card text-sm" aria-label="Zoom in">
+        <span ref={labelRef} className="w-12 text-center text-xs text-muted-foreground">100%</span>
+        <button type="button" onClick={() => zoom(0.15)} className="grid size-9 place-items-center rounded-full border border-border bg-card text-sm" aria-label="Zoom in">
           +
         </button>
         <button type="button" onClick={reset} className="h-9 rounded-full border border-border bg-card px-3 text-xs font-medium">
@@ -156,12 +265,9 @@ function PedigreeViewport({ children }: { children: ReactNode }) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        className={`overflow-hidden rounded-xl bg-muted/70 touch-none ${fullscreen ? "min-h-0 flex-1" : "h-[min(32rem,70vh)]"} ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`flex items-center justify-center overflow-hidden rounded-xl bg-muted/70 touch-none ${fullscreen ? "min-h-0 flex-1" : "h-[min(32rem,70vh)]"} ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
       >
-        <div
-          className={`inline-flex items-center p-4 ${dragging ? "transition-none" : "motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-out"}`}
-          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: "0 0" }}
-        >
+        <div ref={surfaceRef} className="inline-flex items-center p-4" style={{ transformOrigin: "center center", willChange: "transform" }}>
           {children}
         </div>
       </div>
@@ -322,5 +428,9 @@ function AnimalCard({
       ) : null}
     </>
   );
-  return <div className={className}>{body}</div>;
+  return (
+    <div className={className} data-pedigree={emphasis ? "self" : undefined}>
+      {body}
+    </div>
+  );
 }
