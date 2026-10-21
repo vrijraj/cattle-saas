@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
 import { animals, breeds, codeCounters, locations } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
 import { formatAnimalCode } from "@/lib/animal-code";
 import { requireFarm } from "@/lib/farm-context";
 import { canWriteAnimals } from "@/lib/permissions";
@@ -84,24 +85,36 @@ export async function createAnimal(_prev: { error: string }, formData: FormData)
       .where(and(eq(codeCounters.farmId, farm.farmId), eq(codeCounters.breedCode, breed.code)));
 
     const animalCode = formatAnimalCode(farm.animalPrefix, breed.code, sequence);
-    await tx.insert(animals).values({
+    const [created] = await tx
+      .insert(animals)
+      .values({
+        farmId: farm.farmId,
+        code: animalCode,
+        name: input.name || null,
+        species: breed.species,
+        breedId: breed.id,
+        sex: input.sex,
+        dob: input.dob || null,
+        dobEstimated: input.dobEstimated,
+        earTag: input.earTag || null,
+        locationId: input.locationId || null,
+        colour: input.colour || null,
+        marks: input.marks || null,
+        lifeStage: input.lifeStage,
+        reproduction: input.sex === "male" ? "not_applicable" : input.reproduction,
+        lactation: input.sex === "male" ? "not_applicable" : input.lactation,
+        qrToken: randomBytes(32).toString("base64url"),
+        createdBy: farm.userId,
+      })
+      .returning({ id: animals.id });
+    await writeAudit(tx, {
       farmId: farm.farmId,
-      code: animalCode,
-      name: input.name || null,
-      species: breed.species,
-      breedId: breed.id,
-      sex: input.sex,
-      dob: input.dob || null,
-      dobEstimated: input.dobEstimated,
-      earTag: input.earTag || null,
-      locationId: input.locationId || null,
-      colour: input.colour || null,
-      marks: input.marks || null,
-      lifeStage: input.lifeStage,
-      reproduction: input.sex === "male" ? "not_applicable" : input.reproduction,
-      lactation: input.sex === "male" ? "not_applicable" : input.lactation,
-      qrToken: randomBytes(32).toString("base64url"),
-      createdBy: farm.userId,
+      actorId: farm.userId,
+      action: "create",
+      entity: "animal",
+      entityId: created.id,
+      summary: `Animal ${animalCode} added`,
+      after: { code: animalCode, name: input.name || null, sex: input.sex },
     });
     return animalCode;
   });

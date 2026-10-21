@@ -1,4 +1,4 @@
-import { date, integer, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { date, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { users } from "./auth";
 import { animals } from "./animal";
 import { farms } from "./farm";
@@ -7,6 +7,14 @@ function id() {
   return text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID());
+}
+
+function voidFields() {
+  return {
+    voidedAt: timestamp("voided_at", { mode: "date" }),
+    voidReason: text("void_reason"),
+    voidedBy: text("voided_by").references(() => users.id),
+  };
 }
 
 export const bulls = pgTable(
@@ -81,6 +89,7 @@ export const heats = pgTable("heat", {
   note: text("note"),
   createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  ...voidFields(),
 });
 
 export const inseminations = pgTable("insemination", {
@@ -99,7 +108,7 @@ export const inseminations = pgTable("insemination", {
   strawCode: text("straw_code"),
   attemptNumber: integer("attempt_number").notNull().default(1),
   note: text("note"),
-  voidedAt: timestamp("voided_at", { mode: "date" }),
+  ...voidFields(),
   createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -116,6 +125,7 @@ export const pregnancyChecks = pgTable("pregnancy_check", {
   checkedOn: date("checked_on").notNull(),
   result: text("result").notNull(),
   method: text("method"),
+  ...voidFields(),
   createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -134,6 +144,7 @@ export const calvings = pgTable("calving", {
   outcome: text("outcome").notNull(),
   ease: text("ease"),
   note: text("note"),
+  ...voidFields(),
   createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -158,6 +169,7 @@ export const healthEvents = pgTable("health_event", {
   followUpOn: date("follow_up_on"),
   outcome: text("outcome").notNull().default("ongoing"),
   cost: numeric("cost", { precision: 12, scale: 2 }),
+  ...voidFields(),
   createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -175,6 +187,7 @@ export const vaccinations = pgTable("vaccination", {
   givenOn: date("given_on").notNull(),
   nextDueOn: date("next_due_on"),
   administeredBy: text("administered_by"),
+  ...voidFields(),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -189,6 +202,7 @@ export const dewormings = pgTable("deworming", {
   product: text("product").notNull(),
   givenOn: date("given_on").notNull(),
   nextDueOn: date("next_due_on"),
+  ...voidFields(),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -245,6 +259,7 @@ export const financeEntries = pgTable("finance_entry", {
   entryOn: date("entry_on").notNull(),
   animalId: text("animal_id").references(() => animals.id),
   note: text("note"),
+  ...voidFields(),
   createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -337,5 +352,31 @@ export const orders = pgTable("order", {
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   status: text("status").notNull().default("pending_payment"),
   razorpayOrderId: text("razorpay_order_id"),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+export const orderItems = pgTable("order_item", {
+  id: id(),
+  orderId: text("order_id")
+    .notNull()
+    .references(() => orders.id, { onDelete: "cascade" }),
+  productId: text("product_id").references(() => products.id),
+  name: text("name").notNull(),
+  quantity: integer("quantity").notNull(),
+  price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+});
+
+export const auditLogs = pgTable("audit_log", {
+  id: id(),
+  farmId: text("farm_id")
+    .notNull()
+    .references(() => farms.id, { onDelete: "cascade" }),
+  actorId: text("actor_id").references(() => users.id),
+  action: text("action").notNull(),
+  entity: text("entity").notNull(),
+  entityId: text("entity_id").notNull(),
+  summary: text("summary").notNull(),
+  beforeState: jsonb("before_state"),
+  afterState: jsonb("after_state"),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });

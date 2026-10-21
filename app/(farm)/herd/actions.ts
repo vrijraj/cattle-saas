@@ -19,6 +19,7 @@ import {
   healthEvents,
   heats,
   inseminations,
+  milkYields,
   listings,
   pregnancyChecks,
   products,
@@ -27,6 +28,7 @@ import {
   vaccinations,
   weights,
 } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
 import { addDays, farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { issueAnimalCode } from "@/lib/issue-code";
@@ -37,6 +39,7 @@ import {
   canRecordHealth,
   canUseGenetics,
   canWriteAnimals,
+  canWriteMilk,
 } from "@/lib/permissions";
 
 function text(formData: FormData, key: string) {
@@ -57,13 +60,27 @@ export async function recordHeat(formData: FormData) {
   if (!canRecordBreeding(farm.roles)) redirect("/breeding?error=role");
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal) redirect("/breeding?error=animal");
-  await db.insert(heats).values({
+  const observedOn = text(formData, "observedOn") || farmToday(farm.timezone);
+  const signs = text(formData, "signs") || "standing";
+  const [row] = await db
+    .insert(heats)
+    .values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      observedOn,
+      signs,
+      note: text(formData, "note") || null,
+      createdBy: farm.userId,
+    })
+    .returning({ id: heats.id });
+  await writeAudit(db, {
     farmId: farm.farmId,
-    animalId: animal.id,
-    observedOn: text(formData, "observedOn") || farmToday(farm.timezone),
-    signs: text(formData, "signs") || "standing",
-    note: text(formData, "note") || null,
-    createdBy: farm.userId,
+    actorId: farm.userId,
+    action: "create",
+    entity: "heat",
+    entityId: row.id,
+    summary: `Heat recorded for ${animal.code}`,
+    after: { observedOn, signs },
   });
   redirect(`/animals/${animal.code}?tab=breeding`);
 }
@@ -93,17 +110,29 @@ export async function recordAi(formData: FormData) {
         .where(eq(straws.id, straw.id));
     }
 
-    await tx.insert(inseminations).values({
+    const [row] = await tx
+      .insert(inseminations)
+      .values({
+        farmId: farm.farmId,
+        animalId: animal.id,
+        performedOn,
+        technicianName: text(formData, "technician") || farm.userName || "Technician",
+        bullCode,
+        bullName: text(formData, "bullName") || null,
+        batchNumber: text(formData, "batchNumber") || null,
+        strawCode: strawCode || null,
+        attemptNumber: Number(text(formData, "attempt") || "1") || 1,
+        createdBy: farm.userId,
+      })
+      .returning({ id: inseminations.id });
+    await writeAudit(tx, {
       farmId: farm.farmId,
-      animalId: animal.id,
-      performedOn,
-      technicianName: text(formData, "technician") || farm.userName || "Technician",
-      bullCode,
-      bullName: text(formData, "bullName") || null,
-      batchNumber: text(formData, "batchNumber") || null,
-      strawCode: strawCode || null,
-      attemptNumber: Number(text(formData, "attempt") || "1") || 1,
-      createdBy: farm.userId,
+      actorId: farm.userId,
+      action: "create",
+      entity: "insemination",
+      entityId: row.id,
+      summary: `Insemination for ${animal.code} with ${bullCode}`,
+      after: { performedOn, bullCode, strawCode: strawCode || null },
     });
     await tx
       .update(animals)
@@ -129,14 +158,26 @@ export async function recordPd(formData: FormData) {
   const result = text(formData, "result");
   const inseminationId = text(formData, "inseminationId");
   const checkedOn = text(formData, "checkedOn") || farmToday(farm.timezone);
-  await db.insert(pregnancyChecks).values({
+  const [row] = await db
+    .insert(pregnancyChecks)
+    .values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      inseminationId: inseminationId || null,
+      checkedOn,
+      result,
+      method: text(formData, "method") || null,
+      createdBy: farm.userId,
+    })
+    .returning({ id: pregnancyChecks.id });
+  await writeAudit(db, {
     farmId: farm.farmId,
-    animalId: animal.id,
-    inseminationId: inseminationId || null,
-    checkedOn,
-    result,
-    method: text(formData, "method") || null,
-    createdBy: farm.userId,
+    actorId: farm.userId,
+    action: "create",
+    entity: "pregnancy_check",
+    entityId: row.id,
+    summary: `Pregnancy check for ${animal.code}: ${result}`,
+    after: { checkedOn, result },
   });
 
   if (result === "pregnant" && inseminationId) {
@@ -223,16 +264,28 @@ export async function recordCalving(formData: FormData) {
         .returning();
       calfId = calf.id;
     }
-    await tx.insert(calvings).values({
+    const [calving] = await tx
+      .insert(calvings)
+      .values({
+        farmId: farm.farmId,
+        damId: dam.id,
+        inseminationId: ai.id,
+        calvedOn,
+        calfId,
+        outcome,
+        ease: text(formData, "ease") || null,
+        note: text(formData, "note") || null,
+        createdBy: farm.userId,
+      })
+      .returning({ id: calvings.id });
+    await writeAudit(tx, {
       farmId: farm.farmId,
-      damId: dam.id,
-      inseminationId: ai.id,
-      calvedOn,
-      calfId,
-      outcome,
-      ease: text(formData, "ease") || null,
-      note: text(formData, "note") || null,
-      createdBy: farm.userId,
+      actorId: farm.userId,
+      action: "create",
+      entity: "calving",
+      entityId: calving.id,
+      summary: `Calving for ${dam.code}: ${outcome}`,
+      after: { calvedOn, outcome, calfId },
     });
     await tx
       .update(animals)
@@ -253,21 +306,34 @@ export async function recordHealth(formData: FormData) {
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal) redirect("/health?error=animal");
   const followUp = text(formData, "followUpOn");
-  await db.insert(healthEvents).values({
+  const problem = text(formData, "problem") || "Illness";
+  const [row] = await db
+    .insert(healthEvents)
+    .values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      eventOn: text(formData, "eventOn") || farmToday(farm.timezone),
+      problem,
+      signs: text(formData, "signs") || null,
+      diagnosis: text(formData, "diagnosis") || null,
+      treatment: text(formData, "treatment") || null,
+      medicine: text(formData, "medicine") || null,
+      dose: text(formData, "dose") || null,
+      route: text(formData, "route") || null,
+      veterinarian: text(formData, "veterinarian") || farm.userName,
+      followUpOn: followUp || null,
+      outcome: text(formData, "outcome") || "ongoing",
+      createdBy: farm.userId,
+    })
+    .returning({ id: healthEvents.id });
+  await writeAudit(db, {
     farmId: farm.farmId,
-    animalId: animal.id,
-    eventOn: text(formData, "eventOn") || farmToday(farm.timezone),
-    problem: text(formData, "problem") || "Illness",
-    signs: text(formData, "signs") || null,
-    diagnosis: text(formData, "diagnosis") || null,
-    treatment: text(formData, "treatment") || null,
-    medicine: text(formData, "medicine") || null,
-    dose: text(formData, "dose") || null,
-    route: text(formData, "route") || null,
-    veterinarian: text(formData, "veterinarian") || farm.userName,
-    followUpOn: followUp || null,
-    outcome: text(formData, "outcome") || "ongoing",
-    createdBy: farm.userId,
+    actorId: farm.userId,
+    action: "create",
+    entity: "health",
+    entityId: row.id,
+    summary: `Treatment for ${animal.code}: ${problem}`,
+    after: { problem },
   });
   if (followUp) {
     await db.insert(alerts).values({
@@ -275,7 +341,7 @@ export async function recordHealth(formData: FormData) {
       animalId: animal.id,
       type: "health_followup",
       title: "Health follow-up",
-      body: `${animal.code} follow-up for ${text(formData, "problem") || "treatment"} due ${followUp}.`,
+      body: `${animal.code} follow-up for ${problem} due ${followUp}.`,
       dueOn: followUp,
     });
   }
@@ -289,14 +355,26 @@ export async function recordVaccine(formData: FormData) {
   if (!animal) redirect("/health?error=animal");
   const nextDue = text(formData, "nextDueOn");
   const vaccine = text(formData, "vaccine") || "Vaccine";
-  await db.insert(vaccinations).values({
+  const [row] = await db
+    .insert(vaccinations)
+    .values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      vaccine,
+      batch: text(formData, "batch") || null,
+      givenOn: text(formData, "givenOn") || farmToday(farm.timezone),
+      nextDueOn: nextDue || null,
+      administeredBy: farm.userName,
+    })
+    .returning({ id: vaccinations.id });
+  await writeAudit(db, {
     farmId: farm.farmId,
-    animalId: animal.id,
-    vaccine,
-    batch: text(formData, "batch") || null,
-    givenOn: text(formData, "givenOn") || farmToday(farm.timezone),
-    nextDueOn: nextDue || null,
-    administeredBy: farm.userName,
+    actorId: farm.userId,
+    action: "create",
+    entity: "vaccination",
+    entityId: row.id,
+    summary: `Vaccine for ${animal.code}: ${vaccine}`,
+    after: { vaccine, nextDue: nextDue || null },
   });
   if (nextDue) {
     await db.insert(alerts).values({
@@ -316,12 +394,25 @@ export async function recordDeworming(formData: FormData) {
   if (!canRecordHealth(farm.roles)) redirect("/health?error=role");
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal) redirect("/health?error=animal");
-  await db.insert(dewormings).values({
+  const product = text(formData, "product") || "Dewormer";
+  const [row] = await db
+    .insert(dewormings)
+    .values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      product,
+      givenOn: text(formData, "givenOn") || farmToday(farm.timezone),
+      nextDueOn: text(formData, "nextDueOn") || null,
+    })
+    .returning({ id: dewormings.id });
+  await writeAudit(db, {
     farmId: farm.farmId,
-    animalId: animal.id,
-    product: text(formData, "product") || "Dewormer",
-    givenOn: text(formData, "givenOn") || farmToday(farm.timezone),
-    nextDueOn: text(formData, "nextDueOn") || null,
+    actorId: farm.userId,
+    action: "create",
+    entity: "deworming",
+    entityId: row.id,
+    summary: `Deworming for ${animal.code}: ${product}`,
+    after: { product },
   });
   redirect(`/animals/${animal.code}?tab=health`);
 }
@@ -425,14 +516,28 @@ export async function saveFinance(formData: FormData) {
   if (!canRecordFinance(farm.roles)) redirect("/finance?error=role");
   const amount = Number(text(formData, "amount"));
   if (!Number.isFinite(amount) || amount < 0) redirect("/finance?error=amount");
-  await db.insert(financeEntries).values({
+  const kind = text(formData, "kind") === "income" ? "income" : "expense";
+  const category = text(formData, "category") || "other";
+  const [row] = await db
+    .insert(financeEntries)
+    .values({
+      farmId: farm.farmId,
+      kind,
+      category,
+      amount: amount.toFixed(2),
+      entryOn: text(formData, "entryOn") || farmToday(farm.timezone),
+      note: text(formData, "note") || null,
+      createdBy: farm.userId,
+    })
+    .returning({ id: financeEntries.id });
+  await writeAudit(db, {
     farmId: farm.farmId,
-    kind: text(formData, "kind") === "income" ? "income" : "expense",
-    category: text(formData, "category") || "other",
-    amount: amount.toFixed(2),
-    entryOn: text(formData, "entryOn") || farmToday(farm.timezone),
-    note: text(formData, "note") || null,
-    createdBy: farm.userId,
+    actorId: farm.userId,
+    action: "create",
+    entity: "finance",
+    entityId: row.id,
+    summary: `${kind} ${category} ₹${amount.toFixed(2)}`,
+    after: { kind, category, amount: amount.toFixed(2) },
   });
   redirect("/finance");
 }
@@ -498,4 +603,57 @@ export async function saveProduct(formData: FormData) {
     published: "yes",
   });
   redirect("/shop");
+}
+
+const voidable = {
+  heat: heats,
+  insemination: inseminations,
+  pregnancy_check: pregnancyChecks,
+  calving: calvings,
+  health: healthEvents,
+  vaccination: vaccinations,
+  deworming: dewormings,
+  finance: financeEntries,
+  milk: milkYields,
+} as const;
+
+export async function voidRecord(formData: FormData) {
+  const farm = await requireFarm();
+  const entity = text(formData, "entity") as keyof typeof voidable;
+  const id = text(formData, "id");
+  const reason = text(formData, "reason");
+  const returnTo = text(formData, "returnTo");
+  const back = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/audit";
+  const table = voidable[entity];
+  if (!table || !id || !reason) redirect(back);
+
+  const breeding = entity === "heat" || entity === "insemination" || entity === "pregnancy_check" || entity === "calving";
+  const health = entity === "health" || entity === "vaccination" || entity === "deworming";
+  if (breeding && !canRecordBreeding(farm.roles)) redirect(back);
+  if (health && !canRecordHealth(farm.roles)) redirect(back);
+  if (entity === "finance" && !canRecordFinance(farm.roles)) redirect(back);
+  if (entity === "milk" && !canWriteMilk(farm.roles)) redirect(back);
+
+  await db.transaction(async (tx) => {
+    const [current] = await tx.select().from(table).where(and(eq(table.id, id), eq(table.farmId, farm.farmId))).limit(1);
+    if (!current || current.voidedAt) return;
+    await tx.update(table).set({ voidedAt: new Date(), voidReason: reason, voidedBy: farm.userId }).where(eq(table.id, id));
+    if (entity === "insemination" && formData.get("restoreStraw") === "on" && "strawCode" in current && current.strawCode) {
+      await tx
+        .update(straws)
+        .set({ status: "available", usedOnAnimalId: null, usedAt: null })
+        .where(and(eq(straws.farmId, farm.farmId), eq(straws.code, current.strawCode)));
+    }
+    await writeAudit(tx, {
+      farmId: farm.farmId,
+      actorId: farm.userId,
+      action: "void",
+      entity,
+      entityId: id,
+      summary: `Voided ${entity}: ${reason}`,
+      before: current,
+      after: { voidReason: reason },
+    });
+  });
+  redirect(back);
 }

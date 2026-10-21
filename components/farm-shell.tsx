@@ -9,12 +9,14 @@ export function FarmShell({
   userName,
   role,
   showTeam = false,
+  showAudit = false,
   children,
 }: {
   farmName: string;
   userName: string;
   role: string;
   showTeam?: boolean;
+  showAudit?: boolean;
   children: React.ReactNode;
 }) {
   const initials = userName
@@ -36,7 +38,7 @@ export function FarmShell({
             <p className="text-xs text-muted-foreground">Farm portal</p>
           </div>
         </div>
-        <FarmNav showTeam={showTeam} />
+        <FarmNav showTeam={showTeam} showAudit={showAudit} />
         <form
           action={async () => {
             "use server";

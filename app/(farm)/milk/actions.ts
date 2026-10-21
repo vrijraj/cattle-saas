@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { animals, milkYields } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
 import { farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canWriteMilk } from "@/lib/permissions";
@@ -37,7 +38,7 @@ export async function saveMilk(formData: FormData) {
   await db.transaction(async (tx) => {
     for (const row of rows) {
       if (row.morning === null && row.evening === null) continue;
-      await tx
+      const [saved] = await tx
         .insert(milkYields)
         .values({
           farmId: farm.farmId,
@@ -54,7 +55,17 @@ export async function saveMilk(formData: FormData) {
             eveningLitres: row.evening,
             updatedAt: new Date(),
           },
-        });
+        })
+        .returning({ id: milkYields.id });
+      await writeAudit(tx, {
+        farmId: farm.farmId,
+        actorId: farm.userId,
+        action: "update",
+        entity: "milk",
+        entityId: saved.id,
+        summary: `Milk updated for ${today}`,
+        after: { recordedOn: today, morning: row.morning, evening: row.evening },
+      });
     }
   });
 

@@ -10,6 +10,7 @@ import {
   FileBarChart,
   HeartPulse,
   LayoutDashboard,
+  ScrollText,
   Milk,
   ShoppingBag,
   Sprout,
@@ -32,13 +33,14 @@ const links = [
   { href: "/finance", label: "Finance", icon: Wallet },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/reports", label: "Reports", icon: FileBarChart },
+  { href: "/audit", label: "Audit", icon: ScrollText },
   { href: "/shop", label: "Shop", icon: ShoppingBag },
   { href: "/team", label: "Team", icon: Users },
 ];
 
-export function FarmNav({ showTeam = false }: { showTeam?: boolean }) {
+export function FarmNav({ showTeam = false, showAudit = false }: { showTeam?: boolean; showAudit?: boolean }) {
   const pathname = usePathname();
-  const items = showTeam ? links : links.filter((link) => link.href !== "/team");
+  const items = links.filter((link) => (link.href !== "/team" || showTeam) && (link.href !== "/audit" || showAudit));
   return (
     <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:block md:min-h-0 md:flex-1 md:space-y-1 md:overflow-y-auto md:px-3">
       {items.map((link) => {

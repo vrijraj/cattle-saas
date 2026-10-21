@@ -19,6 +19,7 @@ import { formatDisplayDate } from "@/lib/dates";
 import { PedigreeChart } from "@/components/pedigree-chart";
 import { WeightChart } from "@/components/weight-chart";
 import { RecordDialog } from "@/components/record-dialog";
+import { VoidRecord } from "@/components/void-record";
 import { EmptyRow, inputClass, Panel, Submit, Table, Td } from "@/components/workspace";
 import { lifeStageLabel, sexLabel } from "@/lib/labels";
 import { ancestorChart } from "@/lib/pedigree-tree";
@@ -178,15 +179,24 @@ export async function AnimalHub({
               </RecordDialog>
             ) : null}
           </div>
-          <Table headers={["Date", "Bull", "Batch", "Straw", "Technician"]}>
-            {ais.length === 0 ? <EmptyRow cols={5}>No insemination recorded.</EmptyRow> : null}
+          <Table headers={["Date", "Bull", "Batch", "Straw", "Technician", ""]}>
+            {ais.length === 0 ? <EmptyRow cols={6}>No insemination recorded.</EmptyRow> : null}
             {ais.map((row) => (
-              <tr key={row.id}>
+              <tr key={row.id} className={row.voidedAt ? "text-muted-foreground" : ""}>
                 <Td>{formatDisplayDate(row.performedOn)}</Td>
                 <Td className="font-medium">{bullLabel(row)}</Td>
                 <Td>{row.batchNumber ?? "—"}</Td>
                 <Td>{row.strawCode ?? "—"}</Td>
                 <Td>{row.technicianName}</Td>
+                <Td>
+                  {row.voidedAt ? (
+                    "Voided"
+                  ) : recordable ? (
+                    <VoidRecord entity="insemination" id={row.id} returnTo={`/animals/${animal.code}?tab=breeding`} restoreStraw={Boolean(row.strawCode)} />
+                  ) : (
+                    "—"
+                  )}
+                </Td>
               </tr>
             ))}
           </Table>
@@ -342,15 +352,24 @@ export async function AnimalHub({
               </RecordDialog>
             ) : null}
           </div>
-          <Table headers={["Date", "Problem", "Medicine", "Dose", "Follow up"]}>
-            {treatments.length === 0 ? <EmptyRow cols={5}>No treatment recorded.</EmptyRow> : null}
+          <Table headers={["Date", "Problem", "Medicine", "Dose", "Follow up", ""]}>
+            {treatments.length === 0 ? <EmptyRow cols={6}>No treatment recorded.</EmptyRow> : null}
             {treatments.map((row) => (
-              <tr key={row.id}>
+              <tr key={row.id} className={row.voidedAt ? "text-muted-foreground" : ""}>
                 <Td>{formatDisplayDate(row.eventOn)}</Td>
                 <Td className="font-medium">{row.problem}</Td>
                 <Td>{row.medicine ?? "—"}</Td>
                 <Td>{row.dose ?? "—"}</Td>
                 <Td>{row.followUpOn ? formatDisplayDate(row.followUpOn) : "—"}</Td>
+                <Td>
+                  {row.voidedAt ? (
+                    "Voided"
+                  ) : canHealth ? (
+                    <VoidRecord entity="health" id={row.id} returnTo={`/animals/${animal.code}?tab=health`} />
+                  ) : (
+                    "—"
+                  )}
+                </Td>
               </tr>
             ))}
           </Table>

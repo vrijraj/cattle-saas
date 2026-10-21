@@ -68,3 +68,7 @@ export function canPublish(roles: string[]) {
 export function canManageTeam(roles: string[]) {
   return hasRole(roles, ["owner", "admin"]);
 }
+
+export function canViewAudit(roles: string[]) {
+  return hasRole(roles, ["owner", "manager", "admin"]);
+}

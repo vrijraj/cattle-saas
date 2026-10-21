@@ -7,6 +7,7 @@ import { formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canRecordFinance, canViewFinance } from "@/lib/permissions";
 import { RecordDialog } from "@/components/record-dialog";
+import { VoidRecord } from "@/components/void-record";
 import { EmptyRow, inputClass, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
 
 function rupees(value: number) {
@@ -17,8 +18,9 @@ export default async function FinancePage() {
   const farm = await requireFarm();
   if (!canViewFinance(farm.roles)) redirect("/dashboard");
   const rows = await db.select().from(financeEntries).where(eq(financeEntries.farmId, farm.farmId));
-  const income = rows.filter((row) => row.kind === "income").reduce((sum, row) => sum + Number(row.amount), 0);
-  const expense = rows.filter((row) => row.kind === "expense").reduce((sum, row) => sum + Number(row.amount), 0);
+  const active = rows.filter((row) => !row.voidedAt);
+  const income = active.filter((row) => row.kind === "income").reduce((sum, row) => sum + Number(row.amount), 0);
+  const expense = active.filter((row) => row.kind === "expense").reduce((sum, row) => sum + Number(row.amount), 0);
 
   return (
     <div className="space-y-5">
@@ -54,17 +56,20 @@ export default async function FinancePage() {
             </RecordDialog>
           ) : null}
         </div>
-      <Table headers={["Date", "Type", "Category", "Amount", "Note"]}>
-        {rows.length === 0 ? <EmptyRow cols={5}>No entries yet.</EmptyRow> : null}
+      <Table headers={["Date", "Type", "Category", "Amount", "Note", ""]}>
+        {rows.length === 0 ? <EmptyRow cols={6}>No entries yet.</EmptyRow> : null}
         {rows.map((row) => (
-          <tr key={row.id}>
+          <tr key={row.id} className={row.voidedAt ? "text-muted-foreground" : ""}>
             <Td>{formatDisplayDate(row.entryOn)}</Td>
             <Td>
-              <Pill tone={row.kind === "income" ? "good" : "neutral"}>{row.kind}</Pill>
+              <Pill tone={row.voidedAt ? "neutral" : row.kind === "income" ? "good" : "neutral"}>{row.voidedAt ? "voided" : row.kind}</Pill>
             </Td>
             <Td>{row.category}</Td>
             <Td className="font-medium">{rupees(Number(row.amount))}</Td>
             <Td className="text-muted-foreground">{row.note ?? "—"}</Td>
+            <Td>
+              {row.voidedAt ? row.voidReason : canRecordFinance(farm.roles) ? <VoidRecord entity="finance" id={row.id} returnTo="/finance" /> : "—"}
+            </Td>
           </tr>
         ))}
       </Table>
