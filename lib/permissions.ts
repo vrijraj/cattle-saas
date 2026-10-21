@@ -61,6 +61,10 @@ export function canSeeClinical(roles: string[]) {
   return hasRole(roles, ["owner", "manager", "vet", "admin"]);
 }
 
+export function canViewHeatWindow(roles: string[]) {
+  return hasRole(roles, ["owner", "manager", "vet", "ai_technician", "genetics", "admin"]);
+}
+
 const CLINICAL_ALERTS = new Set(["medication_due", "health_followup"]);
 
 export function canReadAlert(roles: string[], type: string) {
