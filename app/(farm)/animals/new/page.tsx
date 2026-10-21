@@ -7,6 +7,8 @@ import { requireFarm } from "@/lib/farm-context";
 import { canWriteAnimals } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 
+export const metadata = { title: "Add cattle" };
+
 export default async function NewAnimalPage() {
   const farm = await requireFarm();
   if (!canWriteAnimals(farm.roles)) redirect("/animals");

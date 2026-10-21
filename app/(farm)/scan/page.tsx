@@ -15,6 +15,8 @@ function tokenFrom(value: string) {
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
+export const metadata = { title: "Scan a tag" };
+
 export default async function ScanPage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
   const farm = await requireFarm();
   const query = await searchParams;

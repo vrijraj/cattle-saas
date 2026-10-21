@@ -1,11 +1,29 @@
+import type { Metadata } from "next";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { publicFarm, publicTitle } from "@/lib/page-title";
 import { db } from "@/db";
 import { animals, breeds, farms, listings } from "@/db/schema";
 import { formatDisplayDate } from "@/lib/dates";
 import { sendEnquiry } from "@/app/farms/actions";
 import { PublicFrame } from "@/components/public-frame";
 import { inputClass, PageHeader, Panel, Submit } from "@/components/workspace";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string; code: string }> }): Promise<Metadata> {
+  const { slug, code } = await params;
+  const farm = await publicFarm(slug);
+  if (!farm) return publicTitle("Cattle for sale", "This animal is not published.");
+  const [row] = await db
+    .select({ name: animals.name, code: animals.code, breed: breeds.name })
+    .from(listings)
+    .innerJoin(animals, eq(animals.id, listings.animalId))
+    .innerJoin(breeds, eq(breeds.id, animals.breedId))
+    .where(and(eq(listings.farmId, farm.id), eq(listings.published, "yes"), eq(animals.code, code)))
+    .limit(1);
+  if (!row) return publicTitle(`${farm.name} cattle for sale`, `Published cattle from ${farm.name}.`);
+  const name = row.name ?? row.code;
+  return publicTitle(`${name} for sale at ${farm.name}`, `${row.breed} cattle from ${farm.name}.`);
+}
 
 export default async function PublicAnimalPage({ params }: { params: Promise<{ slug: string; code: string }> }) {
   const { slug, code } = await params;

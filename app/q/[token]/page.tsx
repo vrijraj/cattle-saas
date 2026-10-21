@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { animals, farmMembers } from "@/db/schema";
 import { auth } from "@/lib/auth";
 
+export const metadata = { title: "Animal tag" };
+
 export default async function QrLandingPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const session = await auth();

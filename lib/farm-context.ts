@@ -1,12 +1,13 @@
 import "server-only";
 
+import { cache } from "react";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { farmMembers, farms, users } from "@/db/schema";
 import { auth } from "@/lib/auth";
 
-export async function getFarm() {
+export const getFarm = cache(async function getFarm() {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return null;
@@ -32,7 +33,7 @@ export async function getFarm() {
 
   if (!membership || membership.disabledAt) return null;
   return membership;
-}
+});
 
 export async function requireFarm() {
   const membership = await getFarm();

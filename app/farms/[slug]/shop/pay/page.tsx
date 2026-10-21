@@ -1,9 +1,18 @@
+import type { Metadata } from "next";
 import { and, eq } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
+import { publicFarm, publicTitle } from "@/lib/page-title";
 import { db } from "@/db";
 import { farms, orders, products } from "@/db/schema";
 import { RazorpayPay } from "@/components/razorpay-pay";
 import { PublicFrame } from "@/components/public-frame";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const farm = await publicFarm(slug);
+  if (!farm) return publicTitle("Checkout", "This farm shop is not available.");
+  return publicTitle(`Checkout · ${farm.name}`, `Pay ${farm.name} for this order.`);
+}
 
 export default async function PayPage({
   params,

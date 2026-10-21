@@ -10,6 +10,8 @@ import { auditActionLabel, auditChange, auditEntityLabel, auditRecordHref, audit
 
 const pageSize = 100;
 
+export const metadata = { title: "Audit log" };
+
 export default async function AuditPage({
   searchParams,
 }: {

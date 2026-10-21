@@ -5,6 +5,8 @@ import { formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { EmptyRow, Summary, Table, Td } from "@/components/workspace";
 
+export const metadata = { title: "Buyer enquiries" };
+
 export default async function EnquiriesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const farm = await requireFarm();
   const query = await searchParams;

@@ -34,6 +34,8 @@ function flagSentence(flag: MatingFlag, label: string) {
   return `${label} appears on both pedigrees, ${generations} back on the female's side.`;
 }
 
+export const metadata = { title: "Genetics" };
+
 export default async function GeneticsPage({
   searchParams,
 }: {

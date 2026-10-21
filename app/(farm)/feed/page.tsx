@@ -20,6 +20,8 @@ const messages: Record<string, string> = {
   target: "Choose the herd, a shed on this farm, or an animal on this farm.",
 };
 
+export const metadata = { title: "Feed and nutrition" };
+
 export default async function FeedPage({
   searchParams,
 }: {

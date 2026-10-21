@@ -45,6 +45,8 @@ function flushFacts(value: unknown) {
   };
 }
 
+export const metadata = { title: "Embryos" };
+
 export default async function EmbryosPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; saved?: string }> }) {
   const farm = await requireFarm();
   if (!canViewGenetics(farm.roles)) redirect("/dashboard");

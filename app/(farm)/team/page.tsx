@@ -23,6 +23,8 @@ const messages: Record<string, string> = {
   reason: "Enter the reason for turning off this sign-in.",
 };
 
+export const metadata = { title: "Team" };
+
 export default async function TeamPage({
   searchParams,
 }: {

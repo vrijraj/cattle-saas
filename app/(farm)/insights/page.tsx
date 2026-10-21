@@ -12,6 +12,8 @@ import { Notice, Submit, Summary } from "@/components/workspace";
 
 const closeFlags = new Set(["Parent", "Grandparent", "Son", "Daughter"]);
 
+export const metadata = { title: "Herd insights" };
+
 export default async function InsightsPage({ searchParams }: { searchParams: Promise<{ female?: string }> }) {
   const farm = await requireFarm();
   const query = await searchParams;

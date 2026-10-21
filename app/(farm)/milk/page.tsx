@@ -15,6 +15,8 @@ const messages: Record<string, string> = {
   role: "Your role cannot record milk.",
 };
 
+export const metadata = { title: "Milk records" };
+
 export default async function MilkPage({
   searchParams,
 }: {

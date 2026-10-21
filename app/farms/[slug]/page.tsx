@@ -1,11 +1,20 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { publicFarm, publicTitle } from "@/lib/page-title";
 import { db } from "@/db";
 import { animals, breeds, farms, listings } from "@/db/schema";
 import { sendEnquiry } from "@/app/farms/actions";
 import { PublicFrame } from "@/components/public-frame";
 import { inputClass, Notice, PageHeader, Panel, Submit } from "@/components/workspace";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const farm = await publicFarm(slug);
+  if (!farm) return publicTitle("Cattle for sale", "This farm catalogue is not available.");
+  return publicTitle(`${farm.name} cattle for sale`, `Published cattle from ${farm.name}.`);
+}
 
 export default async function PublicFarmPage({
   params,

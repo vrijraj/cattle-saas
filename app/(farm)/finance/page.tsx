@@ -31,6 +31,8 @@ function monthLabel(month: string) {
   return formatDisplayDate(`${month}-01`).slice(3);
 }
 
+export const metadata = { title: "Finance" };
+
 export default async function FinancePage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const farm = await requireFarm();
   if (!canViewFinance(farm.roles)) redirect("/dashboard");

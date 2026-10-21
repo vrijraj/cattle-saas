@@ -17,6 +17,8 @@ const nextStatus: Record<string, string[]> = {
   shipped: ["completed"],
 };
 
+export const metadata = { title: "Shop catalogue" };
+
 export default async function ShopAdminPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const farm = await requireFarm();
   const query = await searchParams;

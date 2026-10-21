@@ -28,6 +28,8 @@ const pageTabs = [
   { id: "tree", label: "Family tree" },
 ];
 
+export const metadata = { title: "Cattle" };
+
 export default async function AnimalsPage({
   searchParams,
 }: {

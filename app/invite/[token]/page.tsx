@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { farms, invites, users } from "@/db/schema";
@@ -6,6 +7,14 @@ import { inputClass, Notice, Submit } from "@/components/workspace";
 import { auth } from "@/lib/auth";
 import { roleLabel } from "@/lib/team";
 import { acceptInvite } from "../actions";
+
+export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
+  const { token } = await params;
+  const [invite] = await db.select({ farmId: invites.farmId }).from(invites).where(eq(invites.token, token)).limit(1);
+  if (!invite) return { title: "Farm invite" };
+  const [farm] = await db.select({ name: farms.name }).from(farms).where(eq(farms.id, invite.farmId)).limit(1);
+  return { title: farm ? `Join ${farm.name}` : "Farm invite" };
+}
 
 export default async function InvitePage({
   params,

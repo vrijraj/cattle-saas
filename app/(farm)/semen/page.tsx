@@ -35,6 +35,8 @@ function includes(values: Array<string | null | undefined>, term: string) {
   return values.some((value) => value?.toLowerCase().includes(term));
 }
 
+export const metadata = { title: "Semen inventory" };
+
 export default async function SemenPage({
   searchParams,
 }: {

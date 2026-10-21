@@ -28,6 +28,8 @@ type ReportId = (typeof reports)[number]["id"];
 
 const dated = new Set<ReportId>(["breeding", "milk", "health", "feed", "weight", "finance"]);
 
+export const metadata = { title: "Reports" };
+
 export default async function ReportsPage({
   searchParams,
 }: {

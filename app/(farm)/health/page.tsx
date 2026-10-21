@@ -14,6 +14,8 @@ const errors: Record<string, string> = {
   animal: "Choose an animal on this farm.",
 };
 
+export const metadata = { title: "Health records" };
+
 export default async function HealthPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const farm = await requireFarm();
   if (!canViewHealth(farm.roles)) redirect("/dashboard");

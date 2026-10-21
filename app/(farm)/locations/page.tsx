@@ -7,6 +7,8 @@ import { RecordDialog } from "@/components/record-dialog";
 import { EmptyRow, inputClass, Notice, Submit, Summary, Table, Td } from "@/components/workspace";
 import { saveShed } from "./actions";
 
+export const metadata = { title: "Sheds" };
+
 export default async function LocationsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const farm = await requireFarm();
   const query = await searchParams;

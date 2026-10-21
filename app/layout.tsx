@@ -8,8 +8,12 @@ const googleSans = Google_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Cattle Management",
-  description: "Farm records for animals, milk, breeding, and health.",
+  title: {
+    default: "Farm portal",
+    template: "%s · Farm portal",
+  },
+  description: "Cattle, milk, breeding, and health records for a dairy farm.",
+  applicationName: "Farm portal",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

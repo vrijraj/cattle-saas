@@ -13,6 +13,8 @@ const errors: Record<string, string> = {
   animal: "Choose a female on this farm.",
 };
 
+export const metadata = { title: "Breeding records" };
+
 export default async function BreedingPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const farm = await requireFarm();
   const query = await searchParams;

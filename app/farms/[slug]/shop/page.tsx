@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { publicFarm, publicTitle } from "@/lib/page-title";
 import { db } from "@/db";
 import { farms, products } from "@/db/schema";
 import Link from "next/link";
@@ -7,6 +9,13 @@ import { addToCart } from "@/app/farms/actions";
 import { readCart } from "@/lib/cart";
 import { PublicFrame } from "@/components/public-frame";
 import { Notice, PageHeader, Submit } from "@/components/workspace";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const farm = await publicFarm(slug);
+  if (!farm) return publicTitle("Farm shop", "This shop is not available.");
+  return publicTitle(`${farm.name} shop`, `Products published by ${farm.name}.`);
+}
 
 export default async function PublicShopPage({
   params,

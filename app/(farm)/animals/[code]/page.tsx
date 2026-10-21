@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -10,6 +11,19 @@ import { inputClass, Notice, Pill, Submit, TabBar } from "@/components/workspace
 import { lactationLabel, lifeStageLabel, presenceLabel, reproductionLabel } from "@/lib/labels";
 import { canPublish, canRecordBreeding, canRecordHealth, canSeeClinical, canViewGenetics, canViewHealth, canWriteAnimals } from "@/lib/permissions";
 import { savePhoto } from "../photo-actions";
+
+export async function generateMetadata({ params }: { params: Promise<{ code: string }> }): Promise<Metadata> {
+  const farm = await requireFarm();
+  const { code } = await params;
+  const [animal] = await db
+    .select({ name: animals.name, code: animals.code })
+    .from(animals)
+    .where(and(eq(animals.farmId, farm.farmId), eq(animals.code, code)))
+    .limit(1);
+  if (!animal) return { title: "Cattle" };
+  const label = animal.name && animal.name !== animal.code ? `${animal.name} (${animal.code})` : animal.code;
+  return { title: label, description: `${label} at ${farm.farmName}.` };
+}
 
 export default async function AnimalProfilePage({
   params,

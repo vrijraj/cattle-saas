@@ -1,8 +1,17 @@
+import type { Metadata } from "next";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { publicFarm, publicTitle } from "@/lib/page-title";
 import { db } from "@/db";
 import { farms, orders } from "@/db/schema";
 import { PublicFrame } from "@/components/public-frame";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const farm = await publicFarm(slug);
+  if (!farm) return publicTitle("Order", "This order is not available.");
+  return publicTitle(`Order · ${farm.name}`, `Order status at ${farm.name}.`);
+}
 
 export default async function PublicOrderPage({ params }: { params: Promise<{ slug: string; id: string }> }) {
   const { slug, id } = await params;
