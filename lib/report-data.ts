@@ -62,6 +62,139 @@ export function inReportRange(day: string, from?: string, to?: string) {
   return true;
 }
 
+export type ReportChart = {
+  title: string;
+  note?: string;
+  shape: "bars" | "columns";
+  items: { label: string; display: string; width: number }[];
+};
+
+export function reportFacts(kind: string, rows: string[][]) {
+  if (kind === "cattle") {
+    return [
+      { label: "Animals", value: String(rows.length) },
+      { label: "On farm", value: String(rows.filter((row) => row[5] === "On farm").length) },
+      { label: "Lactating", value: String(rows.filter((row) => row[8] === "Lactating").length) },
+      { label: "Pregnant", value: String(rows.filter((row) => row[7] === "Pregnant").length) },
+    ];
+  }
+  if (kind === "breeding") {
+    return [
+      { label: "Records", value: String(rows.length) },
+      { label: "Inseminations", value: String(rows.filter((row) => row[0] === "Insemination").length) },
+      { label: "Pregnancy checks", value: String(rows.filter((row) => row[0] === "Pregnancy check").length) },
+      { label: "Calvings", value: String(rows.filter((row) => row[0] === "Calving").length) },
+    ];
+  }
+  if (kind === "milk") {
+    return [
+      { label: "Litres", value: oneDecimal(totalOf(rows, 5)) },
+      { label: "Morning", value: oneDecimal(totalOf(rows, 3)) },
+      { label: "Evening", value: oneDecimal(totalOf(rows, 4)) },
+      { label: "Animals", value: String(unique(rows, 1)) },
+    ];
+  }
+  if (kind === "health") {
+    return [
+      { label: "Records", value: String(rows.length) },
+      { label: "Treatments", value: String(rows.filter((row) => row[0] === "Treatment").length) },
+      { label: "Vaccines", value: String(rows.filter((row) => row[0] === "Vaccine").length) },
+      { label: "Deworming", value: String(rows.filter((row) => row[0] === "Deworming").length) },
+    ];
+  }
+  if (kind === "feed") {
+    return [
+      { label: "Movements", value: String(rows.length) },
+      { label: "Items", value: String(unique(rows, 1)) },
+      { label: "On hand", value: oneDecimal(totalOf(rows, 4)) },
+    ];
+  }
+  if (kind === "semen") {
+    return [
+      { label: "Straws", value: String(rows.length) },
+      { label: "Available", value: String(rows.filter((row) => row[1] === "Available").length) },
+      { label: "Used", value: String(rows.filter((row) => row[1] === "Used").length) },
+      { label: "Bulls", value: String(unique(rows, 2)) },
+    ];
+  }
+  if (kind === "weight") {
+    const heaviest = rows.reduce<{ kg: number; who: string } | null>((best, row) => {
+      const kg = numberOf(row[3]);
+      if (!best || kg > best.kg) return { kg, who: row[2] || row[1] };
+      return best;
+    }, null);
+    return [
+      { label: "Records", value: String(rows.length) },
+      { label: "Animals", value: String(unique(rows, 1)) },
+      { label: "Heaviest", value: heaviest ? `${oneDecimal(heaviest.kg)} kg` : "—" },
+    ];
+  }
+  if (kind === "finance") {
+    const active = rows.filter((row) => row[6] !== "Voided");
+    const income = active.filter((row) => row[1] === "Income").reduce((sum, row) => sum + numberOf(row[3]), 0);
+    const expense = active.filter((row) => row[1] === "Expense").reduce((sum, row) => sum + numberOf(row[3]), 0);
+    return [
+      { label: "Income", value: rupees(income) },
+      { label: "Expense", value: rupees(expense) },
+      { label: "Balance", value: rupees(income - expense) },
+      { label: "Voided", value: String(rows.length - active.length) },
+    ];
+  }
+  if (kind === "embryos") {
+    return [
+      { label: "Embryos", value: String(rows.length) },
+      { label: "In stock", value: String(rows.filter((row) => row[1] === "In stock").length) },
+    ];
+  }
+  if (kind === "genetics") {
+    return [
+      { label: "Sires", value: String(rows.length) },
+      { label: "Offspring", value: String(totalOf(rows, 2)) },
+      { label: "In milk", value: String(totalOf(rows, 4)) },
+      { label: "Live births", value: String(totalOf(rows, 7)) },
+    ];
+  }
+  return [{ label: "Rows", value: String(rows.length) }];
+}
+
+export function reportCharts(kind: string, rows: string[][]): ReportChart[] {
+  const charts: Array<ReportChart | null> = [];
+  if (kind === "cattle") {
+    charts.push(fromChart("Animals by breed", "bars", chartFor(kind, rows)));
+    charts.push(bars("Presence", "count", countEntries(rows, 5)));
+    charts.push(bars("Lactation", "count", countEntries(rows, 8)));
+  } else if (kind === "breeding") {
+    charts.push(fromChart("Inseminations by bull", "bars", chartFor(kind, rows)));
+    charts.push(bars("Records", "count", countEntries(rows, 0)));
+  } else if (kind === "milk") {
+    const days = [...sumBy(rows, (row) => row[0], (row) => numberOf(row[5])).entries()].reverse();
+    charts.push(bars("Litres by day", "milk", days.slice(-14), "columns", days.length > 14 ? "The latest 14 days in this filter." : undefined));
+    charts.push(bars("Litres by animal", "milk", ranked(rows, (row) => row[2] || row[1], (row) => numberOf(row[5]))));
+    charts.push(bars("Session", "milk", [["Morning", totalOf(rows, 3)], ["Evening", totalOf(rows, 4)]]));
+  } else if (kind === "health") {
+    charts.push(fromChart("Records by type", "bars", chartFor(kind, rows)));
+    charts.push(bars("Animals", "count", ranked(rows, (row) => row[3] || row[2], () => 1)));
+  } else if (kind === "feed") {
+    charts.push(fromChart("Quantity on hand", "bars", chartFor(kind, rows)));
+    charts.push(bars("Movements", "count", countEntries(rows, 3)));
+  } else if (kind === "semen") {
+    charts.push(fromChart("Straws by status", "bars", chartFor(kind, rows)));
+    charts.push(bars("Straws by type", "count", countEntries(rows, 4)));
+  } else if (kind === "weight") {
+    charts.push(fromChart("Weighings", "bars", chartFor(kind, rows)));
+  } else if (kind === "finance") {
+    charts.push(fromChart("Active amount", "bars", chartFor(kind, rows)));
+    charts.push(bars("Active amount by category", "finance", ranked(rows.filter((row) => row[6] !== "Voided"), (row) => row[2], (row) => numberOf(row[3]))));
+  } else if (kind === "embryos") {
+    charts.push(fromChart("Embryos by status", "bars", chartFor(kind, rows)));
+    charts.push(bars("Storage", "count", countEntries(rows, 5)));
+  } else if (kind === "genetics") {
+    charts.push(fromChart("Offspring", "bars", chartFor(kind, rows)));
+    charts.push(bars("Daughters in milk", "count", ranked(rows, (row) => row[1] || row[0], (row) => numberOf(row[4]))));
+  }
+  return charts.filter((chart): chart is ReportChart => chart !== null && chart.items.length > 0);
+}
+
 export function chartFor(kind: string, rows: string[][]) {
   const counted =
     kind === "cattle"
@@ -375,6 +508,52 @@ function numberOf(value: string | undefined) {
 
 function countBy(rows: string[][], index: number) {
   return sumBy(rows, (row) => row[index] || "", () => 1);
+}
+
+function countEntries(rows: string[][], index: number) {
+  return ranked(rows, (row) => row[index] || "", () => 1);
+}
+
+function ranked(rows: string[][], labelOf: (row: string[]) => string, valueOf: (row: string[]) => number) {
+  return [...sumBy(rows, labelOf, valueOf).entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+}
+
+function totalOf(rows: string[][], index: number) {
+  return rows.reduce((sum, row) => sum + numberOf(row[index]), 0);
+}
+
+function unique(rows: string[][], index: number) {
+  return new Set(rows.map((row) => row[index]).filter(Boolean)).size;
+}
+
+function oneDecimal(value: number) {
+  return value.toLocaleString("en-IN", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function rupees(value: number) {
+  const amount = Math.abs(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${value < 0 ? "−" : ""}₹${amount}`;
+}
+
+function fromChart(title: string, shape: ReportChart["shape"], items: { label: string; display: string; width: number }[]): ReportChart | null {
+  if (items.length === 0) return null;
+  return { title, shape, items };
+}
+
+function bars(title: string, kind: string, entries: [string, number][], shape: ReportChart["shape"] = "bars", note?: string): ReportChart | null {
+  const kept = entries.filter(([label, value]) => label !== "" && value !== 0);
+  if (kept.length === 0) return null;
+  const max = Math.max(...kept.map(([, value]) => Math.abs(value)), 1);
+  return {
+    title,
+    note,
+    shape,
+    items: kept.map(([label, value]) => ({
+      label,
+      display: chartValue(kind, value),
+      width: Math.max(6, Math.round((Math.abs(value) / max) * 100)),
+    })),
+  };
 }
 
 function sumBy(rows: string[][], labelOf: (row: string[]) => string, valueOf: (row: string[]) => number) {

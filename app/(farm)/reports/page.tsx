@@ -8,7 +8,7 @@ import { requireFarm } from "@/lib/farm-context";
 import { formatDisplayDate } from "@/lib/dates";
 import { presenceLabel, sexLabel } from "@/lib/labels";
 import { canViewGenetics, canViewReports, canViewSemen } from "@/lib/permissions";
-import { canOpenReport, chartFor, reportRows, reportWindow } from "@/lib/report-data";
+import { canOpenReport, reportCharts, reportFacts, reportRows, reportWindow } from "@/lib/report-data";
 import { EmptyRow, Summary, TabBar, Table, Td } from "@/components/workspace";
 
 const reports = [
@@ -46,7 +46,8 @@ export default async function ReportsPage({
   const lines = current ? await reportRows(current.id, farm.farmId, scope) : null;
   const header = lines?.[0] ?? [];
   const body = lines?.slice(1) ?? [];
-  const series = current ? chartFor(current.id, body) : [];
+  const facts = reportFacts(current?.id ?? "cattle", body);
+  const charts = current ? reportCharts(current.id, body) : [];
   const preview = body.slice(0, 8);
   const breedRows = current?.id === "cattle" ? await db.select().from(breeds).where(eq(breeds.farmId, farm.farmId)) : [];
   const genetics = canViewGenetics(farm.roles);
@@ -57,8 +58,8 @@ export default async function ReportsPage({
     <div className="space-y-5">
       <Summary
         title="Reports"
-        description="Each register has a chart and a download for CSV, Excel, or PDF. The file uses the filters on this page."
-        facts={[{ label: "Rows", value: String(body.length) }]}
+        description="Each register shows the main figures, charts, and a download for CSV, Excel, or PDF. The file uses the filters on this page."
+        facts={facts}
         action={
           filtered && current ? (
             <Link href={`/reports?tab=${current.id}`} className="inline-flex h-10 items-center rounded-full border border-border px-4 text-sm font-medium">
@@ -120,7 +121,7 @@ export default async function ReportsPage({
             </form>
           ) : null}
 
-          {series.length === 0 ? (
+          {charts.length === 0 ? (
             <p className="rounded-xl bg-muted px-4 py-8 text-sm text-muted-foreground">
               {filtered && body.length === 0
                 ? "Nothing is filled in for this filter."
@@ -129,19 +130,15 @@ export default async function ReportsPage({
                   : "Nothing recorded in this register yet."}
             </p>
           ) : (
-            <ul className="space-y-3">
-              {series.map((item) => (
-                <li key={item.label}>
-                  <div className="mb-1 flex items-center justify-between gap-3 text-sm">
-                    <span className="truncate font-medium">{item.label}</span>
-                    <span className="shrink-0 text-muted-foreground">{item.display}</span>
-                  </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full rounded-full bg-primary" style={{ width: `${item.width}%` }} />
-                  </div>
-                </li>
+            <div className={`grid gap-4 ${charts.length > 1 ? "lg:grid-cols-2" : ""}`}>
+              {charts.map((chart) => (
+                <article key={chart.title} className={`rounded-2xl border border-border p-4 ${chart.shape === "columns" ? "lg:col-span-2" : ""}`}>
+                  <h3 className="text-sm font-semibold">{chart.title}</h3>
+                  {chart.note ? <p className="mt-1 text-xs text-muted-foreground">{chart.note}</p> : null}
+                  {chart.shape === "columns" ? <ColumnChart items={chart.items} /> : <BarChart items={chart.items} />}
+                </article>
               ))}
-            </ul>
+            </div>
           )}
 
           <Table headers={header.length > 0 ? header : ["Register"]}>
@@ -164,6 +161,45 @@ export default async function ReportsPage({
           ) : null}
         </section>
       ) : null}
+    </div>
+  );
+}
+
+function BarChart({ items }: { items: { label: string; display: string; width: number }[] }) {
+  return (
+    <ul className="mt-4 space-y-3">
+      {items.map((item) => (
+        <li key={item.label}>
+          <div className="mb-1 flex items-center justify-between gap-3 text-sm">
+            <span className="truncate font-medium">{item.label}</span>
+            <span className="shrink-0 text-muted-foreground">{item.display}</span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${item.width}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ColumnChart({ items }: { items: { label: string; display: string; width: number }[] }) {
+  return (
+    <div className="mt-4">
+      <div className="flex h-32 items-end gap-2">
+        {items.map((item) => (
+          <div key={item.label} className="flex h-full min-w-0 flex-1 items-end">
+            <div className="w-full rounded-t-md bg-primary" style={{ height: `${item.width}%` }} title={`${item.label}: ${item.display}`} />
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex gap-2">
+        {items.map((item) => (
+          <span key={item.label} className="min-w-0 flex-1 truncate text-center text-[10px] text-muted-foreground">
+            {item.label.replace(/ \d{4}$/, "")}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
