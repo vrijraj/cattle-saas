@@ -1,6 +1,6 @@
 import { getFarm } from "@/lib/farm-context";
 import { geminiConfigured } from "@/lib/ai/config";
-import type { AiEvent } from "@/lib/ai/run";
+import type { AiEvent, AiTurn } from "@/lib/ai/run";
 
 export const runtime = "nodejs";
 
@@ -16,12 +16,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json().catch(() => null)) as { message?: unknown; sessionId?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as {
+    message?: unknown;
+    sessionId?: unknown;
+    confirmation?: { id?: unknown; confirmed?: unknown };
+  } | null;
   const message = typeof body?.message === "string" ? body.message.trim() : "";
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId : undefined;
-  if (!messageSchema.test(message)) {
+  const confirmation =
+    body?.confirmation && typeof body.confirmation.id === "string" && typeof body.confirmation.confirmed === "boolean"
+      ? { kind: "confirm" as const, id: body.confirmation.id, confirmed: body.confirmation.confirmed }
+      : null;
+  if (!confirmation && !messageSchema.test(message)) {
     return Response.json({ error: "Write a question of up to 4000 characters." }, { status: 400 });
   }
+  const turn: AiTurn = confirmation ?? { kind: "text", text: message };
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -39,7 +48,7 @@ export async function POST(request: Request) {
             roles: farm.roles,
             userName: farm.userName ?? farm.email,
           },
-          message,
+          turn,
           sessionId,
           request.signal,
         )) {

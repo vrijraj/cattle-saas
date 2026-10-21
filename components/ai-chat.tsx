@@ -3,13 +3,23 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 
+type ConfirmCard = {
+  id: string;
+  tool: string;
+  args: Record<string, unknown>;
+  decided?: "saved" | "cancelled";
+};
+
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
   tools: string[];
   pending?: boolean;
+  confirm?: ConfirmCard;
 };
+
+const STORAGE_KEY = "farm-ai-chat";
 
 const suggestions = [
   "How is the herd today?",
@@ -36,6 +46,17 @@ const toolLabels: Record<string, string> = {
   people_and_audit: "Team",
   report_catalogue: "Reports",
   workspace_map: "Screens",
+  record_heat: "Record heat",
+  record_insemination: "Record insemination",
+  record_pregnancy_check: "Record pregnancy check",
+  record_calving: "Record calving",
+  record_treatment: "Record treatment",
+  record_vaccine: "Record vaccine",
+  record_deworming: "Record deworming",
+  record_weight: "Record weight",
+  record_milk: "Record milk",
+  record_feed: "Record feed",
+  record_finance: "Record finance",
 };
 
 function renderText(text: string) {
@@ -59,18 +80,41 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState<string | null>(configured ? null : "Add GEMINI_API_KEY to .env and restart the server.");
   const sessionId = useRef<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { sessionId?: string; messages?: ChatMessage[] };
+        sessionId.current = parsed.sessionId ?? null;
+        setMessages((parsed.messages ?? []).filter((message) => !message.pending));
+      }
+    } catch {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ sessionId: sessionId.current, messages: messages.filter((message) => !message.pending) }),
+    );
+  }, [messages, ready]);
+
+  useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [messages, busy]);
 
-  async function send(raw: string) {
+  async function send(raw: string, confirmation?: { id: string; confirmed: boolean }) {
     const text = raw.trim();
-    if (!text || busy) return;
+    if (busy || (!confirmation && !text)) return;
     setDraft("");
     setNotice(null);
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", text, tools: [] };
@@ -88,7 +132,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
       const response = await fetch("/api/ai", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text, sessionId: sessionId.current }),
+        body: JSON.stringify({ message: confirmation ? undefined : text, confirmation, sessionId: sessionId.current }),
         signal: controller.signal,
       });
       if (!response.ok || !response.body) {
@@ -115,6 +159,8 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
             text?: string;
             name?: string;
             message?: string;
+            tool?: string;
+            args?: Record<string, unknown>;
           };
           if (event.type === "session" && event.id) {
             if (event.fresh && sessionId.current) setNotice("This reply starts a new chat. The earlier one was no longer on the server.");
@@ -125,12 +171,18 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
             patch((message) => ({ ...message, text: event.text ?? "" }));
           } else if (event.type === "tool" && event.name) {
             patch((message) => ({ ...message, tools: message.tools.includes(event.name!) ? message.tools : [...message.tools, event.name!] }));
+          } else if (event.type === "confirm" && event.id && event.tool) {
+            patch((message) => ({ ...message, confirm: { id: event.id!, tool: event.tool!, args: event.args ?? {} } }));
           } else if (event.type === "error" && event.message) {
             patch((message) => ({ ...message, text: message.text || event.message || "" }));
           }
         }
       }
-      patch((message) => ({ ...message, pending: false, text: message.text || "The assistant returned an empty reply." }));
+      patch((message) => ({
+        ...message,
+        pending: false,
+        text: message.text || (message.confirm ? "" : "The assistant returned an empty reply."),
+      }));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         patch((message) => ({ ...message, pending: false, text: message.text || "Stopped." }));
@@ -151,6 +203,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
   function reset() {
     abortRef.current?.abort();
     sessionId.current = null;
+    sessionStorage.removeItem(STORAGE_KEY);
     setMessages([]);
     setNotice(configured ? null : "Add GEMINI_API_KEY to .env and restart the server.");
     setBusy(false);
@@ -175,7 +228,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
             </span>
             <h2 className="mt-4 text-2xl font-semibold tracking-tight">Ask about the farm</h2>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Check the herd, milk, breeding, health, feed, money, and the rest of the workspace. Answers come from this farm’s records.
+              Gemini function calls read the herd, milk, breeding, health, feed, and money. A save waits until you confirm it.
             </p>
             {notice ? <p className="mt-4 max-w-md rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">{notice}</p> : null}
             <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -201,18 +254,69 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
                     <p className="mb-2 flex flex-wrap gap-1.5">
                       {message.tools.map((tool) => (
                         <span key={tool} className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                          {toolLabels[tool] ?? tool.replaceAll("_", " ")}
+                          Function · {toolLabels[tool] ?? tool.replaceAll("_", " ")}
                         </span>
                       ))}
                     </p>
                   ) : null}
-                  {message.role === "assistant" ? (
-                    <div className="rounded-2xl border border-border bg-card px-4 py-3 text-sm leading-6 whitespace-pre-wrap">
-                      {message.text ? renderText(message.text) : message.pending ? <span className="text-muted-foreground">Looking through the farm…</span> : null}
+                  {message.confirm ? (
+                    <div className="mb-2 rounded-2xl border border-border bg-card p-3 text-sm">
+                      <p className="font-medium">{toolLabels[message.confirm.tool] ?? message.confirm.tool}</p>
+                      <dl className="mt-2 space-y-1 text-muted-foreground">
+                        {Object.entries(message.confirm.args).map(([key, value]) => (
+                          <div key={key} className="flex gap-2">
+                            <dt className="capitalize">{key.replaceAll(/([A-Z])/g, " $1")}</dt>
+                            <dd className="text-foreground">{String(value)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                      {message.confirm.decided ? (
+                        <p className="mt-3 text-xs font-medium text-primary">{message.confirm.decided === "saved" ? "Confirmed" : "Left unsaved"}</p>
+                      ) : (
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              const id = message.confirm!.id;
+                              setMessages((current) =>
+                                current.map((item) =>
+                                  item.confirm?.id === id ? { ...item, confirm: { ...item.confirm!, decided: "saved" } } : item,
+                                ),
+                              );
+                              void send("Save this record", { id, confirmed: true });
+                            }}
+                            className="h-10 rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-40"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              const id = message.confirm!.id;
+                              setMessages((current) =>
+                                current.map((item) =>
+                                  item.confirm?.id === id ? { ...item, confirm: { ...item.confirm!, decided: "cancelled" } } : item,
+                                ),
+                              );
+                              void send("Don't save this", { id, confirmed: false });
+                            }}
+                            className="h-10 rounded-xl border border-border px-3 text-sm font-medium disabled:opacity-40"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  ) : (
+                  ) : null}
+                  {message.role === "assistant" && (message.text || message.pending) ? (
+                    <div className="rounded-2xl border border-border bg-card px-4 py-3 text-sm leading-6 whitespace-pre-wrap">
+                      {message.text ? renderText(message.text) : <span className="text-muted-foreground">Looking through the farm…</span>}
+                    </div>
+                  ) : message.role === "user" ? (
                     <p className="whitespace-pre-wrap">{message.text}</p>
-                  )}
+                  ) : null}
                 </div>
               </article>
             ))}

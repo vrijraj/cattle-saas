@@ -38,6 +38,7 @@ import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { herdCounts } from "@/lib/herd-stats";
 import { lactationLabel, lifeStageLabel, presenceLabel, reproductionLabel, sexLabel } from "@/lib/labels";
 import { matingFlags, type PedigreeLink } from "@/lib/mating";
+import { writeTools } from "@/lib/ai/write-tools";
 import {
   canManageTeam,
   canRecordHealth,
@@ -687,7 +688,7 @@ export function farmTools(scope: FarmScope) {
         { task: "Staff invites", path: "/team" },
         { task: "Audit log", path: "/audit" },
       ],
-      note: "This assistant can look records up. Saving a record is done on that screen.",
+      note: "Saving uses a function call and waits for the person to confirm in the chat.",
     }),
   });
 
@@ -708,5 +709,6 @@ export function farmTools(scope: FarmScope) {
     peopleAndAudit,
     reportCatalogue,
     workspaceMap,
+    ...writeTools(scope),
   ];
 }
