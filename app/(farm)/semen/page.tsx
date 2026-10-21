@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { bulls, semenBatches, straws } from "@/db/schema";
 import { saveBull, saveSemenBatch } from "@/app/(farm)/herd/actions";
 import { requireFarm } from "@/lib/farm-context";
-import { canUseGenetics } from "@/lib/permissions";
+import { canUseGenetics, canViewGenetics } from "@/lib/permissions";
 import { FormSelect } from "@/components/form-select";
 import { RecordDialog } from "@/components/record-dialog";
 import { EmptyRow, inputClass, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
@@ -13,6 +13,7 @@ export default async function SemenPage({ searchParams }: { searchParams: Promis
   const farm = await requireFarm();
   const { q } = await searchParams;
   const canEdit = canUseGenetics(farm.roles);
+  const canOpenGenetics = canViewGenetics(farm.roles);
   const bullRows = await db.select().from(bulls).where(eq(bulls.farmId, farm.farmId));
   const batches = await db.select().from(semenBatches).where(eq(semenBatches.farmId, farm.farmId));
   const strawRows = await db.select().from(straws).where(eq(straws.farmId, farm.farmId));
@@ -121,7 +122,15 @@ export default async function SemenPage({ searchParams }: { searchParams: Promis
           {visibleBulls.length === 0 ? <EmptyRow cols={4}>{query ? "No bulls match this search." : "No bulls yet."}</EmptyRow> : null}
           {visibleBulls.map((bull) => (
             <tr key={bull.id}>
-              <Td className="font-medium">{bull.code}</Td>
+              <Td className="font-medium">
+                {canOpenGenetics ? (
+                  <Link href={`/genetics?tab=bulls&sire=${encodeURIComponent(bull.code)}`} className="text-primary">
+                    {bull.code}
+                  </Link>
+                ) : (
+                  bull.code
+                )}
+              </Td>
               <Td>{bull.name}</Td>
               <Td>{bull.breed ?? "—"}</Td>
               <Td className="text-muted-foreground">{bull.semenCompany ?? "—"}</Td>

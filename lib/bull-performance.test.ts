@@ -38,4 +38,11 @@ describe("bull performance", () => {
     expect(sagar.mateChecks).toBe(2);
     expect(sagar.averageCalvingInterval).toBe(376);
   });
+
+  it("counts a lactating daughter and can focus on one sire", () => {
+    const withMilk = rows.map((row) => (row.id === "3" ? { ...row, inMilk: true } : row));
+    const [other] = bullPerformance(withMilk, { sire: "OTHER" });
+    expect(other.daughtersWithMilk).toBe(1);
+    expect(other.averageDailyYield).toBeNull();
+  });
 });

@@ -61,6 +61,15 @@ export function canUseGenetics(roles: string[]) {
   return hasRole(roles, GENETICS);
 }
 
+export function canViewGenetics(roles: string[]) {
+  return hasRole(roles, ["owner", "manager", "vet", "ai_technician", "genetics", "admin"]);
+}
+
+export function canVoidMatingNote(roles: string[], actorId: string | null, userId: string) {
+  if (hasRole(roles, ["owner", "manager", "admin"])) return true;
+  return roles.includes("genetics") && actorId === userId;
+}
+
 export function canPublish(roles: string[]) {
   return hasRole(roles, PUBLISH);
 }

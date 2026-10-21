@@ -2,10 +2,11 @@ export type PedigreeLink = {
   code: string;
   sireCode: string | null;
   damCode: string | null;
+  sex?: string | null;
 };
 
 export type MatingFlag = {
-  flag: "Parent" | "Grandparent" | "Son" | "Common ancestor";
+  flag: "Parent" | "Grandparent" | "Son" | "Daughter" | "Common ancestor";
   code: string;
   generation: number;
 };
@@ -69,8 +70,9 @@ export function matingFlags(femaleCode: string, proposedSireCode: string, links:
     });
   }
 
-  if (byCode.get(proposedSireCode)?.damCode === femaleCode) {
-    flags.push({ flag: "Son", code: proposedSireCode, generation: 1 });
+  const proposed = byCode.get(proposedSireCode);
+  if (proposed?.damCode === femaleCode) {
+    flags.push({ flag: proposed.sex === "female" ? "Daughter" : "Son", code: proposedSireCode, generation: 1 });
   }
 
   for (const [code, generation] of femaleSide) {

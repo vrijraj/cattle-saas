@@ -1,5 +1,5 @@
 import { requireFarm } from "@/lib/farm-context";
-import { canRecordHealth, canViewFinance } from "@/lib/permissions";
+import { canRecordHealth, canViewFinance, canViewGenetics } from "@/lib/permissions";
 import { reportRows } from "@/lib/report-data";
 import { csvFile, excelFile, pdfFile } from "@/lib/report-files";
 import { writeAudit } from "@/lib/audit";
@@ -15,7 +15,7 @@ const titles: Record<string, string> = {
   weight: "Weight",
   finance: "Finance",
   embryos: "Embryos",
-  genetics: "Offspring by sire",
+  genetics: "Bull performance",
 };
 
 export async function GET(request: Request, context: { params: Promise<{ kind: string }> }) {
@@ -25,6 +25,7 @@ export async function GET(request: Request, context: { params: Promise<{ kind: s
     return new Response("Forbidden", { status: 403 });
   }
   if (kind === "finance" && !canViewFinance(farm.roles)) return new Response("Forbidden", { status: 403 });
+  if (kind === "genetics" && !canViewGenetics(farm.roles)) return new Response("Forbidden", { status: 403 });
   if (farm.roles.length === 1 && farm.roles[0] === "worker") return new Response("Forbidden", { status: 403 });
 
   const lines = await reportRows(kind, farm.farmId);

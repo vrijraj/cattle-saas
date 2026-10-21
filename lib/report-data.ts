@@ -3,18 +3,22 @@ import { db } from "@/db";
 import {
   animals,
   breeds,
+  bulls,
+  calvings,
   feedItems,
   feedMovements,
   financeEntries,
   healthEvents,
   inseminations,
   milkYields,
+  pregnancyChecks,
   semenBatches,
   straws,
   vaccinations,
   weights,
   embryos,
 } from "@/db/schema";
+import { geneticsPerformance } from "@/lib/genetics-snapshot";
 
 export async function reportRows(kind: string, farmId: string): Promise<string[][] | null> {
   if (kind === "cattle") {
@@ -98,10 +102,33 @@ export async function reportRows(kind: string, farmId: string): Promise<string[]
     return [["code", "status", "storage", "grade", "sire"], ...list.map((row) => [row.code, row.status, row.storage, row.grade ?? "", row.sireCode ?? ""])];
   }
   if (kind === "genetics") {
-    const herd = await db.select().from(animals).where(eq(animals.farmId, farmId));
+    const [herd, bullRows, births, health, milk, ais, checks] = await Promise.all([
+      db.select().from(animals).where(eq(animals.farmId, farmId)),
+      db.select().from(bulls).where(eq(bulls.farmId, farmId)),
+      db.select().from(calvings).where(eq(calvings.farmId, farmId)),
+      db.select().from(healthEvents).where(eq(healthEvents.farmId, farmId)),
+      db.select().from(milkYields).where(eq(milkYields.farmId, farmId)),
+      db.select().from(inseminations).where(eq(inseminations.farmId, farmId)),
+      db.select().from(pregnancyChecks).where(eq(pregnancyChecks.farmId, farmId)),
+    ]);
+    const bullName = new Map(bullRows.map((bull) => [bull.code, bull.name]));
+    const animalName = new Map(herd.map((animal) => [animal.code, animal.name]));
+    const rows = geneticsPerformance({ herd, births, health, milk, ais, checks });
     return [
-      ["sire", "offspring code", "name", "sex", "dob"],
-      ...herd.filter((animal) => animal.geneticSireCode).map((animal) => [animal.geneticSireCode ?? "", animal.code, animal.name ?? "", animal.sex, animal.dob ?? ""]),
+      ["sire", "name", "offspring", "daughters", "daughters in milk", "avg daily l", "health events", "live births", "conception", "calving interval", "animals"],
+      ...rows.map((row) => [
+        row.sireCode,
+        bullName.get(row.sireCode) ?? animalName.get(row.sireCode) ?? "",
+        String(row.offspring),
+        String(row.females),
+        String(row.daughtersWithMilk),
+        row.averageDailyYield === null ? "" : String(row.averageDailyYield),
+        String(row.healthEvents),
+        String(row.liveCalvings),
+        row.mateChecks ? `${row.conceptions} of ${row.mateChecks}` : "",
+        row.averageCalvingInterval === null ? "" : String(row.averageCalvingInterval),
+        row.animals.map((animal) => animal.code).join(" "),
+      ]),
     ];
   }
   return null;

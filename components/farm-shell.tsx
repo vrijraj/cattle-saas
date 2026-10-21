@@ -14,6 +14,7 @@ export function FarmShell({
   showAudit = false,
   showFinance = false,
   showReports = false,
+  showGenetics = false,
   farmId,
   children,
 }: {
@@ -24,6 +25,7 @@ export function FarmShell({
   showAudit?: boolean;
   showFinance?: boolean;
   showReports?: boolean;
+  showGenetics?: boolean;
   farmId: string;
   children: React.ReactNode;
 }) {
@@ -70,7 +72,7 @@ export function FarmShell({
       <div className="min-w-0">
         <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-card/95 px-3 py-3 backdrop-blur sm:gap-3 sm:px-4">
           <FarmDrawer farmName={farmName} userName={userName} role={role} initials={initials} showTeam={showTeam} showAudit={showAudit} signOut={<SignOutButton />} />
-          <HerdSearch farmId={farmId} showTeam={showTeam} showAudit={showAudit} showFinance={showFinance} showReports={showReports} />
+          <HerdSearch farmId={farmId} showTeam={showTeam} showAudit={showAudit} showFinance={showFinance} showReports={showReports} showGenetics={showGenetics} />
           <Link href="/scan" className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card text-foreground">
             <ScanLine className="size-4" />
             <span className="sr-only">Scan</span>

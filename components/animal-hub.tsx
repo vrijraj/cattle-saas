@@ -1,4 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
+import Link from "next/link";
 import { db } from "@/db";
 import {
   animals,
@@ -19,6 +20,7 @@ import {
   weights,
 } from "@/db/schema";
 import { recordAi, recordCalving, recordDeworming, recordDryOff, recordHealth, recordHeat, recordPd, recordVaccine, recordWeight, saveListing } from "@/app/(farm)/herd/actions";
+import { voidMatingNote } from "@/app/(farm)/genetics/actions";
 import { clearIsolation, moveAnimal, setIsolation } from "@/app/(farm)/locations/actions";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { lactationSummary } from "@/lib/lactation";
@@ -29,6 +31,7 @@ import { VoidRecord } from "@/components/void-record";
 import { FormSelect } from "@/components/form-select";
 import { EmptyRow, inputClass, Panel, Submit, Table, Td } from "@/components/workspace";
 import { lifeStageLabel, sexLabel } from "@/lib/labels";
+import { canVoidMatingNote } from "@/lib/permissions";
 import { ancestorChart } from "@/lib/pedigree-tree";
 
 type AnimalRow = typeof animals.$inferSelect;
@@ -56,6 +59,9 @@ export async function AnimalHub({
   canHealth,
   canList,
   canEdit,
+  canViewGenetics,
+  roles,
+  userId,
   timezone,
 }: {
   animal: AnimalRow;
@@ -69,6 +75,9 @@ export async function AnimalHub({
   canHealth: boolean;
   canList: boolean;
   canEdit: boolean;
+  canViewGenetics: boolean;
+  roles: string[];
+  userId: string;
   timezone: string;
 }) {
   const herd = await db.select().from(animals).where(eq(animals.farmId, animal.farmId));
@@ -127,6 +136,16 @@ export async function AnimalHub({
       .from(auditLogs)
       .where(and(eq(auditLogs.farmId, animal.farmId), eq(auditLogs.entity, "mating_check"), eq(auditLogs.entityId, animal.id)))
       .orderBy(desc(auditLogs.createdAt));
+    const voidedNotes = new Set(
+      matingNotes
+        .filter((note) => note.action === "void")
+        .map((note) => {
+          const after = note.afterState as { noteId?: string } | null;
+          return after?.noteId ?? "";
+        })
+        .filter(Boolean),
+    );
+    const savedChecks = matingNotes.filter((note) => note.action === "create" && !voidedNotes.has(note.id));
 
     function bullLabel(row: { bullCode: string; bullName: string | null }) {
       return row.bullName && row.bullName !== row.bullCode ? `${row.bullName} · ${row.bullCode}` : row.bullCode;
@@ -135,14 +154,42 @@ export async function AnimalHub({
     return (
       <div className="space-y-8">
         <section className="space-y-3">
-          <h2 className="text-base font-semibold">Mating checks</h2>
-          {matingNotes.length === 0 ? <p className="text-sm text-muted-foreground">No mating check saved on this animal.</p> : null}
-          {matingNotes.map((note) => (
-            <p key={note.id} className="rounded-xl bg-muted px-3 py-3 text-sm">
-              <span className="text-muted-foreground">{formatDisplayDate(note.createdAt.toISOString().slice(0, 10))}</span>
-              <span className="mt-1 block font-medium">{note.summary}</span>
-            </p>
-          ))}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Mating checks</h2>
+            {canViewGenetics && animal.sex === "female" ? (
+              <Link href={`/genetics?female=${encodeURIComponent(animal.code)}`} className="text-sm font-medium text-primary">
+                Check a mating
+              </Link>
+            ) : null}
+          </div>
+          {savedChecks.length === 0 ? <p className="text-sm text-muted-foreground">No mating check saved on this animal.</p> : null}
+          {savedChecks.map((note) => {
+            const after = note.afterState as { female?: string; bull?: string; batch?: string | null } | null;
+            const bullValue = after?.bull ? (after.batch ? `${after.bull}::${after.batch}` : after.bull) : "";
+            const href = after?.female && bullValue ? `/genetics?female=${encodeURIComponent(after.female)}&bull=${encodeURIComponent(bullValue)}` : "";
+            return (
+              <div key={note.id} className="rounded-xl bg-muted px-3 py-3 text-sm">
+                <span className="text-muted-foreground">{formatDisplayDate(note.createdAt.toISOString().slice(0, 10))}</span>
+                {canViewGenetics && href ? (
+                  <Link href={href} className="mt-1 block font-medium text-primary">
+                    {note.summary}
+                  </Link>
+                ) : (
+                  <span className="mt-1 block font-medium">{note.summary}</span>
+                )}
+                {canVoidMatingNote(roles, note.actorId, userId) ? (
+                  <form action={voidMatingNote} className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                    <input type="hidden" name="id" value={note.id} />
+                    <input type="hidden" name="returnTo" value={`/animals/${animal.code}?tab=breeding`} />
+                    <input name="reason" required placeholder="Reason" className="h-8 w-36 rounded-lg border border-border bg-background px-2 text-xs" />
+                    <button type="submit" className="text-xs font-medium text-danger">
+                      Void
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            );
+          })}
         </section>
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">

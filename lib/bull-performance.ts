@@ -9,6 +9,7 @@ export type Offspring = {
   dailyMilk: number[];
   healthEvents: number;
   calvingOutcome: string | null;
+  inMilk?: boolean;
 };
 
 export type BullPerformance = {
@@ -31,14 +32,16 @@ function daysBetween(from: string, to: string) {
 
 export function bullPerformance(
   rows: Offspring[],
-  filters: { year?: string; lactation?: string },
+  filters: { year?: string; lactation?: string; sire?: string },
   history: { mates?: { bullCode: string; result: string }[]; daughterBirths?: { damId: string; calvedOn: string }[] } = {},
 ): BullPerformance[] {
   const year = filters.year?.trim();
   const lactation = filters.lactation?.trim();
+  const sire = filters.sire?.trim();
   const grouped = new Map<string, Offspring[]>();
   for (const row of rows) {
     if (!row.sireCode) continue;
+    if (sire && row.sireCode !== sire) continue;
     if (year && row.dob?.slice(0, 4) !== year) continue;
     if (lactation && String(row.lactationNumber) !== lactation) continue;
     const list = grouped.get(row.sireCode) ?? [];
@@ -65,7 +68,7 @@ export function bullPerformance(
         sireCode,
         offspring: animals.length,
         females: daughters.length,
-        daughtersWithMilk: daughters.filter((animal) => animal.dailyMilk.length > 0).length,
+        daughtersWithMilk: daughters.filter((animal) => animal.inMilk || animal.dailyMilk.length > 0).length,
         averageDailyYield: yields.length ? Math.round((yields.reduce((sum, value) => sum + value, 0) / yields.length) * 10) / 10 : null,
         healthEvents: animals.reduce((sum, animal) => sum + animal.healthEvents, 0),
         liveCalvings: animals.filter((animal) => animal.calvingOutcome === "live").length,

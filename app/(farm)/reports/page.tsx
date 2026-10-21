@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Download } from "lucide-react";
 import { requireFarm } from "@/lib/farm-context";
 import { formatDisplayDate } from "@/lib/dates";
-import { canRecordHealth, canViewFinance, canViewReports } from "@/lib/permissions";
+import { canRecordHealth, canViewFinance, canViewGenetics, canViewReports } from "@/lib/permissions";
 import { reportRows } from "@/lib/report-data";
 import { EmptyRow, pickTab, Summary, TabBar, Table, Td } from "@/components/workspace";
 
@@ -17,7 +17,7 @@ const reports = [
   { id: "weight", label: "Weight", detail: "Weighings by animal", chart: "weight" },
   { id: "finance", label: "Finance", detail: "Amount by type", chart: "money" },
   { id: "embryos", label: "Embryos", detail: "Embryos by status", chart: "status" },
-  { id: "genetics", label: "Genetics", detail: "Offspring by sire", chart: "sire" },
+  { id: "genetics", label: "Genetics", detail: "Bull performance", chart: "sire" },
 ] as const;
 
 type ReportId = (typeof reports)[number]["id"];
@@ -114,6 +114,7 @@ function DownloadLink({ href, label, primary = false }: { href: string; label: s
 function canOpen(kind: ReportId, roles: string[]) {
   if (kind === "health" && !canRecordHealth(roles) && !roles.includes("owner") && !roles.includes("manager")) return false;
   if (kind === "finance" && !canViewFinance(roles)) return false;
+  if (kind === "genetics" && !canViewGenetics(roles)) return false;
   return true;
 }
 
@@ -128,7 +129,7 @@ function chartSeries(kind: ReportId, rows: string[][]) {
             : kind === "semen" || kind === "embryos"
               ? countBy(rows, 1)
               : kind === "genetics"
-                ? countBy(rows, 0)
+                ? sumBy(rows, 0, (row) => Number(row[2] || 0))
             : kind === "milk"
               ? sumBy(rows, 0, (row) => Number(row[2] || 0) + Number(row[3] || 0))
               : kind === "feed"

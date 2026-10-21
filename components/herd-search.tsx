@@ -70,7 +70,7 @@ const emptyBody: SearchBody = {
   enquiryCount: 0,
 };
 
-const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "audit" | "finance" | "reports" }[] = [
+const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "audit" | "finance" | "reports" | "genetics" }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ai", label: "Assistant", icon: Sparkles },
   { href: "/animals", label: "Cattle", icon: Beef },
@@ -80,7 +80,7 @@ const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "a
   { href: "/milk", label: "Milk", icon: Milk },
   { href: "/feed", label: "Feed & nutrition", icon: Wheat },
   { href: "/semen", label: "Semen", icon: Droplets },
-  { href: "/genetics", label: "Genetics", icon: Dna },
+  { href: "/genetics", label: "Genetics", icon: Dna, gate: "genetics" },
   { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/embryos", label: "Embryos", icon: Sprout },
   { href: "/finance", label: "Finance", icon: Wallet, gate: "finance" },
@@ -112,13 +112,13 @@ function pageIcon(href: string) {
   return pages.find((page) => page.href === path)?.icon ?? LayoutDashboard;
 }
 
-function blocked(href: string, gates: Record<"team" | "audit" | "finance" | "reports", boolean>) {
+function blocked(href: string, gates: Record<"team" | "audit" | "finance" | "reports" | "genetics", boolean>) {
   const path = href.split("?")[0] ?? href;
   const page = pages.find((item) => item.href === path);
   return page?.gate ? !gates[page.gate] : false;
 }
 
-function readRecent(farmId: string, gates: Record<"team" | "audit" | "finance" | "reports", boolean>): Item[] {
+function readRecent(farmId: string, gates: Record<"team" | "audit" | "finance" | "reports" | "genetics", boolean>): Item[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(recentKey(farmId)) ?? "[]") as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -137,7 +137,7 @@ function readRecent(farmId: string, gates: Record<"team" | "audit" | "finance" |
 }
 
 function remember(farmId: string, item: Item) {
-  const stored = readRecent(farmId, { team: true, audit: true, finance: true, reports: true })
+  const stored = readRecent(farmId, { team: true, audit: true, finance: true, reports: true, genetics: true })
     .filter((entry) => entry.href !== item.href)
     .map((entry) => ({ href: entry.href, title: entry.title, detail: entry.detail, kind: entry.kind }));
   localStorage.setItem(
@@ -161,6 +161,7 @@ export function HerdSearch({
   showAudit = false,
   showFinance = false,
   showReports = false,
+  showGenetics = false,
 }: {
   variant?: "header" | "field";
   farmId: string;
@@ -168,13 +169,14 @@ export function HerdSearch({
   showAudit?: boolean;
   showFinance?: boolean;
   showReports?: boolean;
+  showGenetics?: boolean;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const router = useRouter();
-  const gates = { team: showTeam, audit: showAudit, finance: showFinance, reports: showReports };
+  const gates = { team: showTeam, audit: showAudit, finance: showFinance, reports: showReports, genetics: showGenetics };
   const [value, setValue] = useState("");
   const [body, setBody] = useState<SearchBody>(emptyBody);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");

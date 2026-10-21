@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { animals, inseminations } from "@/db/schema";
 import { formatDisplayDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
+import { canViewGenetics } from "@/lib/permissions";
 import { EmptyRow, Summary, Table, Td } from "@/components/workspace";
 
 export default async function BreedingPage() {
@@ -12,6 +13,7 @@ export default async function BreedingPage() {
   const pregnant = herd.filter((animal) => animal.reproduction === "pregnant");
   const byId = new Map(herd.map((animal) => [animal.id, animal]));
   const recent = await db.select().from(inseminations).where(eq(inseminations.farmId, farm.farmId));
+  const openGenetics = canViewGenetics(farm.roles);
 
   return (
     <div className="space-y-5">
@@ -59,7 +61,15 @@ export default async function BreedingPage() {
                 )}
               </Td>
               <Td>{formatDisplayDate(row.performedOn)}</Td>
-              <Td>{row.bullCode}</Td>
+              <Td>
+                {openGenetics ? (
+                  <Link href={`/genetics?tab=bulls&sire=${encodeURIComponent(row.bullCode)}`} className="text-primary">
+                    {row.bullCode}
+                  </Link>
+                ) : (
+                  row.bullCode
+                )}
+              </Td>
               <Td>{row.attemptNumber}</Td>
               <Td className="text-muted-foreground">{row.strawCode ?? "—"}</Td>
             </tr>

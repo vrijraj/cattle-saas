@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { animals, bulls, farms, healthEvents, heats, milkYields, weights } from "@/db/schema";
@@ -5,6 +6,7 @@ import { farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { diseaseInsight, heatInsight, valueInsight, weightInsight } from "@/lib/insights";
 import { matingFlags, type PedigreeLink } from "@/lib/mating";
+import { canViewGenetics } from "@/lib/permissions";
 import { Notice, Summary } from "@/components/workspace";
 
 export default async function InsightsPage() {
@@ -30,6 +32,7 @@ export default async function InsightsPage() {
   const litres = milk.filter((row) => !row.voidedAt).reduce((sum, row) => sum + Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0), 0);
   const medicine = health.filter((row) => !row.voidedAt).reduce((sum, row) => sum + Number(row.cost ?? 0), 0);
   const female = herd.find((animal) => animal.sex === "female" && animal.presence === "on_farm");
+  const openGenetics = canViewGenetics(farm.roles);
   const suggestions = female
     ? bullRows
         .map((bull) => ({ bull, flags: matingFlags(female.code, bull.code, links) }))
@@ -71,7 +74,15 @@ export default async function InsightsPage() {
         <ul className="space-y-1 text-sm">
           {suggestions.map((row) => (
             <li key={row.bull.id}>
-              {row.bull.name} · {row.bull.code}
+              {openGenetics ? (
+                <Link href={`/genetics?female=${encodeURIComponent(female?.code ?? "")}&bull=${encodeURIComponent(row.bull.code)}`} className="text-primary">
+                  {row.bull.name} · {row.bull.code}
+                </Link>
+              ) : (
+                <span>
+                  {row.bull.name} · {row.bull.code}
+                </span>
+              )}
               {row.flags.length > 0 ? ` · ${row.flags.length} more distant overlap${row.flags.length === 1 ? "" : "s"}` : " · no stored overlap"}
             </li>
           ))}
