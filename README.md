@@ -92,22 +92,47 @@ Without ZeptoMail, an invite still creates a link the owner can copy. Without Ra
 
 `AUTH_SECRET` must be a long random string before any shared deployment. Do not commit `.env`.
 
-## What the app covers
+## Features
 
-Sign-in is at `/signin`. The home page sends a signed-in person to the dashboard.
+Sign-in is at `/signin`. The home page sends a signed-in person to the dashboard. On a phone, the farm menu opens from the header. From the `md` breakpoint up, the same menu is a fixed sidebar. Search opens as a command palette. Some items stay hidden until the signed-in roles include them.
 
-**Today:** dashboard, assistant at `/ai`, and alerts.
+### Today
 
-**Herd:** cattle register and dam-line family tree (`/animals` and `/animals?tab=tree`), sheds, milk, and feed.
+- **Dashboard.** On-farm, lactating, dry, and pregnant counts, milk for the last 7 days, breed and status breakdowns, sheds, isolated animals, upcoming calvings, open alerts, and feed stock.
+- **Assistant** at `/ai`. Google ADK with Gemini function calls reads the same records as the workspace. After you confirm, it can add an animal, record breeding, health, milk, weight, feed, finance, semen, and embryos, publish a listing, add a shop product, invite staff, and void a record. Set `GEMINI_API_KEY` (from Google AI Studio) and restart the dev server. `GEMINI_MODEL` defaults to `gemini-flash-latest`. Without a key, `/ai` explains what to add. The conversation is kept in this browser and in `.data/ai-sessions.json`, so a server restart keeps the same chat until you choose New chat.
+- **Alerts.** Due work, milk drop, low feed, and medicine reminders. WhatsApp and SMS are optional. If those tokens are empty, the in-app alert stays open and the send is recorded as not configured.
 
-**Breeding:** one register with tabs for what is due, pregnant animals, heat, inseminations, pregnancy checks, and calvings (`/breeding?tab=calvings` and the same pattern for the other tabs). Health uses the same pattern for due work, treatments, vaccines, and deworming. Semen uses the same pattern for batches, straws, and bulls. Also genetics (mating check and bull performance), insights, and embryos (collections, inventory, and transfers).
+### Herd
 
-**Business:** finance, reports (CSV, PDF, Excel), shop products, buyer enquiries, the audit log, and team invites.
+- **Cattle.** A register with search, and a dam-line family tree at `/animals?tab=tree`. Each animal has a code such as `MIL-GIR-001`, a profile, and a lifetime timeline.
+- **Status.** Presence, life stage, reproduction, and lactation are separate. The list badge shows Sold, Dead, or Transferred first, then Pregnant, then In milk or Dry, then the life stage. Owner, manager, genetics, and admin can change status and basic details. Breeding events still update status when they are recorded.
+- **Pedigree.** Dam, sire, offspring, and ancestors through the 8th generation. The diagram zooms from the pointer, drags, and opens full screen. A repeated ancestor stops the line instead of looping. A pedigree PDF downloads from the profile.
+- **Identity.** Ear tag, colour, marks, photo, and a QR code. The QR encodes `https://{AUTH_URL}/q/{token}`. A signed-out scan does not show unpublished records. Scan in the header opens an animal or a semen straw from a code.
+- **Sheds.** Current location, move history, and an isolation flag.
+- **Weight.** Date and kilograms on the animal.
+- **Milk.** Morning and evening litres, one row per animal per day. The profile shows lactation number and days in milk from calving and dry-off.
+- **Feed.** Stock, purchases, consumption, wastage, and a minimum. The dashboard shows items below that minimum.
 
-The header has scan and the account menu. Scan opens an animal or a semen straw from a code. On a phone, the farm menu opens from the header. From the `md` breakpoint up, the same menu is a fixed sidebar. Some items stay hidden until the signed-in roles include them.
+### Breeding
 
-The assistant at `/ai` uses Google ADK with Gemini function calls. It looks up the same records as the workspace. After you confirm, it can add an animal, record breeding, health, milk, weight, feed, finance, semen, and embryos, publish a listing, add a shop product, invite staff, and void a record. Set `GEMINI_API_KEY` (from Google AI Studio) and restart the dev server. `GEMINI_MODEL` defaults to `gemini-flash-latest`. Without a key, `/ai` explains what to add. The conversation is kept in this browser and in `.data/ai-sessions.json`, so a server restart keeps the same chat until you choose New chat.
+- **Breeding register.** Tabs for what is due, pregnant animals, heat, inseminations, pregnancy checks, and calvings (`/breeding?tab=calvings` and the same pattern for the other tabs).
+- **Animal breeding history.** Heat, AI, pregnancy check, calving, and dry-off on the profile, with the calf and the insemination linked.
+- **Semen.** Bulls, batches, and straws, including tank position and use on an insemination.
+- **Genetics.** A mating check against the pedigree, and bull performance.
+- **Insights.** Due dates and counts from the farm calendar. These are rules, not a genetic evaluation.
+- **Embryos.** Collections, inventory, and transfers.
+- **Health.** Due work, treatments, vaccines, and deworming. Clinical notes stay with roles that can see them.
 
-**Public:** farm catalogue, animal listing, shop, and cart. A QR code encodes `https://{AUTH_URL}/q/{token}`. A signed-out scan does not show unpublished records.
+### Business
 
-Dates display as `21 Oct 2026`. Money is INR. The farm clock is `Asia/Kolkata`.
+- **Finance.** An income and expense register. A voided row stays in the list and drops out of the totals.
+- **Reports.** Charts for the main registers, with CSV, Excel, and PDF downloads that follow the filters on the page.
+- **Shop.** Products, a public catalogue, and a cart. Without Razorpay, a cart becomes an order waiting for payment.
+- **Enquiries.** Buyer messages from the catalogue.
+- **Listings.** A published animal can appear on `/farms/shree-gir` with the fields the farm chose to show.
+- **Audit.** Mutations store the actor, the entity, and a summary.
+- **Team.** Invites by email and role. Without ZeptoMail, the owner can still copy the invite link.
+
+### Public
+
+The catalogue, an animal listing, the shop, and the cart are available without a farm session. Dates display as `21 Oct 2026`. Money is INR. The farm clock is `Asia/Kolkata`.
