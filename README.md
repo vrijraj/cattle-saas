@@ -135,4 +135,4 @@ Sign-in is at `/signin`. The home page sends a signed-in person to the dashboard
 
 ### Public
 
-The catalogue, an animal listing, the shop, and the cart are available without a farm session. Dates display as `21 Oct 2026`. Money is INR. The farm clock is `Asia/Kolkata`.
+The catalogue, an animal listing, the shop, and the cart are available without a farm session. Money is INR. The farm clock is `Asia/Kolkata`.
