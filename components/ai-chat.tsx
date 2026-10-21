@@ -218,7 +218,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
   }
 
   return (
-    <section className="-mx-3 -my-4 flex h-[calc(100dvh-4.5rem)] min-h-[28rem] flex-col sm:-mx-4 sm:-my-5 md:-mx-6 md:-my-6">
+    <section className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6">
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold">Assistant</h1>

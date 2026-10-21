@@ -15,9 +15,17 @@ export default async function SemenPage({ searchParams }: { searchParams: Promis
   const bullRows = await db.select().from(bulls).where(eq(bulls.farmId, farm.farmId));
   const batches = await db.select().from(semenBatches).where(eq(semenBatches.farmId, farm.farmId));
   const strawRows = await db.select().from(straws).where(eq(straws.farmId, farm.farmId));
-  const query = (q ?? "").toLowerCase();
-  const visible = strawRows.filter((straw) => !query || straw.code.toLowerCase().includes(query) || (straw.tank ?? "").toLowerCase().includes(query));
+  const query = (q ?? "").trim().toLowerCase();
   const bullName = new Map(bullRows.map((bull) => [bull.id, `${bull.code} · ${bull.name}`]));
+  const visibleBulls = query
+    ? bullRows.filter((bull) => [bull.code, bull.name, bull.breed, bull.semenCompany].some((value) => value?.toLowerCase().includes(query)))
+    : bullRows;
+  const visible = strawRows.filter((straw) => {
+    if (!query) return true;
+    const batch = batches.find((item) => item.id === straw.batchId);
+    const bull = batch ? bullName.get(batch.bullId) : "";
+    return [straw.code, straw.tank, straw.canister, batch?.batchNumber, bull].some((value) => value?.toLowerCase().includes(query));
+  });
   const available = strawRows.filter((straw) => straw.status === "available").length;
 
   return (
@@ -31,8 +39,11 @@ export default async function SemenPage({ searchParams }: { searchParams: Promis
           { label: "Batches", value: String(batches.length) },
         ]}
         action={
-          <form>
-            <input name="q" defaultValue={q ?? ""} placeholder="Search straw or tank" className={`${inputClass} w-56`} />
+          <form action="/semen" className="flex w-full items-center gap-2 sm:w-80">
+            <input name="q" defaultValue={q ?? ""} placeholder="Search straw, tank, or bull" className={inputClass} />
+            <button type="submit" className="inline-flex h-11 shrink-0 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground">
+              Search
+            </button>
           </form>
         }
       />
@@ -70,7 +81,7 @@ export default async function SemenPage({ searchParams }: { searchParams: Promis
           ) : null}
         </div>
       <Table headers={["Straw", "Status", "Location", "Bull", "Type"]}>
-        {visible.length === 0 ? <EmptyRow cols={5}>No straws yet.</EmptyRow> : null}
+        {visible.length === 0 ? <EmptyRow cols={5}>{query ? "No straws match this search." : "No straws yet."}</EmptyRow> : null}
         {visible.map((straw) => {
           const batch = batches.find((item) => item.id === straw.batchId);
           return (
@@ -107,8 +118,8 @@ export default async function SemenPage({ searchParams }: { searchParams: Promis
           ) : null}
         </div>
         <Table headers={["Code", "Name", "Breed", "Company"]}>
-          {bullRows.length === 0 ? <EmptyRow cols={4}>No bulls yet.</EmptyRow> : null}
-          {bullRows.map((bull) => (
+          {visibleBulls.length === 0 ? <EmptyRow cols={4}>{query ? "No bulls match this search." : "No bulls yet."}</EmptyRow> : null}
+          {visibleBulls.map((bull) => (
             <tr key={bull.id}>
               <Td className="font-medium">{bull.code}</Td>
               <Td>{bull.name}</Td>

@@ -73,7 +73,7 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
     : [];
 
   return (
-    <div className="mx-auto max-w-lg space-y-5">
+    <div className="mx-auto w-full max-w-lg space-y-5">
       <Summary title="Scan" description="Open an animal from a tag, or look up a straw and start an insemination." />
       <CodeScanner />
       {missing ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">No animal or straw matches {raw}.</p> : null}

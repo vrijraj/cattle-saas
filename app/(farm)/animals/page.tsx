@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { eq } from "drizzle-orm";
-import { Search } from "lucide-react";
 import { db } from "@/db";
 import { animals, breeds, locations } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 import { farmToday } from "@/lib/dates";
 import { isUnderOneYear } from "@/lib/herd-stats";
 import { HerdTree } from "@/components/herd-tree";
+import { HerdSearch } from "@/components/herd-search";
 import { lifeStageLabel, presenceLabel } from "@/lib/labels";
 import { canWriteAnimals } from "@/lib/permissions";
+import { matchesHerdQuery } from "@/lib/herd-query";
 import { herdForest } from "@/lib/pedigree-tree";
 import { pickTab, Pill, Summary, TabBar } from "@/components/workspace";
 
@@ -63,11 +64,7 @@ export default async function AnimalsPage({
     .orderBy(animals.code);
 
   const damIds = new Set(rows.map((row) => row.geneticDamId).filter((id): id is string => Boolean(id)));
-  const searched = term
-    ? rows.filter((row) =>
-        [row.code, row.name, row.earTag, row.breedName].some((value) => value?.toLowerCase().includes(term)),
-      )
-    : rows;
+  const searched = term ? rows.filter((row) => matchesHerdQuery(row, term)) : rows;
 
   function matches(row: (typeof rows)[number]) {
     if (view === "active") return row.presence === "on_farm";
@@ -106,7 +103,7 @@ export default async function AnimalsPage({
     <div className="space-y-5">
       <Summary
         title="Cattle"
-        description="Open a row to see that animal's profile."
+        description={term ? `${visible.length} ${visible.length === 1 ? "animal matches" : "animals match"} “${query.q?.trim()}”.` : "Open a row to see that animal's profile."}
         facts={[
           { label: "On farm", value: String(herdCounts.active) },
           { label: "Pregnant", value: String(herdCounts.pregnant) },
@@ -127,18 +124,7 @@ export default async function AnimalsPage({
       {tab === "herd" ? (
         <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
-            <form action="/animals" className="lg:w-80">
-              {view !== "all" ? <input type="hidden" name="view" value={view} /> : null}
-              <label className="flex h-10 items-center gap-2 rounded-full bg-muted px-3">
-                <Search className="size-4 shrink-0 text-muted-foreground" />
-                <input
-                  name="q"
-                  defaultValue={query.q ?? ""}
-                  placeholder="Name, code, or ear tag"
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                />
-              </label>
-            </form>
+            <HerdSearch variant="field" />
             <div className="flex flex-wrap gap-1.5">
               {views.map((item) => {
                 const active = view === item.id;

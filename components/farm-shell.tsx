@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { Bell, Leaf, LogOut, ScanLine, Search } from "lucide-react";
+import { Bell, Leaf, LogOut, ScanLine } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { FarmDrawer } from "@/components/farm-drawer";
 import { FarmNav } from "@/components/farm-nav";
+import { HerdSearch } from "@/components/herd-search";
 import { PageTransition } from "@/components/page-transition";
 
 export function FarmShell({
@@ -63,14 +64,7 @@ export function FarmShell({
       <div className="min-w-0">
         <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-card/95 px-3 py-3 backdrop-blur sm:gap-3 sm:px-4">
           <FarmDrawer farmName={farmName} userName={userName} role={role} initials={initials} showTeam={showTeam} showAudit={showAudit} signOut={<SignOutButton />} />
-          <form action="/animals" className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-muted px-3 sm:h-11 sm:px-4 md:mx-auto md:max-w-xl">
-            <Search className="size-4 shrink-0 text-muted-foreground" />
-            <input
-              name="q"
-              placeholder="Search cattle"
-              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </form>
+          <HerdSearch />
           <Link href="/scan" className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card text-foreground">
             <ScanLine className="size-4" />
             <span className="sr-only">Scan</span>
