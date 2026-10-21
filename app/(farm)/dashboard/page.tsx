@@ -9,7 +9,7 @@ import { feedBalance, feedIsLow } from "@/lib/feed-stock";
 import { herdCounts } from "@/lib/herd-stats";
 import { canReadAlert } from "@/lib/permissions";
 
-const breedColors = ["#1f9d57", "#7dce78", "#f0b429", "#3d8bfd", "#8b6cc4", "#94a3a0"];
+const breedColors = ["#157347", "#7dce78", "#e0a106", "#3d8bfd", "#8b6cc4", "#94a3a0"];
 
 export default async function DashboardPage() {
   const farm = await requireFarm();
@@ -93,7 +93,7 @@ export default async function DashboardPage() {
       <section className="relative overflow-hidden rounded-3xl bg-[#e7f6ee] px-5 py-6 md:px-8 md:py-7">
         <div className="relative z-10 max-w-xl">
           <p className="text-xs font-semibold tracking-[0.16em] text-primary">WELCOME BACK</p>
-          <h1 className="mt-2 max-w-md text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          <h1 className="mt-2 max-w-md text-3xl text-foreground sm:text-4xl">
             Manage a healthier herd
           </h1>
           <p className="mt-2 max-w-md text-sm text-muted-foreground">
@@ -105,13 +105,13 @@ export default async function DashboardPage() {
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map((stat) => (
-          <article key={stat.label} className="rounded-2xl border border-border bg-card p-3.5 shadow-sm sm:p-4">
+          <article key={stat.label} className="rounded-2xl border border-border bg-card p-3.5 sm:p-4">
             <div className="flex items-start justify-between">
               <span className="grid size-9 place-items-center rounded-xl bg-secondary text-primary sm:size-10">
                 <stat.icon className="size-4" />
               </span>
             </div>
-            <p className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{stat.value}</p>
+            <p className="mt-3 font-display text-2xl tracking-tight sm:text-3xl">{stat.value}</p>
             <p className="text-sm text-muted-foreground">{stat.label}</p>
             <p className="mt-1 text-xs text-primary">{stat.hint}</p>
           </article>
@@ -119,7 +119,7 @@ export default async function DashboardPage() {
       </section>
 
       <section className="grid gap-3 xl:grid-cols-3">
-        <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <article className="rounded-2xl border border-border bg-card p-5">
           <h2 className="font-semibold">Cattle overview</h2>
           <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
             <div
@@ -128,7 +128,7 @@ export default async function DashboardPage() {
             >
               <div className="grid size-24 place-items-center rounded-full bg-card text-center">
                 <span>
-                  <span className="block text-2xl font-semibold">{counts.total}</span>
+                  <span className="block font-display text-2xl">{counts.total}</span>
                   <span className="text-xs text-muted-foreground">Total</span>
                 </span>
               </div>
@@ -145,7 +145,7 @@ export default async function DashboardPage() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <article className="rounded-2xl border border-border bg-card p-5">
           <h2 className="font-semibold">Isolated</h2>
           <ul className="mt-4 divide-y divide-border">
             {isolated.length === 0 ? <li className="py-4 text-sm text-muted-foreground">No animal is isolated.</li> : null}
@@ -163,7 +163,7 @@ export default async function DashboardPage() {
           </ul>
         </article>
 
-        <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <article className="rounded-2xl border border-border bg-card p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Upcoming calvings</h2>
             <Link href="/breeding" className="text-sm text-primary">
@@ -189,7 +189,7 @@ export default async function DashboardPage() {
           </ul>
         </article>
 
-        <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <article className="rounded-2xl border border-border bg-card p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Open alerts</h2>
             <Link href="/alerts" className="text-sm text-primary">
@@ -212,7 +212,7 @@ export default async function DashboardPage() {
           </ul>
         </article>
 
-        <article className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <article className="rounded-2xl border border-border bg-card p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Feed stock</h2>
             <Link href="/feed" className="text-sm text-primary">
@@ -257,14 +257,16 @@ function DueBadge({ today, due }: { today: string; due: string | null }) {
 
 function FarmMark() {
   return (
-    <svg viewBox="0 0 420 180" className="pointer-events-none absolute right-0 bottom-0 hidden h-full w-[46%] md:block" aria-hidden="true">
-      <path d="M0 140 C80 110 120 150 200 120 C280 90 320 150 420 100 L420 180 L0 180 Z" fill="#b7e4c7" />
-      <path d="M40 140 C90 90 130 120 170 80 C210 40 250 90 300 60 C340 40 370 80 420 50 L420 180 L0 180 Z" fill="#95d5b2" />
-      <rect x="230" y="78" width="90" height="48" rx="6" fill="#d8f3dc" />
-      <path d="M222 82 L275 48 L328 82 Z" fill="#1f9d57" />
-      <rect x="258" y="98" width="18" height="28" fill="#1f9d57" />
-      <circle cx="150" cy="96" r="18" fill="#2d6a4f" />
-      <circle cx="360" cy="70" r="22" fill="#40916c" />
+    <svg viewBox="0 0 420 180" preserveAspectRatio="xMaxYMax meet" className="pointer-events-none absolute right-0 bottom-0 hidden h-full w-[46%] md:block" aria-hidden="true">
+      <g transform="translate(48 0)">
+        <path d="M0 140 C80 110 120 150 200 120 C280 90 320 150 420 100 L420 180 L0 180 Z" fill="#b7e4c7" />
+        <path d="M40 140 C90 90 130 120 170 80 C210 40 250 90 300 60 C340 40 370 80 420 50 L420 180 L0 180 Z" fill="#95d5b2" />
+        <rect x="230" y="78" width="90" height="48" rx="6" fill="#d8f3dc" />
+        <path d="M222 82 L275 48 L328 82 Z" fill="#157347" />
+        <rect x="258" y="98" width="18" height="28" fill="#157347" />
+        <circle cx="150" cy="96" r="18" fill="#2d6a4f" />
+        <circle cx="360" cy="70" r="22" fill="#40916c" />
+      </g>
     </svg>
   );
 }

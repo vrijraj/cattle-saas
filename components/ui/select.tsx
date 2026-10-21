@@ -79,7 +79,7 @@ function SelectPosition({
       <SelectPrimitive.Popup
         data-slot="select-content"
         className={cn(
-          "z-50 max-h-[min(15rem,var(--available-height))] w-(--anchor-width) origin-(--transform-origin) overflow-y-auto rounded-xl border border-border bg-card p-1 text-foreground shadow-xl outline-none transition duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0",
+          "z-50 max-h-[min(15rem,var(--available-height))] w-(--anchor-width) origin-(--transform-origin) overflow-y-auto rounded-xl border border-border bg-card p-1 text-foreground outline-none transition duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0",
           className,
         )}
         {...props}

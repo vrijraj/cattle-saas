@@ -31,7 +31,7 @@ export default async function PayPage({
 
   return (
     <PublicFrame title={farm.name} subtitle="Shop" href={`/farms/${slug}/shop`}>
-      <section className="mx-auto max-w-md rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <section className="mx-auto max-w-md rounded-2xl border border-border bg-card p-6">
         <h1 className="text-3xl font-semibold tracking-tight">Pay</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {product?.name ?? "Order"} for {order.customerName}

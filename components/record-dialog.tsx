@@ -49,7 +49,7 @@ export function RecordDialog({
         onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
-        className="m-auto w-[min(36rem,calc(100%-2rem))] overflow-visible rounded-2xl border border-border bg-card text-foreground shadow-xl backdrop:bg-[#1c2430]/40"
+        className="m-auto w-[min(36rem,calc(100%-2rem))] overflow-visible rounded-2xl border border-border bg-card text-foreground backdrop:bg-[#1c2430]/40"
       >
         <DialogPortalContext.Provider value={dialogRef}>
           <div className="max-h-[min(40rem,calc(100dvh-2rem))] overflow-y-auto p-5">

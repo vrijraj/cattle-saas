@@ -11,7 +11,7 @@ export default async function QrLandingPage({ params }: { params: Promise<{ toke
   if (!session?.user?.id) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-6">
           <h1 className="text-2xl font-semibold tracking-tight">Animal tag</h1>
           <p className="mt-2 text-sm text-muted-foreground">Sign in to open the animal this tag belongs to.</p>
           <Link href="/signin" className="mt-6 inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground">
@@ -36,7 +36,7 @@ export default async function QrLandingPage({ params }: { params: Promise<{ toke
   if (!animal || !membership || animal.farmId !== membership.farmId) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-6">
           <h1 className="text-2xl font-semibold tracking-tight">No access</h1>
           <p className="mt-2 text-sm text-muted-foreground">This tag is not available to your farm.</p>
         </div>

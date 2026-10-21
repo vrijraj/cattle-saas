@@ -1,3 +1,4 @@
+import { Leaf } from "lucide-react";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -38,10 +39,15 @@ export default async function SignInPage({
   const next = callbackUrl?.startsWith("/") && !callbackUrl.startsWith("//") ? callbackUrl : "/dashboard";
   return (
     <main className="grid min-h-screen md:grid-cols-2">
-      <section className="flex flex-col justify-between bg-[#e7f6ee] px-8 py-10">
-        <p className="text-sm font-semibold text-primary">Farm portal</p>
+      <section className="flex flex-col justify-between bg-[#e5f5ec] px-8 py-10">
+        <p className="flex items-center gap-2 text-sm font-semibold text-primary">
+          <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
+            <Leaf className="size-4" />
+          </span>
+          Farm portal
+        </p>
         <div>
-          <h2 className="max-w-sm text-4xl font-semibold tracking-tight">A healthier herd starts with one record.</h2>
+          <h2 className="max-w-sm font-display text-4xl tracking-tight">A healthier herd starts with one record.</h2>
           <p className="mt-3 max-w-sm text-sm text-muted-foreground">
             Cattle, milk, breeding, and the work that is due today.
           </p>
@@ -49,7 +55,7 @@ export default async function SignInPage({
       </section>
       <section className="flex items-center px-6 py-12">
         <form action={authenticate} className="mx-auto w-full max-w-sm space-y-4">
-          <h1 className="font-display text-3xl">Sign in</h1>
+          <h1 className="text-3xl">Sign in</h1>
           <input type="hidden" name="callbackUrl" value={next} />
           {error ? (
             <p className="rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">

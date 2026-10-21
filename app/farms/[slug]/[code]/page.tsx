@@ -58,7 +58,7 @@ export default async function PublicAnimalPage({ params }: { params: Promise<{ s
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
+    <div className="rounded-2xl border border-border bg-card px-4 py-3">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-sm font-medium capitalize">{value}</dd>
     </div>

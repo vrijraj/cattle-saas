@@ -43,7 +43,7 @@ export default async function PublicShopPage({
         {query.error && query.error !== "pay" ? <Notice tone="danger">That product could not be ordered.</Notice> : null}
         <ul className="grid gap-4 md:grid-cols-2">
           {catalogue.map((product) => (
-            <li key={product.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <li key={product.id} className="rounded-2xl border border-border bg-card p-5">
               <p className="font-medium">{product.name}</p>
               <p className="text-sm text-muted-foreground">₹{Number(product.price).toLocaleString("en-IN")} · {product.stock} in stock</p>
               <form action={addToCart} className="mt-4">

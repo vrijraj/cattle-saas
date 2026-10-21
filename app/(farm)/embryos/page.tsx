@@ -112,7 +112,7 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
       />
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.saved ? <Notice>Embryo stock is saved.</Notice> : null}
-      <form method="get" className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <form method="get" className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card p-4">
         <input name="q" defaultValue={query.q ?? ""} placeholder="Code, donor, sire, grade, location" className={`${inputClass} min-w-0 flex-1`} />
         <Submit>Search</Submit>
       </form>

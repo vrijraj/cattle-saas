@@ -117,7 +117,7 @@ export default async function SemenPage({
       />
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.saved ? <Notice>Semen stock is saved.</Notice> : null}
-      <form method="get" className="grid gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+      <form method="get" className="grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
         <input name="q" defaultValue={query.q ?? ""} placeholder="Bull, batch, company, straw" className={inputClass} />
         <FormSelect name="type" defaultValue={type} options={[{ value: "", label: "All types" }, ...types]} />
         <FormSelect name="tank" defaultValue={tank} options={[{ value: "", label: "All tanks" }, ...tanks.map((item) => ({ value: item, label: item }))]} />

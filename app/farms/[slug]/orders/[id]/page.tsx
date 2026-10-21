@@ -13,7 +13,7 @@ export default async function PublicOrderPage({ params }: { params: Promise<{ sl
 
   return (
     <PublicFrame title={farm.name} subtitle="Order" href={`/farms/${slug}/shop`}>
-      <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <div className="mx-auto max-w-lg rounded-2xl border border-border bg-card p-6">
         <h1 className="text-2xl font-semibold">Order status</h1>
         <p className="mt-2 text-sm text-muted-foreground">{order.customerName}</p>
         <p className="mt-4 text-lg font-medium capitalize">{order.status.replaceAll("_", " ")}</p>

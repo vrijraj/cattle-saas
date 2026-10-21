@@ -122,7 +122,7 @@ export default async function AnimalsPage({
 
       {tab === "tree" ? <HerdTree forest={herdForest(rows)} /> : null}
       {tab === "herd" ? (
-        <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card">
           <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
             <HerdSearch
               variant="field"

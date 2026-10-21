@@ -25,7 +25,7 @@ export default async function InvitePage({
   return (
     <PageTransition>
       <main className="mx-auto flex min-h-screen w-full max-w-lg items-center px-6 py-12">
-        <section className="w-full rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <section className="w-full rounded-2xl border border-border bg-card p-6">
           <p className="text-sm font-semibold text-primary">Farm portal</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Join {farm?.name ?? "this farm"}</h1>
           {open ? (

@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f7f5;
-  --foreground: #1c2430;
+  --background: #f2f6f3;
+  --foreground: #17211c;
   --card: #ffffff;
-  --card-foreground: #1c2430;
-  --primary: #1f9d57;
+  --card-foreground: #17211c;
+  --primary: #157347;
   --primary-foreground: #ffffff;
-  --muted: #eef3f0;
-  --muted-foreground: #6d756f;
-  --border: #e6ece8;
-  --ring: #1f9d57;
-  --danger: #c2410c;
-  --secondary: #e7f6ee;
-  --secondary-foreground: #146b3a;
-  --destructive: #c2410c;
+  --muted: #e7eee9;
+  --muted-foreground: #4d5c55;
+  --border: #d7e3dc;
+  --ring: #157347;
+  --danger: #b45309;
+  --secondary: #e5f5ec;
+  --secondary-foreground: #0f5c34;
+  --destructive: #b45309;
   --radius: 1rem;
 }
 
@@ -34,20 +34,45 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-destructive: var(--destructive);
   --radius-md: var(--radius);
-  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-google-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-google-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
 body {
   max-width: 100%;
   overflow-x: clip;
+  font-family: var(--font-google-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(900px 420px at 100% -80px, #e5f5ec 0%, transparent 60%),
+    var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
+}
+
+h1 {
+  font-family: var(--font-google-sans), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+::selection {
+  background: #c8ead6;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+tbody tr {
+  transition: background-color 120ms ease;
+}
+
+tbody tr:hover {
+  background: #f6fbf8;
 }
 
 ::view-transition {
@@ -96,7 +121,7 @@ dialog.nav-drawer {
   border-right: 1px solid var(--border);
   border-radius: 0 1.25rem 1.25rem 0;
   padding: 0;
-  background: var(--card);
+  background: var(--muted);
   color: var(--foreground);
 }
 

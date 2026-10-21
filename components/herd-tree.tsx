@@ -4,7 +4,7 @@ import type { HerdNode } from "@/lib/pedigree-tree";
 export function HerdTree({ forest }: { forest: HerdNode[] }) {
   if (forest.length === 0) {
     return (
-      <section className="rounded-2xl border border-border bg-card px-5 py-12 text-center text-sm text-muted-foreground shadow-sm">
+      <section className="rounded-2xl border border-border bg-card px-5 py-12 text-center text-sm text-muted-foreground">
         No dam lines to show yet.
       </section>
     );
@@ -14,7 +14,7 @@ export function HerdTree({ forest }: { forest: HerdNode[] }) {
   const singles = forest.filter((node) => node.children.length === 0);
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <section className="rounded-2xl border border-border bg-card p-5">
       {lines.length > 0 ? (
         <>
           <h2 className="text-base font-semibold">Dam lines</h2>
@@ -82,7 +82,7 @@ function AnimalCard({ node, root = false }: { node: HerdNode; root?: boolean }) 
   return (
     <Link
       href={`/animals/${node.code}`}
-      className={`block w-44 shrink-0 rounded-xl border px-3 py-2.5 shadow-sm ${
+      className={`block w-44 shrink-0 rounded-xl border px-3 py-2.5 ${
         root ? "border-primary bg-secondary" : "border-border bg-card"
       } ${sold ? "opacity-70" : ""}`}
     >

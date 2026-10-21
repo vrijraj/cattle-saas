@@ -42,7 +42,7 @@ export default async function PublicFarmPage({
           {published.map(({ listing, animal, breed }) => (
             <li key={listing.id}>
               {animal ? (
-                <Link href={`/farms/${slug}/${animal.code}`} className="block rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <Link href={`/farms/${slug}/${animal.code}`} className="block rounded-2xl border border-border bg-card p-5">
                   <span className="font-medium">{animal.name ?? animal.code}</span>
                   <span className="mt-1 block text-sm text-muted-foreground">
                     {animal.code} · {breed} · {listing.category}
@@ -51,7 +51,7 @@ export default async function PublicFarmPage({
                   {listing.publicNote ? <span className="mt-2 block text-sm">{listing.publicNote}</span> : null}
                 </Link>
               ) : (
-                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <div className="rounded-2xl border border-border bg-card p-5">
                   <span className="font-medium capitalize">{listing.category}</span>
                   <span className="mt-1 block text-sm text-muted-foreground">
                     {listing.publicNote}

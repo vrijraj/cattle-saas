@@ -18,7 +18,7 @@ export function AnimalForm({
   const [state, action, pending] = useActionState(createAnimal, { error: "" });
 
   return (
-    <form action={action} className="grid max-w-3xl gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm md:grid-cols-2">
+    <form action={action} className="grid max-w-3xl gap-4 rounded-2xl border border-border bg-card p-5 md:grid-cols-2">
       {state.error ? <p className="rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger md:col-span-2">{state.error}</p> : null}
       <label className="text-sm">
         Name

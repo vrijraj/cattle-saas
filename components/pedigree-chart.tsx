@@ -17,7 +17,7 @@ export function PedigreeChart({
   const ancestors = buildLevel(chart.parents, ["Sire", "Dam"], [chart.grandparents, chart.greatGrandparents], 1);
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <section className="rounded-2xl border border-border bg-card p-5">
       <h2 className="text-base font-semibold">Pedigree</h2>
       <p className="mt-1 text-sm text-muted-foreground">Daughters and sons on the left. The sire sits above the dam on the right. A line stops where a parent is not linked.</p>
       <div className="mt-5 overflow-x-auto rounded-xl bg-muted/70 p-4">
@@ -123,7 +123,7 @@ function AnimalCard({ node, role, emphasis = false }: { node: PedigreeNode; role
   const known = Boolean(node.code);
   const title = known ? (node.name ?? node.code) : "Not linked";
   const showCode = Boolean(node.code && node.name && node.name !== node.code);
-  const className = `block w-44 shrink-0 rounded-xl border px-3 py-2.5 shadow-sm ${
+  const className = `block w-44 shrink-0 rounded-xl border px-3 py-2.5 ${
     emphasis ? "border-primary bg-secondary" : known ? "border-border bg-card" : "border-dashed border-border bg-card"
   }`;
   const body = (

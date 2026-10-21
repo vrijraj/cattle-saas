@@ -68,7 +68,7 @@ export default async function ReportsPage({
       <TabBar tabs={visible.map((report) => ({ id: report.id, label: report.label }))} current={tab} base="/reports" />
 
       {current ? (
-        <section className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <section className="space-y-5 rounded-2xl border border-border bg-card p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">{current.label}</h2>

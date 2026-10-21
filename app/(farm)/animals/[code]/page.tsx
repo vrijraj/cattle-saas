@@ -66,7 +66,7 @@ export default async function AnimalProfilePage({
 
   return (
     <div className="space-y-5">
-      <section className="min-w-0 max-w-full rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+      <section className="min-w-0 max-w-full rounded-2xl border border-border bg-card p-4 sm:p-5">
         <div className="flex items-start gap-3 sm:gap-4">
           {record.photoKey ? (
             // eslint-disable-next-line @next/next/no-img-element

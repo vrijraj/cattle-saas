@@ -78,7 +78,7 @@ export default async function MilkPage({
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.saved ? <Notice>Milk for today is saved.</Notice> : null}
       {drops.length > 0 ? (
-        <section className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
           <h2 className="font-semibold">Milk drop</h2>
           <ul className="space-y-2">
             {drops.map((alert) => {
@@ -100,7 +100,7 @@ export default async function MilkPage({
         </section>
       ) : null}
       {recent.length > 0 ? (
-        <section className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
           <h2 className="font-semibold">Herd total</h2>
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {recent.map(([date, litres]) => (
@@ -113,7 +113,7 @@ export default async function MilkPage({
           <p className="text-xs text-muted-foreground">Each day adds only the cows that were entered. A missing cow is not counted as zero.</p>
         </section>
       ) : null}
-      <form action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <form action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card">
         {herd.length === 0 ? <p className="px-4 py-8 text-sm text-muted-foreground">No lactating animals on the farm.</p> : null}
         {herd.length > 0 ? (
           <div className="hidden grid-cols-[7.5rem_minmax(0,1fr)_8rem_8rem_4.5rem] gap-3 bg-muted px-4 py-3 text-xs font-medium text-muted-foreground lg:grid">

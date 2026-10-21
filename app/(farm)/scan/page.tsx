@@ -78,7 +78,7 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
       <CodeScanner />
       {missing ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">No animal or straw matches {raw}.</p> : null}
       {strawCard ? (
-        <section className="space-y-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <section className="space-y-4 rounded-2xl border border-border bg-card p-4">
           <div>
             <p className="text-xs text-muted-foreground">Straw {strawCard.code}</p>
             <h2 className="text-lg font-semibold">

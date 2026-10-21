@@ -78,7 +78,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
       />
       <div className="grid gap-3 lg:grid-cols-2">
         {showHeat ? (
-          <article className="space-y-2 rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <article className="space-y-2 rounded-2xl border border-border bg-card p-5">
             <h2 className="font-semibold">Heat window</h2>
             {windows.length === 0 ? <p className="text-sm">No open female is inside days 18–24 after her latest heat or insemination.</p> : null}
             <ul className="space-y-2">
@@ -108,7 +108,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
           </article>
         ) : null}
         {showClinical ? (
-          <article className="space-y-2 rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <article className="space-y-2 rounded-2xl border border-border bg-card p-5">
             <h2 className="font-semibold">Herd health signal</h2>
             {signals.hits.length === 0 ? <p className="text-sm">No problem is recorded on two or more animals in the last 30 days.</p> : null}
             <ul className="space-y-2">
@@ -139,7 +139,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
             <p className="text-xs text-muted-foreground">Sample: {signals.considered} health {signals.considered === 1 ? "record" : "records"} in the last 30 days.</p>
           </article>
         ) : null}
-        <article className="space-y-2 rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <article className="space-y-2 rounded-2xl border border-border bg-card p-5">
           <h2 className="font-semibold">Weight change</h2>
           {changes.length === 0 ? <p className="text-sm">Two weights on the same animal are needed before a change is shown.</p> : null}
           <ul className="space-y-2">
@@ -164,7 +164,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
           <p className="text-xs text-muted-foreground">Sample: {weightRows.length} weight records.</p>
         </article>
         {value ? (
-          <article className="space-y-2 rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <article className="space-y-2 rounded-2xl border border-border bg-card p-5">
             <h2 className="font-semibold">{value.title}</h2>
             <p className="text-sm">{value.result}</p>
             <p className="text-sm text-muted-foreground">{value.method}</p>
@@ -175,7 +175,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
         ) : null}
       </div>
       {openGenetics ? (
-        <article className="space-y-3 rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <article className="space-y-3 rounded-2xl border border-border bg-card p-5">
           <h2 className="font-semibold">Mating suggestions</h2>
           <p className="text-sm text-muted-foreground">
             Bulls without a parent, grandparent, son, or daughter flag against {female ? `${female.name ?? female.code} · ${female.code}` : "a female"}. Depth is 4 generations. This is relationship information, not a mating recommendation from a genetic evaluation.

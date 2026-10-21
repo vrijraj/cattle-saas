@@ -131,7 +131,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.saved ? <Notice>The finance entry is saved.</Notice> : null}
       {suggestions.length > 0 ? (
-        <section className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
           <h2 className="font-semibold">Suggested entries</h2>
           <p className="text-sm text-muted-foreground">Confirming creates one finance row. Refreshing this page does not create it again.</p>
           <ul className="space-y-2">

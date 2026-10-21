@@ -80,8 +80,8 @@ export function FarmNav({
           <Link
             key={link.href}
             href={link.href}
-            className={`flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium ${
-              active ? "bg-secondary text-secondary-foreground" : "text-foreground/70 hover:bg-muted"
+            className={`flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition ${
+              active ? "bg-card text-foreground ring-1 ring-border" : "text-foreground/75 hover:bg-card/70"
             }`}
           >
             <Icon className="size-4" />

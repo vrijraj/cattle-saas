@@ -58,7 +58,7 @@ export function FarmDrawer({
       <button
         type="button"
         onClick={show}
-        className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card md:hidden"
+        className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card transition hover:bg-muted md:hidden"
         aria-expanded={open}
         aria-label="Open menu"
       >

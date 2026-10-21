@@ -58,9 +58,9 @@ export function FarmShell({
 
   return (
     <div className="min-h-screen bg-background md:grid md:grid-cols-[248px_1fr]">
-      <aside className="sticky top-0 hidden h-screen flex-col self-start overflow-hidden border-r border-border bg-card md:flex">
+      <aside className="sticky top-0 hidden h-screen flex-col self-start overflow-hidden border-r border-border bg-muted/50 md:flex">
         <div className="flex items-center gap-3 px-4 py-5">
-          <span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
+          <span className="grid size-10 place-items-center rounded-2xl bg-primary text-primary-foreground">
             <Leaf className="size-5" />
           </span>
           <div className="min-w-0">
@@ -74,18 +74,18 @@ export function FarmShell({
         </div>
       </aside>
       <div className="min-w-0">
-        <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-card/95 px-3 py-3 backdrop-blur sm:gap-3 sm:px-4">
+        <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-card/90 px-3 py-3 backdrop-blur-md sm:gap-3 sm:px-4">
           <FarmDrawer farmName={farmName} userName={userName} role={role} initials={initials} showTeam={showTeam} showAudit={showAudit} showHealth={showHealth} showSemen={showSemen} showGenetics={showGenetics} signOut={<SignOutButton />} />
           <HerdSearch farmId={farmId} showTeam={showTeam} showAudit={showAudit} showFinance={showFinance} showReports={showReports} showGenetics={showGenetics} showHealth={showHealth} showSemen={showSemen} />
-          <Link href="/scan" className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card text-foreground">
+          <Link href="/scan" className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card text-foreground transition hover:bg-muted">
             <ScanLine className="size-4" />
             <span className="sr-only">Scan</span>
           </Link>
-          <Link href="/alerts" className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card text-foreground">
+          <Link href="/alerts" className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-card text-foreground transition hover:bg-muted">
             <Bell className="size-4" />
             <span className="sr-only">Alerts</span>
           </Link>
-          <div className="hidden shrink-0 items-center gap-2 sm:flex">
+          <div className="hidden shrink-0 items-center gap-2 rounded-full border border-border bg-card py-1 pr-3 pl-1 sm:flex">
             <span className="grid size-10 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{initials}</span>
             <div>
               <p className="text-sm font-medium leading-tight">{userName}</p>

@@ -81,7 +81,7 @@ export function CodeScanner() {
   }
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
       <button
         className="h-11 w-full rounded-full bg-primary text-sm font-medium text-primary-foreground"
         type="button"

@@ -601,7 +601,7 @@ export async function AnimalHub({
       }));
     return (
       <div className="space-y-4">
-        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <section className="rounded-2xl border border-border bg-card p-4">
           <h2 className="font-semibold">This lactation</h2>
           {points.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">No milk recorded for this lactation.</p> : <MilkChart points={points} />}
         </section>
