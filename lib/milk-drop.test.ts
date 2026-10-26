@@ -48,6 +48,17 @@ describe("animal milk drop", () => {
     const today = { date: "2026-10-08", morning: 2, evening: null, explained: false };
     expect(animalMilkDrop({ daysInMilk: 40, prior: steady, today, requireBothSessions: true })).toBeNull();
   });
+
+  it("supports a configurable drop percentage threshold", () => {
+    // 14 L baseline -> 11 L today is a 21.4% drop (below 30%, above 20%)
+    const today = day("2026-10-08", 5.5, 5.5);
+    expect(animalMilkDrop({ daysInMilk: 40, prior: steady, today, dropPercent: 30 })).toBeNull();
+    expect(animalMilkDrop({ daysInMilk: 40, prior: steady, today, dropPercent: 20 })).toEqual({
+      todayLitres: 11,
+      baselineLitres: 14,
+      percentBelow: 21.4,
+    });
+  });
 });
 
 describe("herd milk drop", () => {

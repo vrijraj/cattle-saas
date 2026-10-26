@@ -73,6 +73,18 @@ export function AnimalForm({
         Identification marks
         <input name="marks" className={field} />
       </label>
+      <label className="text-sm">
+        Purchase source
+        <input name="purchaseSource" placeholder="Breeder or market" className={field} />
+      </label>
+      <label className="text-sm">
+        Purchase date
+        <input name="purchaseDate" type="date" className={field} />
+      </label>
+      <label className="text-sm">
+        Purchase price (INR)
+        <input name="purchasePrice" inputMode="decimal" placeholder="0.00" className={field} />
+      </label>
       <button disabled={pending} className="h-11 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground disabled:opacity-60 md:col-span-2 md:justify-self-start" type="submit">
         {pending ? "Saving…" : "Save animal"}
       </button>

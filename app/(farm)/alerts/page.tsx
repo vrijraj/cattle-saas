@@ -2,13 +2,15 @@ import { and, eq } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
 import { alerts, animals, feedItems, feedMovements } from "@/db/schema";
-import { dismissAlert, setMilkAlert } from "./actions";
+import { createCustomAlert, dismissAlert, setMilkAlert } from "./actions";
 import { sendReminders } from "./reminders";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { feedBalance, feedIsLow } from "@/lib/feed-stock";
 import { requireFarm } from "@/lib/farm-context";
-import { canReadAlert } from "@/lib/permissions";
-import { EmptyRow, Notice, Pill, Summary, Table, Td } from "@/components/workspace";
+import { canReadAlert, hasRole } from "@/lib/permissions";
+import { FormSelect } from "@/components/form-select";
+import { RecordDialog } from "@/components/record-dialog";
+import { EmptyRow, inputClass, Notice, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
 
 const labels: Record<string, string> = {
   pd_due: "Pregnancy check",
@@ -31,6 +33,7 @@ const labels: Record<string, string> = {
 
 const messages: Record<string, string> = {
   role: "Your role cannot change this alert.",
+  task: "Enter a task title.",
 };
 
 function destination(type: string, code: string | null) {
@@ -112,13 +115,54 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
       />
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {query.sent ? <p className="rounded-xl bg-muted px-4 py-3 text-sm">Reminder attempts are in the audit log. Alerts stay open until the work is done.</p> : null}
-      {farm.roles.some((role) => role === "owner" || role === "manager" || role === "admin") ? (
-        <form action={sendReminders}>
-          <button className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground" type="submit">
-            Send WhatsApp and SMS
-          </button>
-        </form>
-      ) : null}
+      <div className="flex flex-wrap items-center gap-3">
+        {hasRole(farm.roles, ["owner", "manager", "admin", "vet", "ai_technician"]) ? (
+          <RecordDialog title="Schedule farm task or reminder" button="Schedule task">
+            <form action={createCustomAlert} className="space-y-3">
+              <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                Task title
+                <input name="title" required placeholder="Hoof trimming, shed disinfection, Tank LN2 refill" className={inputClass} />
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                Details / instructions
+                <input name="body" placeholder="Notes or instructions for the team" className={inputClass} />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Due date
+                  <input name="dueOn" type="date" defaultValue={today} className={inputClass} />
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Animal (optional)
+                  <FormSelect
+                    name="animalId"
+                    defaultValue=""
+                    options={[
+                      { value: "", label: "Whole farm / General task" },
+                      ...[...herd]
+                        .sort((a, b) => a.code.localeCompare(b.code))
+                        .map((animal) => ({
+                          value: animal.id,
+                          label: animal.name && animal.name !== animal.code ? `${animal.name} · ${animal.code}` : animal.code,
+                        })),
+                    ]}
+                  />
+                </label>
+              </div>
+              <div className="flex justify-end pt-1">
+                <Submit>Save task</Submit>
+              </div>
+            </form>
+          </RecordDialog>
+        ) : null}
+        {farm.roles.some((role) => role === "owner" || role === "manager" || role === "admin") ? (
+          <form action={sendReminders}>
+            <button className="h-10 rounded-full border border-border bg-background px-4 text-sm font-medium hover:bg-muted" type="submit">
+              Send WhatsApp and SMS
+            </button>
+          </form>
+        ) : null}
+      </div>
       <Table headers={["Due", "Type", "Alert", "Detail", ""]}>
         {rows.length === 0 ? <EmptyRow cols={5}>{term ? "No alerts match this search." : "No open alerts."}</EmptyRow> : null}
         {rows.map((alert) => {

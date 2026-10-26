@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { alerts, animals, calvings, milkYields } from "@/db/schema";
+import { alerts, animals, calvings, farms, milkYields } from "@/db/schema";
 import { animalMilkDrop, herdMilkDrop, milkDropBody, type YieldDay } from "@/lib/milk-drop";
 
 function daysBetween(from: string, to: string) {
@@ -17,6 +17,12 @@ function yieldDay(date: string, morning: string | null, evening: string | null, 
 }
 
 export async function syncMilkDrops(farmId: string, today: string) {
+  const [farmRow] = await db
+    .select({ milkDropPercent: farms.milkDropPercent })
+    .from(farms)
+    .where(eq(farms.id, farmId))
+    .limit(1);
+  const dropPercent = farmRow?.milkDropPercent ?? 30;
   const yields = await db
     .select()
     .from(milkYields)
@@ -55,6 +61,7 @@ export async function syncMilkDrops(farmId: string, today: string) {
         .filter((row) => row.animalId === animal.id && row.recordedOn !== today)
         .map((row) => yieldDay(row.recordedOn, row.morningLitres, row.eveningLitres, explainedAnimal.has(`${animal.id}:${row.recordedOn}`))),
       today: yieldDay(today, todayRow.morningLitres, todayRow.eveningLitres, false),
+      dropPercent,
     });
     await upsertMilkAlert({
       farmId,
@@ -82,6 +89,7 @@ export async function syncMilkDrops(farmId: string, today: string) {
       explained: explainedHerd.has(date),
     })),
     today,
+    dropPercent,
   );
   await upsertMilkAlert({
     farmId,

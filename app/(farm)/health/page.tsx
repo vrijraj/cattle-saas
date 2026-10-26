@@ -83,30 +83,58 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
           ...(clinical
             ? {
                 treatments: (
-        <Table headers={["Date", "Animal", "Problem", "Medicine", "Dose", "Follow-up", "Outcome"]}>
-          {register.events.length === 0 ? <EmptyRow cols={7}>No treatments yet.</EmptyRow> : null}
-          {register.events.map((event) => (
-            <tr key={event.id}>
-              <Td>{formatDisplayDate(event.eventOn)}</Td>
-              <Td>{animalLink(event.animalId)}</Td>
-              <Td className="font-medium">{event.problem}</Td>
-              <Td>{event.medicine ?? "—"}</Td>
-              <Td>{event.dose ?? "—"}</Td>
-              <Td>{event.followUpOn ? formatDisplayDate(event.followUpOn) : "—"}</Td>
-              <Td>{healthOutcome(event.outcome)}</Td>
-            </tr>
-          ))}
+        <Table headers={["Date", "Animal", "Problem & Diagnosis", "Medicine & Regimen", "Veterinarian", "Follow-up", "Outcome", "Attachment"]}>
+          {register.events.length === 0 ? <EmptyRow cols={8}>No treatments yet.</EmptyRow> : null}
+          {register.events.map((event) => {
+            const animal = byId.get(event.animalId);
+            return (
+              <tr key={event.id}>
+                <Td>{formatDisplayDate(event.eventOn)}</Td>
+                <Td>{animalLink(event.animalId)}</Td>
+                <Td>
+                  <div className="font-medium">{event.problem}</div>
+                  {event.diagnosis ? <div className="text-xs text-muted-foreground">Dx: {event.diagnosis}</div> : null}
+                  {event.signs ? <div className="text-xs text-muted-foreground">Signs: {event.signs}</div> : null}
+                </Td>
+                <Td>
+                  <div>{event.medicine ?? "—"}</div>
+                  {event.dose || event.route || event.duration ? (
+                    <div className="text-xs text-muted-foreground">{[event.dose, event.route, event.duration].filter(Boolean).join(" · ")}</div>
+                  ) : null}
+                  {event.treatment ? <div className="text-xs text-muted-foreground">{event.treatment}</div> : null}
+                </Td>
+                <Td>{event.veterinarian ?? "—"}</Td>
+                <Td>{event.followUpOn ? formatDisplayDate(event.followUpOn) : "—"}</Td>
+                <Td>{healthOutcome(event.outcome)}</Td>
+                <Td>
+                  {event.attachmentKey && animal ? (
+                    <a
+                      href={`/animals/${encodeURIComponent(animal.code)}/health/${encodeURIComponent(event.id)}/attachment`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-medium text-primary underline underline-offset-4"
+                    >
+                      {event.attachmentName ?? "View file"}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </Td>
+              </tr>
+            );
+          })}
         </Table>
                 ),
               }
             : {}),
           vaccines: (
-        <Table headers={["Animal", "Vaccine", "Given", "Next due"]}>
-          {register.doses.length === 0 ? <EmptyRow cols={4}>No doses yet.</EmptyRow> : null}
+        <Table headers={["Animal", "Vaccine", "Batch", "Given", "Next due"]}>
+          {register.doses.length === 0 ? <EmptyRow cols={5}>No doses yet.</EmptyRow> : null}
           {register.doses.map((dose) => (
             <tr key={dose.id}>
               <Td>{animalLink(dose.animalId)}</Td>
               <Td>{dose.vaccine}</Td>
+              <Td>{dose.batch ?? "—"}</Td>
               <Td>{formatDisplayDate(dose.givenOn)}</Td>
               <Td className="text-muted-foreground">{dose.nextDueOn ? formatDisplayDate(dose.nextDueOn) : "—"}</Td>
             </tr>

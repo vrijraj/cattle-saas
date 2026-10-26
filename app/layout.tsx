@@ -20,8 +20,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={googleSans.variable}>
-      <body className="antialiased">
+    <html lang="en" className={googleSans.variable} suppressHydrationWarning>
+      <body className="antialiased" suppressHydrationWarning>
         <ClientRender>{children}</ClientRender>
       </body>
     </html>

@@ -29,6 +29,13 @@
       "when": 1792580400000,
       "tag": "0003_location_dryoff",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792590000000,
+      "tag": "0004_scope_completeness",
+      "breakpoints": true
     }
   ]
 }

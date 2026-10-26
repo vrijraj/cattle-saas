@@ -5,16 +5,18 @@ import { alerts, animals, milkYields } from "@/db/schema";
 import { addDays, farmToday, formatDisplayDate, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { milkDaySummary } from "@/lib/milk-sheet";
-import { canWriteMilk } from "@/lib/permissions";
+import { canWriteMilk, hasRole } from "@/lib/permissions";
 import { MilkDatePicker } from "@/components/milk-date-picker";
+import { RecordDialog } from "@/components/record-dialog";
 import { Button } from "@/components/ui/button";
-import { Notice, Summary } from "@/components/workspace";
-import { saveMilk } from "./actions";
+import { inputClass, Notice, Submit, Summary } from "@/components/workspace";
+import { saveMilk, saveMilkSettings } from "./actions";
 
 const messages: Record<string, string> = {
   range: "Each session must be between 0 and 80 litres.",
   role: "Your role cannot record milk.",
   date: "Choose today or an earlier date.",
+  settings: "Enter a valid milk price (₹0–₹1000/L) and drop threshold (5%–90%).",
 };
 
 export const metadata = { title: "Milk records" };
@@ -22,7 +24,7 @@ export const metadata = { title: "Milk records" };
 export default async function MilkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; saved?: string; date?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; settings?: string; date?: string }>;
 }) {
   const farm = await requireFarm();
   const query = await searchParams;
@@ -49,6 +51,9 @@ export default async function MilkPage({
     existing.filter((row) => row.recordedOn === selected),
   );
   const canSave = canWriteMilk(farm.roles);
+  const canConfigure = hasRole(farm.roles, ["owner", "manager", "admin", "accountant"]);
+  const milkPrice = Number(farm.milkPricePerLitre ?? 60);
+  const dayValue = summary.total * milkPrice;
   const drops = await db
     .select()
     .from(alerts)
@@ -70,8 +75,8 @@ export default async function MilkPage({
 
   const stats = [
     [summary.total.toFixed(1) + " L", selected === today ? "Total milk today" : "Total for this day"],
+    [`₹${Math.round(dayValue).toLocaleString("en-IN")}`, `Production value (₹${milkPrice.toFixed(0)}/L)`],
     [String(summary.entered), "Cows milked"],
-    [String(summary.notEntered), "Not entered"],
     [summary.average.toFixed(1) + " L", "Average entered"],
   ];
 
@@ -79,13 +84,52 @@ export default async function MilkPage({
     <div className="space-y-5">
       <Summary
         title="Milk log"
-        description={`Daily yield for each cow in milk · ${formatDisplayDate(selected)}. Pick another day to fill in or correct that log. A blank cow is not entered. A 30% drop against the previous 7 days opens an alert after day 14 in milk.`}
-        action={<MilkDatePicker key={selected} date={selected} today={today} />}
+        description={`Daily yield for each cow in milk · ${formatDisplayDate(selected)}. Pick another day to fill in or correct that log. A blank cow is not entered. A ${farm.milkDropPercent}% drop against the previous 7 days opens an alert after day 14 in milk.`}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <MilkDatePicker key={selected} date={selected} today={today} />
+            {canConfigure ? (
+              <RecordDialog title="Milk price & alert settings" button="Milk settings" quiet>
+                <form action={saveMilkSettings} className="space-y-3">
+                  <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                    Milk price per litre (INR)
+                    <input
+                      name="milkPricePerLitre"
+                      inputMode="decimal"
+                      required
+                      defaultValue={milkPrice.toFixed(2)}
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                    Production drop alert threshold (%)
+                    <input
+                      name="milkDropPercent"
+                      type="number"
+                      min={5}
+                      max={90}
+                      required
+                      defaultValue={farm.milkDropPercent}
+                      className={inputClass}
+                    />
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Alerts trigger when an animal (after 14 days in milk) or the herd drops by at least this percentage relative to its 7-day average.
+                  </p>
+                  <div className="flex justify-end pt-1">
+                    <Submit>Save settings</Submit>
+                  </div>
+                </form>
+              </RecordDialog>
+            ) : null}
+          </div>
+        }
         facts={stats.map(([value, label]) => ({ label, value }))}
       />
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {requested && requested > today && query.error !== "date" ? <Notice tone="danger">{messages.date}</Notice> : null}
       {query.saved ? <Notice>Milk for {formatDisplayDate(selected)} is saved.</Notice> : null}
+      {query.settings ? <Notice>Milk price and drop alert threshold updated.</Notice> : null}
       {drops.length > 0 ? (
         <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
           <h2 className="font-semibold">Milk drop</h2>

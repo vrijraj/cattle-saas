@@ -21,6 +21,9 @@ const animalSchema = z.object({
   locationId: z.string(),
   colour: z.string().trim().max(80),
   marks: z.string().trim().max(200),
+  purchaseSource: z.string().trim().max(120),
+  purchaseDate: z.string(),
+  purchasePrice: z.string().trim(),
   lifeStage: z.enum(["calf", "heifer", "cow", "bull", "steer"]),
   reproduction: z.enum(["not_applicable", "open", "bred", "pregnant", "fresh"]),
   lactation: z.enum(["not_applicable", "pre_lactation", "lactating", "dry"]),
@@ -40,6 +43,9 @@ export async function createAnimal(_prev: { error: string }, formData: FormData)
     locationId: formData.get("locationId") ?? "",
     colour: formData.get("colour") ?? "",
     marks: formData.get("marks") ?? "",
+    purchaseSource: formData.get("purchaseSource") ?? "",
+    purchaseDate: formData.get("purchaseDate") ?? "",
+    purchasePrice: formData.get("purchasePrice") ?? "",
     lifeStage: formData.get("lifeStage"),
     reproduction: formData.get("reproduction"),
     lactation: formData.get("lactation"),
@@ -48,6 +54,9 @@ export async function createAnimal(_prev: { error: string }, formData: FormData)
 
   const input = parsed.data;
   if (input.dob && !/^\d{4}-\d{2}-\d{2}$/.test(input.dob)) return { error: "Date of birth is not valid." };
+  if (input.purchaseDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.purchaseDate)) return { error: "Purchase date is not valid." };
+  const priceNum = input.purchasePrice ? Number(input.purchasePrice) : null;
+  if (priceNum !== null && (!Number.isFinite(priceNum) || priceNum < 0)) return { error: "Purchase price must be zero or more." };
   if (input.sex === "male" && (input.reproduction === "pregnant" || input.lactation === "lactating")) {
     return { error: "A male cannot be saved as pregnant or lactating." };
   }
@@ -100,6 +109,9 @@ export async function createAnimal(_prev: { error: string }, formData: FormData)
         locationId: input.locationId || null,
         colour: input.colour || null,
         marks: input.marks || null,
+        purchaseSource: input.purchaseSource || null,
+        purchaseDate: input.purchaseDate || null,
+        purchasePrice: priceNum !== null ? priceNum.toFixed(2) : null,
         lifeStage: input.lifeStage,
         reproduction: input.sex === "male" ? "not_applicable" : input.reproduction,
         lactation: input.sex === "male" ? "not_applicable" : input.lactation,
@@ -201,6 +213,9 @@ const detailSchema = z.object({
   earTag: z.string().trim().max(40),
   colour: z.string().trim().max(80),
   marks: z.string().trim().max(200),
+  purchaseSource: z.string().trim().max(120),
+  purchaseDate: z.string(),
+  purchasePrice: z.string().trim(),
   damId: z.string(),
   sireCode: z.string().trim().max(40),
   sireName: z.string().trim().max(80),
@@ -209,7 +224,9 @@ const detailSchema = z.object({
 export async function updateAnimalDetails(formData: FormData) {
   const farm = await requireFarm();
   const code = String(formData.get("code") ?? "");
-  const back = (error: string) => redirect(`/animals/${code}?error=${error}`);
+  function back(error: string): never {
+    redirect(`/animals/${code}?error=${error}`);
+  }
   if (!canWriteAnimals(farm.roles)) back("details");
 
   const [animal] = await db
@@ -228,6 +245,9 @@ export async function updateAnimalDetails(formData: FormData) {
     earTag: formData.get("earTag") ?? "",
     colour: formData.get("colour") ?? "",
     marks: formData.get("marks") ?? "",
+    purchaseSource: formData.get("purchaseSource") ?? "",
+    purchaseDate: formData.get("purchaseDate") ?? "",
+    purchasePrice: formData.get("purchasePrice") ?? "",
     damId: formData.get("damId") ?? "",
     sireCode: formData.get("sireCode") ?? "",
     sireName: formData.get("sireName") ?? "",
@@ -235,6 +255,9 @@ export async function updateAnimalDetails(formData: FormData) {
   if (!parsed.success) back("details");
   const input = parsed.data;
   if (input.dob && !/^\d{4}-\d{2}-\d{2}$/.test(input.dob)) back("date");
+  if (input.purchaseDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.purchaseDate)) back("date");
+  const priceNum = input.purchasePrice ? Number(input.purchasePrice) : null;
+  if (priceNum !== null && (!Number.isFinite(priceNum) || priceNum < 0)) back("details");
 
   const [breed] = await db
     .select()
@@ -282,6 +305,9 @@ export async function updateAnimalDetails(formData: FormData) {
     earTag: input.earTag || null,
     colour: input.colour || null,
     marks: input.marks || null,
+    purchaseSource: input.purchaseSource || null,
+    purchaseDate: input.purchaseDate || null,
+    purchasePrice: priceNum !== null ? priceNum.toFixed(2) : null,
     geneticDamId: input.damId || null,
     geneticSireCode: input.sireCode || null,
     geneticSireName: input.sireCode ? input.sireName || input.sireCode : null,
@@ -328,7 +354,9 @@ export async function updateAnimalDetails(formData: FormData) {
 export async function updateAnimalPedigree(formData: FormData) {
   const farm = await requireFarm();
   const code = String(formData.get("code") ?? "");
-  const back = (error: string) => redirect(`/animals/${code}?tab=parentage&error=${error}`);
+  function back(error: string): never {
+    redirect(`/animals/${code}?tab=parentage&error=${error}`);
+  }
   if (!canWriteAnimals(farm.roles)) back("pedigree");
 
   const [animal] = await db
@@ -401,7 +429,9 @@ export async function updateAnimalPedigree(formData: FormData) {
 export async function updateGenerationParents(formData: FormData) {
   const farm = await requireFarm();
   const code = String(formData.get("code") ?? "");
-  const back = (error: string) => redirect(`/animals/${code}?tab=parentage&error=${error}`);
+  function back(error: string): never {
+    redirect(`/animals/${code}?tab=parentage&error=${error}`);
+  }
   if (!canWriteAnimals(farm.roles)) back("generation");
 
   const [animal] = await db

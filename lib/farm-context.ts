@@ -23,6 +23,8 @@ export const getFarm = cache(async function getFarm() {
       farmSlug: farms.slug,
       timezone: farms.timezone,
       animalPrefix: farms.animalPrefix,
+      milkPricePerLitre: farms.milkPricePerLitre,
+      milkDropPercent: farms.milkDropPercent,
       roles: farmMembers.roles,
     })
     .from(farmMembers)

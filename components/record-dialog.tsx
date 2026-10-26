@@ -50,17 +50,17 @@ export function RecordDialog({
   return (
     <>
       {hiddenButton ? null : (
-      <button
-        type="button"
-        onClick={show}
-        className={
-          quiet
-            ? "text-sm font-medium text-primary"
-            : "inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground"
-        }
-      >
-        {button}
-      </button>
+        <button
+          type="button"
+          onClick={show}
+          className={
+            quiet
+              ? "inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/20 bg-secondary/75 px-3 text-xs font-semibold text-primary transition hover:border-primary/35 hover:bg-secondary active:scale-[0.98]"
+              : "inline-flex h-10 items-center gap-1.5 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs transition hover:bg-[#0f5c34] active:scale-[0.99]"
+          }
+        >
+          {button}
+        </button>
       )}
       <dialog
         ref={dialogRef}
@@ -68,24 +68,30 @@ export function RecordDialog({
         onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
-        className="m-auto w-[min(36rem,calc(100%-2rem))] overflow-visible rounded-2xl border border-border bg-card text-foreground backdrop:bg-[#1c2430]/40"
+        className="m-auto w-[min(36rem,calc(100%-2rem))] overflow-visible rounded-2xl border border-border bg-card text-foreground shadow-2xl backdrop:bg-[#0f1f17]/45 backdrop:backdrop-blur-[2px]"
       >
         <DialogPortalContext.Provider value={dialogRef}>
-          <div className="max-h-[min(40rem,calc(100dvh-2rem))] overflow-y-auto p-5">
-            <div className="flex items-start justify-between gap-3">
-              <h2 id={titleId} className="text-lg font-semibold">
+          <div className="max-h-[min(42rem,calc(100dvh-2rem))] overflow-y-auto overscroll-contain">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border/75 bg-card/95 px-5 py-4 backdrop-blur-sm">
+              <h2 id={titleId} className="text-base font-semibold tracking-tight sm:text-lg">
                 {title}
               </h2>
-              <button type="button" onClick={close} className="inline-flex h-9 items-center rounded-full px-3 text-sm text-muted-foreground hover:bg-muted">
+              <button
+                type="button"
+                onClick={close}
+                className="inline-flex h-8 items-center rounded-full border border-border/80 bg-muted/60 px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              >
                 Close
               </button>
             </div>
-            {notice ? (
-              <div className="mt-4">
-                <Notice tone="danger">{notice}</Notice>
-              </div>
-            ) : null}
-            <div className="mt-5">{children}</div>
+            <div className="p-5">
+              {notice ? (
+                <div className="mb-4">
+                  <Notice tone="danger">{notice}</Notice>
+                </div>
+              ) : null}
+              {children}
+            </div>
           </div>
         </DialogPortalContext.Provider>
       </dialog>

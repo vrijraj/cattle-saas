@@ -1,4 +1,4 @@
-import { numeric, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, numeric, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import { users } from "./auth";
 
 export const farms = pgTable("farm", {
@@ -11,6 +11,7 @@ export const farms = pgTable("farm", {
   currency: text("currency").notNull().default("INR"),
   animalPrefix: text("animal_prefix").notNull().default("MIL"),
   milkPricePerLitre: numeric("milk_price_per_litre", { precision: 12, scale: 2 }),
+  milkDropPercent: integer("milk_drop_percent").notNull().default(30),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 

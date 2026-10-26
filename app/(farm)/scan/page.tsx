@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { animals, bulls, semenBatches, straws } from "@/db/schema";
@@ -39,10 +39,18 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
 
   if (raw && !lookupError) {
     const token = tokenFrom(raw);
+    const upper = raw.toUpperCase();
     const [animal] = await db
       .select({ code: animals.code })
       .from(animals)
-      .where(and(eq(animals.farmId, farm.farmId), token ? eq(animals.qrToken, token) : eq(animals.code, raw)))
+      .where(
+        and(
+          eq(animals.farmId, farm.farmId),
+          token
+            ? eq(animals.qrToken, token)
+            : or(eq(animals.code, raw), eq(animals.code, upper), eq(animals.earTag, raw), eq(animals.qrToken, raw)),
+        ),
+      )
       .limit(1);
     if (animal) redirect(`/animals/${animal.code}`);
 
@@ -62,7 +70,7 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
       .from(straws)
       .innerJoin(semenBatches, eq(semenBatches.id, straws.batchId))
       .innerJoin(bulls, eq(bulls.id, semenBatches.bullId))
-      .where(and(eq(straws.farmId, farm.farmId), eq(straws.code, raw)))
+      .where(and(eq(straws.farmId, farm.farmId), or(eq(straws.code, raw), eq(straws.code, upper))))
       .limit(1);
     if (straw) strawCard = straw;
     else missing = true;

@@ -42,23 +42,23 @@ export function AccountMenu({
         aria-expanded={open}
         aria-label="Account"
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-2 rounded-full border border-border bg-card py-1 pr-1 pl-1 text-left transition hover:bg-muted sm:pr-3"
+        className="grid size-8 place-items-center rounded-full bg-primary/15 text-xs font-bold text-primary ring-1 ring-primary/20 transition hover:bg-primary/25"
       >
-        <span className="grid size-10 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{initials}</span>
-        <span className="hidden sm:block">
-          <span className="block text-sm font-medium leading-tight">{userName}</span>
-          <span className="block text-xs text-muted-foreground">{role}</span>
-        </span>
+        {initials}
       </button>
       {open ? (
-        <div role="menu" className="absolute top-full right-0 z-30 mt-2 w-44 rounded-xl border border-border bg-card p-1">
+        <div role="menu" className="absolute top-full right-0 z-30 mt-2 w-52 rounded-2xl border border-border bg-card p-1.5 shadow-xl">
+          <div className="border-b border-border/60 px-3 py-2">
+            <p className="truncate text-sm font-semibold">{userName}</p>
+            <p className="text-xs capitalize text-muted-foreground">{role.replaceAll("_", " ")}</p>
+          </div>
           <Link
             role="menuitem"
             href="/profile"
             onClick={() => setOpen(false)}
-            className="flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium hover:bg-muted"
+            className="flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium transition hover:bg-muted"
           >
-            <User className="size-4" />
+            <User className="size-4 text-muted-foreground" />
             Profile
           </Link>
           {logout}

@@ -1,18 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f2f6f3;
-  --foreground: #17211c;
+  --background: #f3f4f6;
+  --foreground: #14171a;
   --card: #ffffff;
-  --card-foreground: #17211c;
+  --card-foreground: #14171a;
   --primary: #157347;
   --primary-foreground: #ffffff;
-  --muted: #e7eee9;
-  --muted-foreground: #4d5c55;
-  --border: #d7e3dc;
+  --muted: #eaedf0;
+  --muted-foreground: #5c646d;
+  --border: #e2e6ea;
   --ring: #157347;
   --danger: #b45309;
-  --secondary: #e5f5ec;
+  --secondary: #e6f4ec;
   --secondary-foreground: #0f5c34;
   --destructive: #b45309;
   --radius: 1rem;
@@ -47,15 +47,37 @@ body {
 
 body {
   background:
-    radial-gradient(900px 420px at 100% -80px, #e5f5ec 0%, transparent 60%),
+    radial-gradient(1000px 460px at 100% -100px, #e3f4eb 0%, transparent 62%),
+    radial-gradient(700px 380px at 0% -120px, #eaf5ee 0%, transparent 55%),
     var(--background);
   color: var(--foreground);
 }
 
-h1 {
+h1,
+h2,
+h3,
+h4 {
   font-family: var(--font-google-sans), ui-sans-serif, system-ui, sans-serif;
+  text-wrap: balance;
+}
+
+h1 {
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+td,
+dd,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
 }
 
 ::selection {
@@ -78,7 +100,7 @@ tbody tr {
 }
 
 tbody tr:hover {
-  background: #f6fbf8;
+  background: #f5faf7;
 }
 
 ::view-transition {
@@ -130,13 +152,13 @@ dialog.nav-drawer {
   margin-right: auto;
   height: 100dvh;
   max-height: none;
-  width: min(18rem, 84vw);
+  width: min(17.5rem, 84vw);
   border: 0;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0 1.25rem 1.25rem 0;
   padding: 0;
-  background: var(--muted);
-  color: var(--foreground);
+  background: #141518;
+  color: #f4f4f5;
 }
 
 dialog.nav-drawer[open] {

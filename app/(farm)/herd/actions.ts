@@ -1,6 +1,6 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -36,7 +36,7 @@ import { embryoCodeSeries } from "@/lib/embryo-stock";
 import { canonicalCategory } from "@/lib/finance-suggestions";
 import { isFeedCategory, isFeedKind } from "@/lib/feed-stock";
 import { dryOffDueOn } from "@/lib/lactation";
-import { addDays, farmToday } from "@/lib/dates";
+import { addDays, farmToday, formatDisplayDate, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { issueAnimalCode } from "@/lib/issue-code";
 import {
@@ -49,6 +49,8 @@ import {
   canWriteAnimals,
   canWriteMilk,
 } from "@/lib/permissions";
+import { putPrivateObject, storageConfigured } from "@/lib/storage";
+import { syncMilkDrops } from "@/lib/sync-milk-drops";
 
 function text(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -118,6 +120,23 @@ export async function recordAi(formData: FormData) {
         .where(eq(straws.id, straw.id));
     }
 
+    const attemptInput = Number(text(formData, "attempt"));
+    let attemptNumber = Number.isInteger(attemptInput) && attemptInput > 0 ? attemptInput : 0;
+    if (!attemptNumber) {
+      const [priorAis, priorCalvings, priorChecks] = await Promise.all([
+        tx.select().from(inseminations).where(eq(inseminations.animalId, animal.id)),
+        tx.select().from(calvings).where(eq(calvings.damId, animal.id)),
+        tx.select().from(pregnancyChecks).where(eq(pregnancyChecks.animalId, animal.id)),
+      ]);
+      const resetDates = [
+        ...priorCalvings.filter((row) => !row.voidedAt).map((row) => row.calvedOn),
+        ...priorChecks.filter((row) => !row.voidedAt && row.result === "not_pregnant").map((row) => row.checkedOn),
+      ].sort();
+      const latestReset = resetDates.at(-1) ?? "";
+      const cycleAis = priorAis.filter((row) => !row.voidedAt && (!latestReset || row.performedOn > latestReset));
+      attemptNumber = cycleAis.length + 1;
+    }
+
     const [row] = await tx
       .insert(inseminations)
       .values({
@@ -129,7 +148,8 @@ export async function recordAi(formData: FormData) {
         bullName: text(formData, "bullName") || null,
         batchNumber: text(formData, "batchNumber") || null,
         strawCode: strawCode || null,
-        attemptNumber: Number(text(formData, "attempt") || "1") || 1,
+        attemptNumber,
+        note: text(formData, "note") || null,
         createdBy: farm.userId,
       })
       .returning({ id: inseminations.id });
@@ -230,6 +250,17 @@ export async function recordPd(formData: FormData) {
       .set({ reproduction: "open", conceptionOn: null, expectedCalving: null, updatedAt: new Date() })
       .where(eq(animals.id, animal.id));
   }
+  if (result === "doubtful") {
+    const recheckOn = addDays(checkedOn, 14);
+    await db.insert(alerts).values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      type: "ai_followup",
+      title: "AI follow-up / PD recheck",
+      body: `${animal.code} had a doubtful pregnancy check on ${checkedOn}. Follow-up check due ${recheckOn}.`,
+      dueOn: recheckOn,
+    });
+  }
   await db
     .update(alerts)
     .set({ status: "done" })
@@ -316,6 +347,10 @@ export async function recordCalving(formData: FormData) {
         updatedAt: new Date(),
       })
       .where(eq(animals.id, dam.id));
+    await tx
+      .update(alerts)
+      .set({ status: "done" })
+      .where(and(eq(alerts.animalId, dam.id), eq(alerts.type, "calving_due"), eq(alerts.status, "open")));
   });
   redirect(`/animals/${dam.code}?tab=breeding`);
 }
@@ -354,6 +389,13 @@ export async function recordDryOff(formData: FormData) {
   redirect(`/animals/${animal.code}?tab=breeding`);
 }
 
+const attachmentExtensions: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "application/pdf": "pdf",
+};
+
 export async function recordHealth(formData: FormData) {
   const farm = await requireFarm();
   if (!canRecordHealth(farm.roles)) redirect("/health?error=role");
@@ -362,6 +404,17 @@ export async function recordHealth(formData: FormData) {
   const followUp = text(formData, "followUpOn");
   const medicine = text(formData, "medicine");
   const problem = text(formData, "problem") || "Illness";
+  let attachmentKey: string | null = null;
+  let attachmentName: string | null = null;
+  const file = formData.get("attachment");
+  if (file instanceof File && file.size > 0) {
+    const ext = attachmentExtensions[file.type];
+    if (ext && file.size <= 10 * 1024 * 1024 && storageConfigured()) {
+      attachmentKey = `farms/${farm.farmId}/health/${animal.code}/${randomUUID()}.${ext}`;
+      attachmentName = file.name || `prescription.${ext}`;
+      await putPrivateObject(attachmentKey, Buffer.from(await file.arrayBuffer()), file.type);
+    }
+  }
   const [row] = await db
     .insert(healthEvents)
     .values({
@@ -375,9 +428,12 @@ export async function recordHealth(formData: FormData) {
       medicine: medicine || null,
       dose: text(formData, "dose") || null,
       route: text(formData, "route") || null,
+      duration: text(formData, "duration") || null,
       veterinarian: text(formData, "veterinarian") || farm.userName,
       followUpOn: followUp || null,
       outcome: text(formData, "outcome") || "ongoing",
+      attachmentKey,
+      attachmentName,
       createdBy: farm.userId,
     })
     .returning({ id: healthEvents.id });
@@ -504,6 +560,7 @@ export async function recordWeight(formData: FormData) {
   const farm = await requireFarm();
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal) redirect("/animals");
+  if (!canWriteMilk(farm.roles) && !canWriteAnimals(farm.roles)) redirect(`/animals/${animal.code}?error=role`);
   const kilograms = Number(text(formData, "kilograms"));
   if (!Number.isFinite(kilograms) || kilograms <= 0 || kilograms > 1200) redirect(`/animals/${animal.code}?error=weight`);
   await db.insert(weights).values({
@@ -511,8 +568,69 @@ export async function recordWeight(formData: FormData) {
     animalId: animal.id,
     weighedOn: text(formData, "weighedOn") || farmToday(farm.timezone),
     kilograms: kilograms.toFixed(1),
+    note: text(formData, "note") || null,
   });
   redirect(`/animals/${animal.code}`);
+}
+
+export async function recordAnimalMilk(formData: FormData) {
+  const farm = await requireFarm();
+  const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
+  if (!animal) redirect("/animals");
+  if (!canWriteMilk(farm.roles)) redirect(`/animals/${animal.code}?tab=milk&error=role`);
+  const today = farmToday(farm.timezone);
+  const recordedOn = parseFarmDate(text(formData, "recordedOn") || today);
+  if (!recordedOn || recordedOn > today) redirect(`/animals/${animal.code}?tab=milk&error=date`);
+
+  const morningRaw = text(formData, "morningLitres");
+  const eveningRaw = text(formData, "eveningLitres");
+  const morningNum = morningRaw ? Number(morningRaw) : null;
+  const eveningNum = eveningRaw ? Number(eveningRaw) : null;
+  if (
+    (morningNum !== null && (!Number.isFinite(morningNum) || morningNum < 0 || morningNum > 80)) ||
+    (eveningNum !== null && (!Number.isFinite(eveningNum) || eveningNum < 0 || eveningNum > 80)) ||
+    (morningNum === null && eveningNum === null)
+  ) {
+    redirect(`/animals/${animal.code}?tab=milk&error=milk`);
+  }
+  const morning = morningNum !== null ? morningNum.toFixed(1) : null;
+  const evening = eveningNum !== null ? eveningNum.toFixed(1) : null;
+
+  const [saved] = await db
+    .insert(milkYields)
+    .values({
+      farmId: farm.farmId,
+      animalId: animal.id,
+      recordedOn,
+      morningLitres: morning,
+      eveningLitres: evening,
+      createdBy: farm.userId,
+    })
+    .onConflictDoUpdate({
+      target: [milkYields.animalId, milkYields.recordedOn],
+      set: {
+        morningLitres: morning,
+        eveningLitres: evening,
+        voidedAt: null,
+        voidReason: null,
+        voidedBy: null,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({ id: milkYields.id });
+
+  await writeAudit(db, {
+    farmId: farm.farmId,
+    actorId: farm.userId,
+    action: "update",
+    entity: "milk",
+    entityId: saved.id,
+    summary: `Milk for ${animal.code} on ${formatDisplayDate(recordedOn)}: ${[morning ? `${morning} L morning` : "", evening ? `${evening} L evening` : ""].filter(Boolean).join(", ")}`,
+    after: { recordedOn, morning, evening },
+  });
+
+  await syncMilkDrops(farm.farmId, recordedOn);
+  redirect(`/animals/${animal.code}?tab=milk`);
 }
 
 export async function saveBull(formData: FormData) {
@@ -527,6 +645,15 @@ export async function saveBull(formData: FormData) {
     .where(and(eq(bulls.farmId, farm.farmId), eq(bulls.code, code)))
     .limit(1);
   if (existing) semenRedirect(formData, { error: "bull" });
+  let photoKey: string | null = null;
+  const photo = formData.get("photo");
+  if (photo instanceof File && photo.size > 0) {
+    const ext = attachmentExtensions[photo.type];
+    if (ext && ext !== "pdf" && photo.size <= 5 * 1024 * 1024 && storageConfigured()) {
+      photoKey = `farms/${farm.farmId}/bulls/${code}/${randomUUID()}.${ext}`;
+      await putPrivateObject(photoKey, Buffer.from(await photo.arrayBuffer()), photo.type);
+    }
+  }
   const [bull] = await db
     .insert(bulls)
     .values({
@@ -538,6 +665,7 @@ export async function saveBull(formData: FormData) {
       semenCompany: text(formData, "company") || null,
       sireCode: text(formData, "sireCode") || null,
       damCode: text(formData, "damCode") || null,
+      photoKey,
       notes: text(formData, "notes") || null,
     })
     .returning({ id: bulls.id });
@@ -727,6 +855,8 @@ export async function saveFeed(formData: FormData) {
     movedOn,
     note,
   });
+  const returnTo = text(formData, "returnTo");
+  if (returnTo.startsWith("/animals/")) redirect(returnTo);
   redirect("/feed?saved=1");
 }
 
@@ -782,7 +912,7 @@ function isoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-function embryoRedirect(formData: FormData, notice?: { error?: string; saved?: boolean }) {
+function embryoRedirect(formData: FormData, notice?: { error?: string; saved?: boolean }): never {
   const tab = text(formData, "returnTab");
   const params = new URLSearchParams();
   if (tab === "inventory" || tab === "transfers") params.set("tab", tab);
@@ -792,7 +922,7 @@ function embryoRedirect(formData: FormData, notice?: { error?: string; saved?: b
   redirect(value ? `/embryos?${value}` : "/embryos");
 }
 
-function semenRedirect(formData: FormData, notice?: { error?: string; saved?: boolean }) {
+function semenRedirect(formData: FormData, notice?: { error?: string; saved?: boolean }): never {
   const tab = text(formData, "returnTab");
   const params = new URLSearchParams();
   if (tab === "straws" || tab === "bulls") params.set("tab", tab);

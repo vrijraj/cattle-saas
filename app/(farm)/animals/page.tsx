@@ -110,8 +110,8 @@ export default async function AnimalsPage({
         ]}
         action={
           canWriteAnimals(farm.roles) ? (
-            <Link href="/animals/new" className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground">
-              Add cattle
+            <Link href="/animals/new" className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90">
+              + Add cattle
             </Link>
           ) : null
         }
@@ -121,8 +121,8 @@ export default async function AnimalsPage({
         tree={<HerdTree forest={herdForest(rows)} />}
         herd={
         <>
-        <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card">
-          <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
+        <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/85 bg-card shadow-[0_1px_3px_rgba(15,35,24,0.04)]">
+          <div className="flex flex-col gap-3 border-b border-border/75 p-4 lg:flex-row lg:items-center lg:justify-between">
             <HerdSearch
               variant="field"
               farmId={farm.farmId}
@@ -141,30 +141,30 @@ export default async function AnimalsPage({
                   <Link
                     key={item.id}
                     href={href(item.id)}
-                    className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium ${
-                      active ? "bg-secondary text-secondary-foreground" : "bg-muted text-muted-foreground"
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors ${
+                      active ? "bg-secondary text-primary ring-1 ring-primary/20" : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                   >
                     {item.label}
-                    <span>{counts[item.id]}</span>
+                    <span className="tabular-nums opacity-80">{counts[item.id]}</span>
                   </Link>
                 );
               })}
             </div>
           </div>
 
-          <ul className="divide-y divide-border md:hidden">
-            {visible.length === 0 ? <li className="px-4 py-8 text-sm text-muted-foreground">No cattle match this filter.</li> : null}
+          <ul className="divide-y divide-border/70 md:hidden">
+            {visible.length === 0 ? <li className="px-4 py-8 text-center text-sm text-muted-foreground">No cattle match this filter.</li> : null}
             {visible.map((animal) => {
               const status = rowStatus(animal);
               return (
                 <li key={animal.id}>
-                  <Link href={`/animals/${animal.code}`} className="flex items-center gap-3 px-4 py-3">
-                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-sm font-semibold text-primary">
+                  <Link href={`/animals/${animal.code}`} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-sm font-semibold text-primary ring-1 ring-primary/15">
                       {(animal.name ?? animal.code).slice(0, 1)}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{animal.name ?? "Unnamed"}</span>
+                      <span className="block truncate font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
                       <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                         {animal.code} · {animal.breedName} · {ageLabel(animal.dob, today)}
                       </span>
@@ -181,22 +181,22 @@ export default async function AnimalsPage({
 
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="bg-muted/80 text-xs text-muted-foreground">
+              <thead className="border-b border-border/80 bg-muted/60 text-xs font-semibold text-muted-foreground">
                 <tr>
                   {["Animal", "Breed", "Age", "Status", "Location"].map((header) => (
-                    <th key={header} className="px-4 py-3 font-medium">
+                    <th key={header} className="px-4 py-3 font-semibold tracking-tight">
                       {header}
                     </th>
                   ))}
-                  <th className="px-4 py-3 text-right font-medium">
+                  <th className="px-4 py-3 text-right font-semibold tracking-tight">
                     <span className="sr-only">Profile</span>
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border/70">
                 {visible.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-sm text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                       No cattle match this filter.
                     </td>
                   </tr>
@@ -206,10 +206,10 @@ export default async function AnimalsPage({
                     const rowHref = `/animals/${animal.code}`;
                     const cell = "block px-4 py-3";
                     return (
-                      <tr key={animal.id} className="hover:bg-muted/60">
+                      <tr key={animal.id} className="transition-colors hover:bg-muted/40">
                         <td className="p-0">
                           <Link href={rowHref} className={cell}>
-                            <span className="font-medium">{animal.name ?? "Unnamed"}</span>
+                            <span className="font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
                             <span className="mt-0.5 block text-xs text-muted-foreground">{animal.code}</span>
                           </Link>
                         </td>
@@ -236,9 +236,9 @@ export default async function AnimalsPage({
                         <td className="px-4 py-2 text-right">
                           <Link
                             href={`/animals/${animal.code}`}
-                            className="inline-flex h-8 items-center rounded-full bg-primary px-3 text-xs font-medium text-primary-foreground"
+                            className="inline-flex h-8 items-center rounded-full border border-primary/20 bg-secondary/80 px-3 text-xs font-semibold text-primary transition-colors hover:bg-secondary"
                           >
-                            Open profile
+                            Open profile →
                           </Link>
                         </td>
                       </tr>

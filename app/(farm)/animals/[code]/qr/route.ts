@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { animals } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 
-export async function GET(_request: Request, context: { params: Promise<{ code: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ code: string }> }) {
   const farm = await requireFarm();
   const { code } = await context.params;
   const [animal] = await db
@@ -16,7 +16,13 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
 
   const origin = process.env.AUTH_URL ?? "http://localhost:3000";
   const png = await QRCode.toBuffer(`${origin}/q/${animal.token}`, { width: 512, margin: 1 });
+  const download = new URL(request.url).searchParams.get("download") === "1";
+  const safeCode = code.replace(/[^a-zA-Z0-9._-]/g, "_");
   return new Response(new Uint8Array(png), {
-    headers: { "Content-Type": "image/png", "Cache-Control": "private, max-age=3600" },
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "private, max-age=3600",
+      ...(download ? { "Content-Disposition": `attachment; filename="${safeCode}-qr.png"` } : {}),
+    },
   });
 }

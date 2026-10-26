@@ -30,7 +30,7 @@ export function PanelTabs({
 
   return (
     <div className="space-y-4">
-      <nav className="flex gap-1 overflow-x-auto rounded-2xl bg-muted p-1">
+      <nav className="flex gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-muted/75 p-1">
         {tabs.map((item) => {
           const active = tab === item.id;
           return (
@@ -39,12 +39,22 @@ export function PanelTabs({
               type="button"
               aria-current={active ? "page" : undefined}
               onClick={() => select(item.id)}
-              className={`inline-flex h-9 shrink-0 items-center rounded-xl px-3 text-sm font-medium ${
-                active ? "bg-card text-foreground" : "text-muted-foreground hover:text-foreground"
+              className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-3.5 text-sm font-medium transition ${
+                active
+                  ? "bg-card text-foreground shadow-2xs ring-1 ring-border/80"
+                  : "text-muted-foreground hover:bg-card/50 hover:text-foreground"
               }`}
             >
               {item.label}
-              {item.count !== undefined ? <span className={`ml-1.5 text-xs ${active ? "text-muted-foreground" : ""}`}>{item.count}</span> : null}
+              {item.count !== undefined ? (
+                <span
+                  className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+                    active ? "bg-secondary text-primary" : "bg-background/70 text-muted-foreground"
+                  }`}
+                >
+                  {item.count}
+                </span>
+              ) : null}
             </button>
           );
         })}

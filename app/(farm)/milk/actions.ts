@@ -3,11 +3,11 @@
 import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { animals, milkYields } from "@/db/schema";
+import { animals, farms, milkYields } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { farmToday, formatDisplayDate, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
-import { canWriteMilk } from "@/lib/permissions";
+import { canWriteMilk, hasRole } from "@/lib/permissions";
 import { syncMilkDrops } from "@/lib/sync-milk-drops";
 
 function parseLitres(value: FormDataEntryValue | null) {
@@ -84,4 +84,39 @@ export async function saveMilk(formData: FormData) {
 
   await syncMilkDrops(farm.farmId, recordedOn);
   redirect(milkPath(recordedOn, today, { saved: "1" }));
+}
+
+export async function saveMilkSettings(formData: FormData) {
+  const farm = await requireFarm();
+  if (!hasRole(farm.roles, ["owner", "manager", "admin", "accountant"])) redirect("/milk?error=role");
+  const priceText = String(formData.get("milkPricePerLitre") ?? "").trim();
+  const dropText = String(formData.get("milkDropPercent") ?? "").trim();
+  const price = Number(priceText);
+  const dropPercent = Number(dropText);
+  if (!Number.isFinite(price) || price < 0 || price > 1000) redirect("/milk?error=settings");
+  if (!Number.isFinite(dropPercent) || dropPercent < 5 || dropPercent > 90) redirect("/milk?error=settings");
+
+  const roundedDrop = Math.round(dropPercent);
+  const formattedPrice = price.toFixed(2);
+  await db.transaction(async (tx) => {
+    await tx
+      .update(farms)
+      .set({
+        milkPricePerLitre: formattedPrice,
+        milkDropPercent: roundedDrop,
+      })
+      .where(eq(farms.id, farm.farmId));
+    await writeAudit(tx, {
+      farmId: farm.farmId,
+      actorId: farm.userId,
+      action: "update",
+      entity: "farm_milk_settings",
+      entityId: farm.farmId,
+      summary: `Milk settings updated: ₹${formattedPrice}/L · ${roundedDrop}% drop alert threshold`,
+      after: { milkPricePerLitre: formattedPrice, milkDropPercent: roundedDrop },
+    });
+  });
+
+  await syncMilkDrops(farm.farmId, farmToday(farm.timezone));
+  redirect("/milk?settings=1");
 }

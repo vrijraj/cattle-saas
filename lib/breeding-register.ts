@@ -22,8 +22,11 @@ export type BreedingInsemination = Stamp & {
   performedOn: string;
   bullCode: string;
   bullName: string | null;
+  batchNumber?: string | null;
   strawCode: string | null;
+  technicianName?: string;
   attemptNumber: number;
+  note?: string | null;
 };
 
 export type BreedingCheck = Stamp & {
@@ -32,6 +35,7 @@ export type BreedingCheck = Stamp & {
   inseminationId: string | null;
   checkedOn: string;
   result: string;
+  method?: string | null;
 };
 
 export type BreedingCalving = Stamp & {
@@ -41,6 +45,8 @@ export type BreedingCalving = Stamp & {
   inseminationId: string | null;
   calvedOn: string;
   outcome: string;
+  ease?: string | null;
+  note?: string | null;
 };
 
 export type BreedingHeat = Stamp & {
@@ -48,6 +54,7 @@ export type BreedingHeat = Stamp & {
   animalId: string;
   observedOn: string;
   signs: string;
+  note?: string | null;
 };
 
 export type DueRow = {

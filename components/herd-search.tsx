@@ -165,7 +165,7 @@ export function HerdSearch({
   showHealth = false,
   showSemen = false,
 }: {
-  variant?: "header" | "field";
+  variant?: "header" | "field" | "sidebar";
   farmId: string;
   showTeam?: boolean;
   showAudit?: boolean;
@@ -175,6 +175,7 @@ export function HerdSearch({
   showHealth?: boolean;
   showSemen?: boolean;
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -334,9 +335,10 @@ export function HerdSearch({
   const openRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (variant !== "header") return;
+    if (variant !== "header" && variant !== "sidebar") return;
     function onKey(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        if (triggerRef.current && triggerRef.current.offsetParent === null) return;
         event.preventDefault();
         openRef.current();
       }
@@ -386,17 +388,26 @@ export function HerdSearch({
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={open}
         className={
-          variant === "header"
-            ? "flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-muted px-3 text-left text-sm text-muted-foreground sm:h-11 sm:px-4 md:mx-auto md:max-w-xl"
-            : "flex h-10 items-center gap-2 rounded-full bg-muted px-3 text-left text-sm text-muted-foreground lg:w-80"
+          variant === "sidebar"
+            ? "flex h-9 w-full items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 text-left text-xs text-zinc-400 transition hover:border-white/[0.14] hover:bg-white/[0.07] hover:text-zinc-200"
+            : variant === "header"
+              ? "flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-white px-3 text-left text-xs text-muted-foreground shadow-2xs sm:max-w-xs"
+              : "flex h-10 items-center gap-2 rounded-full border border-border/80 bg-muted/65 px-3.5 text-left text-sm text-muted-foreground transition hover:bg-muted lg:w-80"
         }
       >
-        <Search className="size-4 shrink-0" />
-        <span className="truncate">Search</span>
-        {variant === "header" ? <kbd className="ml-auto hidden rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium sm:inline">Ctrl K</kbd> : null}
+        <Search className="size-3.5 shrink-0 opacity-75" />
+        <span className="truncate">{variant === "sidebar" ? "Search in CattleOS" : "Search"}</span>
+        {variant === "sidebar" ? (
+          <kbd className="ml-auto rounded border border-white/[0.12] bg-white/[0.06] px-1.5 py-0.5 font-sans text-[10px] font-medium text-zinc-400">
+            ⌘K
+          </kbd>
+        ) : variant === "header" ? (
+          <kbd className="ml-auto hidden rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium sm:inline">⌘K</kbd>
+        ) : null}
       </button>
       <dialog
         ref={dialogRef}

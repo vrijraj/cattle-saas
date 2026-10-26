@@ -5,6 +5,7 @@ import { FunctionTool } from "@google/adk";
 import { z } from "zod";
 import { createAnimal } from "@/app/(farm)/animals/actions";
 import {
+  recordAnimalMilk,
   recordCalving,
   recordDeworming,
   recordHealth,
@@ -23,7 +24,6 @@ import {
   transferEmbryo,
   voidRecord,
 } from "@/app/(farm)/herd/actions";
-import { saveMilk } from "@/app/(farm)/milk/actions";
 import { createInvite } from "@/app/(farm)/team/actions";
 import { db } from "@/db";
 import {
@@ -274,20 +274,23 @@ export function writeTools(scope: FarmScope) {
 
   const recordMilkTool = new FunctionTool({
     name: "record_milk",
-    description: "Save morning and evening milk litres for one animal on today. The person must confirm before this runs.",
+    description: "Save morning and evening milk litres for one animal. The person must confirm before this runs.",
     parameters: z.object({
       animal: animalField,
       morningLitres: z.number().optional(),
       eveningLitres: z.number().optional(),
+      recordedOn: dateField,
     }),
     requireConfirmation: true,
-    execute: async ({ animal, morningLitres, eveningLitres }) => {
+    execute: async ({ animal, morningLitres, eveningLitres, recordedOn }) => {
       if (morningLitres === undefined && eveningLitres === undefined) return { saved: false, error: "Give a morning or evening amount." };
       const found = await resolveAnimal(scope.farmId, animal);
       if ("error" in found) return { saved: false, error: found.error };
-      return runForm(saveMilk, {
-        [`morning-${found.animal.id}`]: morningLitres,
-        [`evening-${found.animal.id}`]: eveningLitres,
+      return runForm(recordAnimalMilk, {
+        animalId: found.animal.id,
+        morningLitres,
+        eveningLitres,
+        recordedOn,
       });
     },
   });

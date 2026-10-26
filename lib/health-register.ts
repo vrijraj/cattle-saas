@@ -23,16 +23,25 @@ export type HealthEvent = Stamp & {
   animalId: string;
   eventOn: string;
   problem: string;
+  signs?: string | null;
+  diagnosis?: string | null;
+  treatment?: string | null;
   medicine: string | null;
   dose: string | null;
+  route?: string | null;
+  duration?: string | null;
+  veterinarian?: string | null;
   followUpOn: string | null;
   outcome: string;
+  attachmentKey?: string | null;
+  attachmentName?: string | null;
 };
 
 export type HealthDose = Stamp & {
   id: string;
   animalId: string;
   vaccine: string;
+  batch?: string | null;
   givenOn: string;
   nextDueOn: string | null;
 };

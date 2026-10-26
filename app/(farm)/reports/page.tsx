@@ -5,7 +5,7 @@ import { Download } from "lucide-react";
 import { db } from "@/db";
 import { breeds } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
-import { formatDisplayDate } from "@/lib/dates";
+import { addDays, farmToday, formatDisplayDate } from "@/lib/dates";
 import { presenceLabel, sexLabel } from "@/lib/labels";
 import { canViewGenetics, canViewReports, canViewSemen } from "@/lib/permissions";
 import { canOpenReport, reportCharts, reportFacts, reportRows, reportWindow } from "@/lib/report-data";
@@ -46,13 +46,28 @@ export default async function ReportsPage({
   const lines = current ? await reportRows(current.id, farm.farmId, scope) : null;
   const header = lines?.[0] ?? [];
   const body = lines?.slice(1) ?? [];
-  const facts = reportFacts(current?.id ?? "cattle", body);
+  const baseFacts = reportFacts(current?.id ?? "cattle", body);
+  const milkTotalLitres =
+    current?.id === "milk" ? body.reduce((sum, row) => sum + (Number((row[5] ?? "").replaceAll(",", "")) || 0), 0) : 0;
+  const facts =
+    current?.id === "milk"
+      ? [
+          ...baseFacts,
+          {
+            label: "Value",
+            value: `₹${Math.round(milkTotalLitres * Number(farm.milkPricePerLitre ?? 60)).toLocaleString("en-IN")}`,
+          },
+        ]
+      : baseFacts;
   const charts = current ? reportCharts(current.id, body) : [];
   const preview = body.slice(0, 8);
   const breedRows = current?.id === "cattle" ? await db.select().from(breeds).where(eq(breeds.farmId, farm.farmId)) : [];
   const genetics = canViewGenetics(farm.roles);
   const semen = canViewSemen(farm.roles);
   const filtered = Boolean(window.from || window.to || query.presence || query.sex || query.breed);
+  const today = farmToday(farm.timezone);
+  const weekFrom = addDays(today, -6);
+  const monthFrom = `${today.slice(0, 8)}01`;
 
   return (
     <div className="space-y-5">
@@ -85,40 +100,79 @@ export default async function ReportsPage({
           </div>
 
           {current.id === "cattle" || dated.has(current.id) ? (
-            <form className="flex flex-wrap items-end gap-2" method="get">
-              <input name="tab" type="hidden" value={current.id} />
+            <div className="space-y-3">
               {dated.has(current.id) ? (
-                <>
-                  <label className="text-sm">
-                    <span className="mb-1 block text-muted-foreground">From</span>
-                    <input className="h-10 rounded-lg border border-border bg-background px-3" name="from" type="date" defaultValue={window.from ?? ""} />
-                  </label>
-                  <label className="text-sm">
-                    <span className="mb-1 block text-muted-foreground">To</span>
-                    <input className="h-10 rounded-lg border border-border bg-background px-3" name="to" type="date" defaultValue={window.to ?? ""} />
-                  </label>
-                </>
-              ) : (
-                <>
-                  <FilterSelect name="presence" label="Presence" value={query.presence} options={presenceLabel} />
-                  <FilterSelect name="sex" label="Sex" value={query.sex} options={sexLabel} />
-                  <label className="text-sm">
-                    <span className="mb-1 block text-muted-foreground">Breed</span>
-                    <select className="h-10 rounded-lg border border-border bg-background px-3" name="breed" defaultValue={query.breed ?? ""}>
-                      <option value="">All breeds</option>
-                      {breedRows.map((breed) => (
-                        <option key={breed.id} value={breed.id}>
-                          {breed.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              )}
-              <button className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground" type="submit">
-                Apply
-              </button>
-            </form>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">Period:</span>
+                  <Link
+                    href={`/reports?tab=${current.id}&from=${today}&to=${today}`}
+                    className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium ${
+                      window.from === today && window.to === today ? "bg-primary text-primary-foreground" : "border border-border bg-background hover:bg-muted"
+                    }`}
+                  >
+                    Daily (Today)
+                  </Link>
+                  <Link
+                    href={`/reports?tab=${current.id}&from=${weekFrom}&to=${today}`}
+                    className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium ${
+                      window.from === weekFrom && window.to === today ? "bg-primary text-primary-foreground" : "border border-border bg-background hover:bg-muted"
+                    }`}
+                  >
+                    Weekly (7 days)
+                  </Link>
+                  <Link
+                    href={`/reports?tab=${current.id}&from=${monthFrom}&to=${today}`}
+                    className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium ${
+                      window.from === monthFrom && window.to === today ? "bg-primary text-primary-foreground" : "border border-border bg-background hover:bg-muted"
+                    }`}
+                  >
+                    Monthly (This month)
+                  </Link>
+                  <Link
+                    href={`/reports?tab=${current.id}`}
+                    className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium ${
+                      !window.from && !window.to ? "bg-primary text-primary-foreground" : "border border-border bg-background hover:bg-muted"
+                    }`}
+                  >
+                    All time
+                  </Link>
+                </div>
+              ) : null}
+              <form className="flex flex-wrap items-end gap-2" method="get">
+                <input name="tab" type="hidden" value={current.id} />
+                {dated.has(current.id) ? (
+                  <>
+                    <label className="text-sm">
+                      <span className="mb-1 block text-muted-foreground">From</span>
+                      <input className="h-10 rounded-lg border border-border bg-background px-3" name="from" type="date" defaultValue={window.from ?? ""} />
+                    </label>
+                    <label className="text-sm">
+                      <span className="mb-1 block text-muted-foreground">To</span>
+                      <input className="h-10 rounded-lg border border-border bg-background px-3" name="to" type="date" defaultValue={window.to ?? ""} />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <FilterSelect name="presence" label="Presence" value={query.presence} options={presenceLabel} />
+                    <FilterSelect name="sex" label="Sex" value={query.sex} options={sexLabel} />
+                    <label className="text-sm">
+                      <span className="mb-1 block text-muted-foreground">Breed</span>
+                      <select className="h-10 rounded-lg border border-border bg-background px-3" name="breed" defaultValue={query.breed ?? ""}>
+                        <option value="">All breeds</option>
+                        {breedRows.map((breed) => (
+                          <option key={breed.id} value={breed.id}>
+                            {breed.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
+                <button className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground" type="submit">
+                  Apply
+                </button>
+              </form>
+            </div>
           ) : null}
 
           {charts.length === 0 ? (

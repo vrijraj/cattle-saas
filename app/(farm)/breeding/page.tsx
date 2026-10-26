@@ -105,20 +105,21 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
         </Table>
           ),
           heat: (
-        <Table headers={["Date", "Animal", "Signs"]}>
-          {register.heats.length === 0 ? <EmptyRow cols={3}>No heat recorded.</EmptyRow> : null}
+        <Table headers={["Date", "Animal", "Signs", "Observations / Follow-up"]}>
+          {register.heats.length === 0 ? <EmptyRow cols={4}>No heat recorded.</EmptyRow> : null}
           {register.heats.map((row) => (
             <tr key={row.id}>
               <Td>{formatDisplayDate(row.observedOn)}</Td>
               <Td>{animalLink(row.animalId)}</Td>
               <Td>{row.signs}</Td>
+              <Td>{row.note ?? "—"}</Td>
             </tr>
           ))}
         </Table>
           ),
           inseminations: (
-        <Table headers={["Date", "Animal", "Bull", "Attempt", "Straw", "Result"]}>
-          {register.inseminations.length === 0 ? <EmptyRow cols={6}>No AI recorded yet.</EmptyRow> : null}
+        <Table headers={["Date", "Animal", "Bull", "Attempt", "Batch / Straw", "Technician", "Result"]}>
+          {register.inseminations.length === 0 ? <EmptyRow cols={7}>No AI recorded yet.</EmptyRow> : null}
           {register.inseminations.map((row) => {
             const bull = row.bullName && row.bullName !== row.bullCode ? `${row.bullName} · ${row.bullCode}` : row.bullCode;
             return (
@@ -134,16 +135,17 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
                     bull
                   )}
                 </Td>
-                <Td>{row.attemptNumber}</Td>
+                <Td>#{row.attemptNumber}</Td>
                 <Td>
                   {row.strawCode ? (
                     <Link href={`/scan?code=${encodeURIComponent(row.strawCode)}`} className="text-primary">
                       {row.strawCode}
                     </Link>
                   ) : (
-                    "—"
+                    row.batchNumber ?? "—"
                   )}
                 </Td>
+                <Td>{row.technicianName ?? "—"}</Td>
                 <Td>{resultLabel(row.outcome, row.followUp)}</Td>
               </tr>
             );
@@ -151,20 +153,21 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
         </Table>
           ),
           checks: (
-        <Table headers={["Date", "Animal", "Result"]}>
-          {register.checks.length === 0 ? <EmptyRow cols={3}>No pregnancy check recorded.</EmptyRow> : null}
+        <Table headers={["Date", "Animal", "Result", "Method / Follow-up"]}>
+          {register.checks.length === 0 ? <EmptyRow cols={4}>No pregnancy check recorded.</EmptyRow> : null}
           {register.checks.map((row) => (
             <tr key={row.id}>
               <Td>{formatDisplayDate(row.checkedOn)}</Td>
               <Td>{animalLink(row.animalId)}</Td>
               <Td>{resultLabel(row.result, null)}</Td>
+              <Td>{row.method ?? "—"}</Td>
             </tr>
           ))}
         </Table>
           ),
           calvings: (
-        <Table headers={["Date", "Dam", "Outcome", "Calf"]}>
-          {register.calvings.length === 0 ? <EmptyRow cols={4}>No calving recorded.</EmptyRow> : null}
+        <Table headers={["Date", "Dam", "Outcome", "Ease", "Calf", "Observations"]}>
+          {register.calvings.length === 0 ? <EmptyRow cols={6}>No calving recorded.</EmptyRow> : null}
           {register.calvings.map((row) => {
             const calf = row.calfId ? byId.get(row.calfId) : undefined;
             return (
@@ -172,6 +175,7 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
                 <Td>{formatDisplayDate(row.calvedOn)}</Td>
                 <Td>{animalLink(row.damId)}</Td>
                 <Td>{row.outcome === "live" ? "Live calf" : row.outcome === "dead" ? "Dead calf" : row.outcome}</Td>
+                <Td className="capitalize">{row.ease ?? "normal"}</Td>
                 <Td>
                   {calf ? (
                     <Link href={`/animals/${calf.code}`} className="text-primary">
@@ -181,6 +185,7 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
                     "—"
                   )}
                 </Td>
+                <Td>{row.note ?? "—"}</Td>
               </tr>
             );
           })}

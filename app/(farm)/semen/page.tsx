@@ -292,7 +292,16 @@ export default async function SemenPage({
                   <input name="sireCode" placeholder="Sire code" className={inputClass} />
                   <input name="damCode" placeholder="Dam code" className={inputClass} />
                 </div>
-                <input name="notes" placeholder="Notes" className={inputClass} />
+                <input name="notes" placeholder="Genetic & performance notes" className={inputClass} />
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                  Bull photograph
+                  <input
+                    name="photo"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-lg file:border file:border-border file:bg-background file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-foreground"
+                  />
+                </label>
                 <div className="flex justify-end">
                   <Submit>Save bull</Submit>
                 </div>
@@ -300,10 +309,23 @@ export default async function SemenPage({
             </RecordDialog>
           ) : null}
         </div>
-        <Table headers={["Code", "Name", "Breed", "Registration", "Sire", "Company"]}>
-          {visibleBulls.length === 0 ? <EmptyRow cols={6}>{term ? "No bulls match this filter." : "No bulls yet."}</EmptyRow> : null}
+        <Table headers={["Photo", "Code", "Name", "Breed", "Registration", "Sire / Dam", "Company"]}>
+          {visibleBulls.length === 0 ? <EmptyRow cols={7}>{term ? "No bulls match this filter." : "No bulls yet."}</EmptyRow> : null}
           {visibleBulls.map((bull) => (
             <tr key={bull.id}>
+              <Td>
+                {bull.photoKey ? (
+                  <img
+                    src={`/animals/${encodeURIComponent(bull.code)}/photo`}
+                    alt={bull.name}
+                    className="size-10 rounded-lg border border-border object-cover"
+                  />
+                ) : (
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-xs font-semibold text-muted-foreground">
+                    {bull.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+              </Td>
               <Td className="font-medium">
                 {canOpenGenetics ? (
                   <Link href={`/genetics?tab=bulls&sire=${encodeURIComponent(bull.code)}`} className="hover:underline">
@@ -319,7 +341,10 @@ export default async function SemenPage({
               </Td>
               <Td>{bull.breed ?? "—"}</Td>
               <Td>{bull.registrationNumber ?? "—"}</Td>
-              <Td>{bull.sireCode ?? "—"}</Td>
+              <Td>
+                <div>{bull.sireCode ?? "—"}</div>
+                {bull.damCode ? <div className="text-xs text-muted-foreground">Dam: {bull.damCode}</div> : null}
+              </Td>
               <Td className="text-muted-foreground">{bull.semenCompany ?? "—"}</Td>
             </tr>
           ))}

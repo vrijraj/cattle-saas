@@ -28,7 +28,9 @@ export function animalMilkDrop(input: {
   prior: YieldDay[];
   today: YieldDay;
   requireBothSessions?: boolean;
+  dropPercent?: number;
 }): MilkDrop | null {
+  const threshold = input.dropPercent ?? DROP_PERCENT;
   if (input.daysInMilk === null || input.daysInMilk < FRESH_DAYS) return null;
   if (input.requireBothSessions && (input.today.morning === null || input.today.evening === null)) return null;
   if (input.today.morning === null && input.today.evening === null) return null;
@@ -43,11 +45,15 @@ export function animalMilkDrop(input: {
   if (baseline <= 0) return null;
   const todayLitres = litres(input.today);
   const percentBelow = Math.round(((baseline - todayLitres) / baseline) * 1000) / 10;
-  if (percentBelow < DROP_PERCENT) return null;
+  if (percentBelow < threshold) return null;
   return { todayLitres, baselineLitres: baseline, percentBelow };
 }
 
-export function herdMilkDrop(days: { date: string; litres: number; explained: boolean }[], today: string): MilkDrop | null {
+export function herdMilkDrop(
+  days: { date: string; litres: number; explained: boolean }[],
+  today: string,
+  dropPercent: number = DROP_PERCENT,
+): MilkDrop | null {
   const todayRow = days.find((day) => day.date === today);
   if (!todayRow || todayRow.explained) return null;
   const baselineDays = days
@@ -58,7 +64,7 @@ export function herdMilkDrop(days: { date: string; litres: number; explained: bo
   const baseline = mean(baselineDays.map((day) => day.litres));
   if (baseline <= 0) return null;
   const percentBelow = Math.round(((baseline - todayRow.litres) / baseline) * 1000) / 10;
-  if (percentBelow < DROP_PERCENT) return null;
+  if (percentBelow < dropPercent) return null;
   return { todayLitres: todayRow.litres, baselineLitres: baseline, percentBelow };
 }
 
