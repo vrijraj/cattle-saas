@@ -132,17 +132,38 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
             <RecordDialog title="Record collection" button="Record collection">
               <form action={recordFlush} className="grid gap-3">
                 <input type="hidden" name="returnTab" value="collections" />
-                <FormSelect name="donorId" required defaultValue="" options={[{ value: "", label: "Donor" }, ...femaleOptions.slice(1)]} />
-                <input name="sireCode" placeholder="Sire code" className={inputClass} />
+                <label className="grid gap-1 text-sm">
+                  Donor female
+                  <FormSelect name="donorId" required defaultValue="" options={[{ value: "", label: "Donor" }, ...femaleOptions.slice(1)]} />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Sire code
+                  <input name="sireCode" placeholder="Sire code" className={inputClass} />
+                </label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="flushedOn" type="date" defaultValue={today} className={inputClass} />
-                  <input name="oocytes" required inputMode="numeric" placeholder="Oocytes collected" className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Flush date
+                    <input name="flushedOn" type="date" defaultValue={today} className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Oocytes collected
+                    <input name="oocytes" required inputMode="numeric" placeholder="Oocytes collected" className={inputClass} />
+                  </label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="produced" required inputMode="numeric" placeholder="Embryos produced" className={inputClass} />
-                  <input name="grade" placeholder="Grade" className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Embryos produced
+                    <input name="produced" required inputMode="numeric" placeholder="Embryos produced" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Grade
+                    <input name="grade" placeholder="Grade" className={inputClass} />
+                  </label>
                 </div>
-                <input name="location" placeholder="Tank or location" className={inputClass} />
+                <label className="grid gap-1 text-sm">
+                  Storage tank or location
+                  <input name="location" placeholder="Tank or location" className={inputClass} />
+                </label>
                 <div className="flex justify-end">
                   <Submit>Save collection</Submit>
                 </div>
@@ -184,23 +205,44 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
               <RecordDialog title="Add embryo" button="Add embryo">
                 <form action={saveEmbryo} className="grid gap-3">
                   <input type="hidden" name="returnTab" value="inventory" />
-                  <input name="code" required placeholder="EMB-2026-0001" className={inputClass} />
-                  <FormSelect name="donorId" defaultValue="" options={femaleOptions} />
-                  <input name="sireCode" placeholder="Sire code" className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Embryo code
+                    <input name="code" required placeholder="EMB-2026-0001" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Donor female
+                    <FormSelect name="donorId" defaultValue="" options={femaleOptions} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Sire code
+                    <input name="sireCode" placeholder="Sire code" className={inputClass} />
+                  </label>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <input name="grade" placeholder="Grade" className={inputClass} />
-                    <FormSelect
-                      name="storage"
-                      defaultValue="fresh"
-                      options={[
-                        { value: "fresh", label: "Fresh" },
-                        { value: "frozen", label: "Frozen" },
-                      ]}
-                    />
+                    <label className="grid gap-1 text-sm">
+                      Grade
+                      <input name="grade" placeholder="Grade" className={inputClass} />
+                    </label>
+                    <label className="grid gap-1 text-sm">
+                      Storage type
+                      <FormSelect
+                        name="storage"
+                        defaultValue="fresh"
+                        options={[
+                          { value: "fresh", label: "Fresh" },
+                          { value: "frozen", label: "Frozen" },
+                        ]}
+                      />
+                    </label>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <input name="frozenOn" type="date" className={inputClass} />
-                    <input name="location" placeholder="Tank or location" className={inputClass} />
+                    <label className="grid gap-1 text-sm">
+                      Frozen date
+                      <input name="frozenOn" type="date" className={inputClass} />
+                    </label>
+                    <label className="grid gap-1 text-sm">
+                      Tank or location
+                      <input name="location" placeholder="Tank or location" className={inputClass} />
+                    </label>
                   </div>
                   <div className="flex justify-end">
                     <Submit>Save embryo</Submit>
@@ -210,13 +252,19 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
               <RecordDialog title="Discard an embryo" button="Discard">
                 <form action={discardEmbryo} className="grid gap-3">
                   <input type="hidden" name="returnTab" value="inventory" />
-                  <FormSelect
-                    name="code"
-                    required
-                    defaultValue=""
-                    options={[{ value: "", label: "In stock" }, ...inStock.map((embryo) => ({ value: embryo.code, label: embryo.code }))]}
-                  />
-                  <input name="reason" required placeholder="Reason" className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Embryo in stock
+                    <FormSelect
+                      name="code"
+                      required
+                      defaultValue=""
+                      options={[{ value: "", label: "In stock" }, ...inStock.map((embryo) => ({ value: embryo.code, label: embryo.code }))]}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Reason for discard
+                    <input name="reason" required placeholder="Reason" className={inputClass} />
+                  </label>
                   <div className="flex justify-end">
                     <Submit>Discard embryo</Submit>
                   </div>
@@ -270,24 +318,38 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
             <RecordDialog title="Record transfer" button="Record transfer">
               <form action={transferEmbryo} className="grid gap-3">
                 <input type="hidden" name="returnTab" value="transfers" />
-                <FormSelect
-                  name="embryoId"
-                  required
-                  defaultValue=""
-                  options={[{ value: "", label: "Embryo" }, ...inStock.map((embryo) => ({ value: embryo.id, label: embryo.code }))]}
-                />
-                <FormSelect name="recipientId" required defaultValue="" options={[{ value: "", label: "Recipient" }, ...femaleOptions.slice(1)]} />
-                <input name="transferredOn" type="date" defaultValue={today} className={inputClass} />
-                <FormSelect
-                  name="pregnancyResult"
-                  defaultValue=""
-                  options={[
-                    { value: "", label: "Pregnancy result" },
-                    { value: "pregnant", label: "Pregnant" },
-                    { value: "not_pregnant", label: "Not pregnant" },
-                    { value: "doubtful", label: "Doubtful" },
-                  ]}
-                />
+                <label className="grid gap-1 text-sm">
+                  Embryo
+                  <FormSelect
+                    name="embryoId"
+                    required
+                    defaultValue=""
+                    options={[{ value: "", label: "Embryo" }, ...inStock.map((embryo) => ({ value: embryo.id, label: embryo.code }))]}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Recipient female
+                  <FormSelect name="recipientId" required defaultValue="" options={[{ value: "", label: "Recipient" }, ...femaleOptions.slice(1)]} />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm">
+                    Transfer date
+                    <input name="transferredOn" type="date" defaultValue={today} className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Pregnancy result
+                    <FormSelect
+                      name="pregnancyResult"
+                      defaultValue=""
+                      options={[
+                        { value: "", label: "Pregnancy result" },
+                        { value: "pregnant", label: "Pregnant" },
+                        { value: "not_pregnant", label: "Not pregnant" },
+                        { value: "doubtful", label: "Doubtful" },
+                      ]}
+                    />
+                  </label>
+                </div>
                 <p className="text-xs text-muted-foreground">The result is stored on this transfer. The recipient&apos;s breeding record stays as it is until a pregnancy check or calving is recorded there.</p>
                 <div className="flex justify-end">
                   <Submit>Record transfer</Submit>

@@ -171,53 +171,57 @@ export default async function MilkPage({
           <p className="text-xs text-muted-foreground">Open a day to edit it. Each day adds only the cows that were entered. A missing cow is not counted as zero.</p>
         </section>
       ) : null}
-      <form key={selected} action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card">
+      <form key={selected} action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/85 bg-card shadow-[0_1px_3px_rgba(15,35,24,0.04)]">
         <input type="hidden" name="recordedOn" value={selected} />
-        {herd.length === 0 ? <p className="px-4 py-8 text-sm text-muted-foreground">No lactating animals on the farm.</p> : null}
+        {herd.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">No lactating animals on the farm.</p> : null}
         {herd.length > 0 ? (
-          <div className="hidden grid-cols-[7.5rem_minmax(0,1fr)_8rem_8rem_4.5rem] gap-3 bg-muted px-4 py-3 text-xs font-medium text-muted-foreground lg:grid">
+          <div className="hidden grid-cols-[7.5rem_minmax(0,1fr)_8.5rem_8.5rem_5.5rem] gap-3 border-b border-border/80 bg-muted/60 px-4 py-3 text-xs font-semibold text-muted-foreground lg:grid">
             <span>Cattle ID</span>
             <span>Name</span>
             <span>Morning (L)</span>
             <span>Evening (L)</span>
-            <span>Total</span>
+            <span className="text-right">Total</span>
           </div>
         ) : null}
-        <ul className="divide-y divide-border">
+        <ul className="divide-y divide-border/70">
           {herd.map((animal) => {
             const row = summary.active.get(animal.id);
             const sum = Number(row?.morningLitres ?? 0) + Number(row?.eveningLitres ?? 0);
             return (
               <li
                 key={animal.id}
-                className="grid grid-cols-2 items-end gap-3 p-4 lg:grid-cols-[7.5rem_minmax(0,1fr)_8rem_8rem_4.5rem] lg:items-center lg:py-3"
+                className="grid grid-cols-2 items-end gap-3 p-4 transition-colors hover:bg-muted/30 lg:grid-cols-[7.5rem_minmax(0,1fr)_8.5rem_8.5rem_5.5rem] lg:items-center lg:py-3"
               >
                 <div className="col-span-2 flex items-center justify-between gap-3 lg:contents">
                   <Link href={`/animals/${animal.code}?tab=milk`} className="min-w-0 hover:underline lg:contents">
-                    <span className="hidden font-medium lg:block">{animal.code}</span>
-                    <span className="block truncate font-medium">{animal.name ?? "Unnamed"}</span>
-                    <span className="text-xs text-muted-foreground lg:hidden">{animal.code}</span>
+                    <span className="hidden font-mono text-xs font-semibold text-muted-foreground lg:block">{animal.code}</span>
+                    <span className="block truncate font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
+                    <span className="font-mono text-xs text-muted-foreground lg:hidden">{animal.code}</span>
                   </Link>
-                  <p className="shrink-0 text-sm font-medium lg:order-1">{row ? `${sum.toFixed(1)} L` : "Not entered"}</p>
+                  <p className="shrink-0 text-right text-sm font-semibold tabular-nums lg:order-1">
+                    {row ? `${sum.toFixed(1)} L` : <span className="text-xs font-normal text-muted-foreground">Not entered</span>}
+                  </p>
                 </div>
-                <label className="grid gap-1 text-xs text-muted-foreground">
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
                   <span className="lg:sr-only">Morning (L)</span>
                   <input
                     name={`morning-${animal.id}`}
                     inputMode="decimal"
+                    placeholder="0.0"
                     defaultValue={row?.morningLitres ?? ""}
                     disabled={!canSave}
-                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground lg:h-10"
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm tabular-nums text-foreground transition outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 lg:h-10"
                   />
                 </label>
-                <label className="grid gap-1 text-xs text-muted-foreground">
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
                   <span className="lg:sr-only">Evening (L)</span>
                   <input
                     name={`evening-${animal.id}`}
                     inputMode="decimal"
+                    placeholder="0.0"
                     defaultValue={row?.eveningLitres ?? ""}
                     disabled={!canSave}
-                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground lg:h-10"
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm tabular-nums text-foreground transition outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 lg:h-10"
                   />
                 </label>
               </li>
@@ -225,8 +229,11 @@ export default async function MilkPage({
           })}
         </ul>
         {canSave && herd.length > 0 ? (
-          <div className="border-t border-border px-4 py-3">
-            <Button type="submit" className="h-10 rounded-full px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/80 bg-muted/25 px-4 py-3">
+            <span className="text-xs text-muted-foreground">
+              {summary.entered} of {herd.length} lactating cows entered for {formatDisplayDate(selected)}.
+            </span>
+            <Button type="submit" className="h-10 rounded-full px-5 font-semibold shadow-xs">
               Save {formatDisplayDate(selected)}
             </Button>
           </div>

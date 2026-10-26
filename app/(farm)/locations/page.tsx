@@ -4,7 +4,7 @@ import { locations } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 import { canWriteAnimals } from "@/lib/permissions";
 import { RecordDialog } from "@/components/record-dialog";
-import { EmptyRow, inputClass, Notice, Submit, Summary, Table, Td } from "@/components/workspace";
+import { EmptyRow, inputClass, Notice, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
 import { saveShed } from "./actions";
 
 export const metadata = { title: "Sheds" };
@@ -20,31 +20,34 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
       <Summary
         title="Sheds"
         description="Each animal has one current shed. A move keeps the earlier shed in the animal's history."
-        facts={[{ label: "Sheds", value: String(rows.length) }]}
+        facts={[
+          { label: "Sheds", value: String(rows.length) },
+          { label: "Active", value: String(rows.filter((row) => row.active).length) },
+        ]}
+        action={
+          canEdit ? (
+            <RecordDialog title="Add shed" button="Add shed">
+              <form action={saveShed} className="space-y-3">
+                <label className="grid gap-1 text-sm">
+                  Name
+                  <input name="name" required placeholder="e.g. North Shed A" className={inputClass} />
+                </label>
+                <div className="flex justify-end">
+                  <Submit>Save shed</Submit>
+                </div>
+              </form>
+            </RecordDialog>
+          ) : null
+        }
       />
       {query.error === "role" ? <Notice tone="danger">Your role cannot change sheds.</Notice> : null}
       {query.error === "name" ? <Notice tone="danger">Enter a shed name.</Notice> : null}
-      <div className="flex justify-end">
-        {canEdit ? (
-          <RecordDialog title="Add shed" button="Add shed">
-            <form action={saveShed} className="space-y-3">
-              <label className="grid gap-1 text-sm">
-                Name
-                <input name="name" required className={inputClass} />
-              </label>
-              <div className="flex justify-end">
-                <Submit>Save shed</Submit>
-              </div>
-            </form>
-          </RecordDialog>
-        ) : null}
-      </div>
       <Table headers={["Shed", "Status", ""]}>
         {rows.length === 0 ? <EmptyRow cols={3}>No sheds yet.</EmptyRow> : null}
         {rows.map((row) => (
           <tr key={row.id}>
             <Td className="font-medium">{row.name}</Td>
-            <Td>{row.active ? "Active" : "Inactive"}</Td>
+            <Td>{row.active ? <Pill tone="good">Active</Pill> : <Pill>Inactive</Pill>}</Td>
             <Td>
               {canEdit ? (
                 <RecordDialog title={`Edit ${row.name}`} button="Edit">

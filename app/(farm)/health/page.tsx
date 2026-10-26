@@ -54,6 +54,22 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
       <Summary
         title="Health"
         description="Treatments, vaccines, deworming, and animals in isolation. Due dates are listed here and on Alerts."
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/scan"
+              className="inline-flex h-9 items-center rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
+            >
+              Scan QR / Tag
+            </Link>
+            <Link
+              href="/animals?view=active"
+              className="inline-flex h-9 items-center rounded-full bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
+            >
+              + Record on animal
+            </Link>
+          </div>
+        }
         facts={[
           { label: "Due", value: String(register.due.length) },
           { label: "Isolated", value: String(register.isolated.length) },

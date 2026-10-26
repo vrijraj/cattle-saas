@@ -493,13 +493,14 @@ export async function AnimalHub({
                   <Field label="Category">
                     <FormSelect
                       name="category"
-                      defaultValue="green_fodder"
+                      defaultValue="green"
                       options={[
-                        { value: "green_fodder", label: "Green fodder" },
-                        { value: "dry_fodder", label: "Dry fodder" },
+                        { value: "green", label: "Green fodder" },
+                        { value: "dry", label: "Dry fodder" },
                         { value: "silage", label: "Silage" },
                         { value: "concentrate", label: "Concentrate" },
                         { value: "mineral", label: "Mineral / supplement" },
+                        { value: "other", label: "Other" },
                       ]}
                     />
                   </Field>
@@ -1377,11 +1378,11 @@ export async function AnimalHub({
               ) : null
             }
           >
-            <dl className="grid gap-4 sm:grid-cols-2">
+            <dl className="grid gap-2.5 sm:grid-cols-2">
               {identity.map(([label, value]) => (
-                <div key={label}>
-                  <dt className="text-xs text-muted-foreground">{label}</dt>
-                  <dd className="mt-1 text-sm font-medium">{value}</dd>
+                <div key={label} className="rounded-xl border border-border/60 bg-muted/25 px-3 py-2">
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</dt>
+                  <dd className="mt-0.5 text-sm font-medium text-foreground">{value}</dd>
                 </div>
               ))}
             </dl>
@@ -1495,18 +1496,38 @@ export async function AnimalHub({
   );
 }
 
-function ActivityList({ title, events }: { title: string; events: { when: string; label: string }[] }) {
+function ActivityList({ title, events }: { title: string; events: { when: string; label: string; group?: string }[] }) {
+  function dotColor(group?: string) {
+    if (group === "breeding") return "bg-amber-500";
+    if (group === "health") return "bg-rose-500";
+    if (group === "milk") return "bg-emerald-500";
+    if (group === "feed") return "bg-sky-500";
+    if (group === "status") return "bg-violet-500";
+    return "bg-primary";
+  }
+
   return (
-    <Panel title={title}>
-      <ul className="divide-y divide-border">
-        {events.length === 0 ? <li className="py-2 text-sm text-muted-foreground">Nothing recorded yet.</li> : null}
-        {events.map((event, index) => (
-          <li key={`${event.when}-${event.label}-${index}`} className="flex gap-3 py-3 text-sm">
-            <span className="w-24 shrink-0 text-muted-foreground">{formatDisplayDate(event.when)}</span>
-            <span className="min-w-0">{event.label}</span>
-          </li>
-        ))}
-      </ul>
+    <Panel
+      title={title}
+      action={
+        <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
+          {events.length} {events.length === 1 ? "entry" : "entries"}
+        </span>
+      }
+    >
+      {events.length === 0 ? (
+        <p className="py-2 text-sm text-muted-foreground">Nothing recorded yet.</p>
+      ) : (
+        <ol className="relative ml-2 space-y-3 border-l border-border/80 pl-4">
+          {events.map((event, index) => (
+            <li key={`${event.when}-${event.label}-${index}`} className="relative text-sm">
+              <span className={`absolute top-1.5 -left-[21px] size-2.5 rounded-full ring-4 ring-card ${dotColor(event.group)}`} />
+              <span className="block text-[11px] font-medium tabular-nums text-muted-foreground">{formatDisplayDate(event.when)}</span>
+              <span className="mt-0.5 block font-medium text-foreground">{event.label}</span>
+            </li>
+          ))}
+        </ol>
+      )}
     </Panel>
   );
 }

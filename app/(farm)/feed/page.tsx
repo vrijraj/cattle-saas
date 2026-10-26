@@ -71,43 +71,73 @@ export default async function FeedPage({
           {canSave ? (
             <RecordDialog title="Record a movement" button="Record movement">
               <form action={saveFeed} className="grid gap-3">
-                <FormSelect
-                  name="itemId"
-                  defaultValue=""
-                  options={[{ value: "", label: "New item, named below" }, ...balances.map(({ item }) => ({ value: item.id, label: item.name }))]}
-                />
-                <input name="name" placeholder="New item name" className={inputClass} />
-                <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1 text-sm">
+                  Item
                   <FormSelect
-                    name="category"
-                    defaultValue="green"
-                    options={FEED_CATEGORIES.map((value) => ({ value, label: feedCategoryLabel[value] }))}
+                    name="itemId"
+                    defaultValue=""
+                    options={[{ value: "", label: "New item, named below" }, ...balances.map(({ item }) => ({ value: item.id, label: item.name }))]}
                   />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  New item name (if adding new)
+                  <input name="name" placeholder="New item name" className={inputClass} />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm">
+                    Category
+                    <FormSelect
+                      name="category"
+                      defaultValue="green"
+                      options={FEED_CATEGORIES.map((value) => ({ value, label: feedCategoryLabel[value] }))}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Movement type
+                    <FormSelect
+                      name="kind"
+                      defaultValue="purchase"
+                      options={FEED_KINDS.map((value) => ({ value, label: feedKindLabel[value] }))}
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm">
+                    Quantity (kg)
+                    <input name="quantity" required inputMode="decimal" placeholder="Quantity" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Cost per kg (₹)
+                    <input name="unitCost" inputMode="decimal" placeholder="Cost per kg" className={inputClass} />
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm">
+                    Date
+                    <input name="movedOn" type="date" defaultValue={today} className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Minimum stock (new item)
+                    <input name="minimum" inputMode="decimal" placeholder="Minimum stock, for a new item" className={inputClass} />
+                  </label>
+                </div>
+                <label className="grid gap-1 text-sm">
+                  Supplier (for purchase)
+                  <input name="supplier" placeholder="Supplier, for a purchase" className={inputClass} />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Allocation (for consumption / wastage)
                   <FormSelect
-                    name="kind"
-                    defaultValue="purchase"
-                    options={FEED_KINDS.map((value) => ({ value, label: feedKindLabel[value] }))}
+                    name="allocation"
+                    defaultValue=""
+                    options={[
+                      { value: "", label: "Where it was used" },
+                      { value: "herd", label: "Herd" },
+                      ...sheds.map((shed) => ({ value: `shed:${shed.id}`, label: `Shed · ${shed.name}` })),
+                      ...herd.map((animal) => ({ value: `animal:${animal.code}`, label: `${animal.name ?? animal.code} · ${animal.code}` })),
+                    ]}
                   />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="quantity" required inputMode="decimal" placeholder="Quantity" className={inputClass} />
-                  <input name="unitCost" inputMode="decimal" placeholder="Cost per kg" className={inputClass} />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="movedOn" type="date" defaultValue={today} className={inputClass} />
-                  <input name="minimum" inputMode="decimal" placeholder="Minimum stock, for a new item" className={inputClass} />
-                </div>
-                <input name="supplier" placeholder="Supplier, for a purchase" className={inputClass} />
-                <FormSelect
-                  name="allocation"
-                  defaultValue=""
-                  options={[
-                    { value: "", label: "Where it was used" },
-                    { value: "herd", label: "Herd" },
-                    ...sheds.map((shed) => ({ value: `shed:${shed.id}`, label: `Shed · ${shed.name}` })),
-                    ...herd.map((animal) => ({ value: `animal:${animal.code}`, label: `${animal.name ?? animal.code} · ${animal.code}` })),
-                  ]}
-                />
+                </label>
                 <p className="text-xs text-muted-foreground">Category and minimum are saved with a new item. A purchase keeps the supplier. Consumption and wastage keep the herd, shed, or animal.</p>
                 <div className="flex justify-end">
                   <Submit>Save movement</Submit>

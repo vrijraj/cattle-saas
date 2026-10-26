@@ -51,11 +51,23 @@ export default async function ShopAdminPage({ searchParams }: { searchParams: Pr
           {canAdd ? (
             <RecordDialog title="Add product" button="Add product">
               <form action={saveProduct} className="grid gap-3">
-                <input name="name" required placeholder="Product" className={inputClass} />
-                <input name="category" placeholder="Category" className={inputClass} />
+                <label className="grid gap-1 text-sm">
+                  Product name
+                  <input name="name" required placeholder="Product" className={inputClass} />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Category
+                  <input name="category" placeholder="Category (e.g. dairy, ghee)" className={inputClass} />
+                </label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="price" required placeholder="Price" className={inputClass} />
-                  <input name="stock" required placeholder="Stock" className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Price (₹)
+                    <input name="price" required inputMode="decimal" placeholder="Price" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Stock quantity
+                    <input name="stock" required inputMode="numeric" placeholder="Stock" className={inputClass} />
+                  </label>
                 </div>
                 <div className="flex justify-end">
                   <Submit>Add product</Submit>
@@ -106,16 +118,25 @@ export default async function ShopAdminPage({ searchParams }: { searchParams: Pr
           {canAdd ? (
             <RecordDialog title="Publish listing" button="Publish listing">
               <form action={saveStockListing} className="grid gap-3">
-                <FormSelect
-                  name="category"
-                  defaultValue="semen"
-                  options={[
-                    { value: "semen", label: "Semen" },
-                    { value: "embryos", label: "Embryos" },
-                  ]}
-                />
-                <input name="title" required placeholder="What the public page should say" className={inputClass} />
-                <input name="price" placeholder="Price" className={inputClass} />
+                <label className="grid gap-1 text-sm">
+                  Category
+                  <FormSelect
+                    name="category"
+                    defaultValue="semen"
+                    options={[
+                      { value: "semen", label: "Semen" },
+                      { value: "embryos", label: "Embryos" },
+                    ]}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Public listing note
+                  <input name="title" required placeholder="What the public page should say" className={inputClass} />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Price (₹)
+                  <input name="price" inputMode="decimal" placeholder="Price" className={inputClass} />
+                </label>
                 <div className="flex justify-end">
                   <Submit>Publish</Submit>
                 </div>
