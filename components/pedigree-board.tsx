@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { updateAnimalPedigree, updateGenerationParents } from "@/app/(farm)/animals/actions";
 import { FormSelect } from "@/components/form-select";
@@ -54,11 +55,23 @@ export function PedigreeBoard({
         editable={editable}
         onEdit={editable ? setEdit : undefined}
         action={
-          editable ? (
-            <button type="button" onClick={() => setEdit("self")} className="shrink-0 text-sm font-medium text-primary">
-              Edit pedigree
-            </button>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/animals/${animalCode}/pedigree`}
+              className="inline-flex h-8.5 items-center rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
+            >
+              Export PDF
+            </Link>
+            {editable ? (
+              <button
+                type="button"
+                onClick={() => setEdit("self")}
+                className="inline-flex h-8.5 shrink-0 items-center rounded-full bg-primary px-3.5 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
+              >
+                Edit 1st gen
+              </button>
+            ) : null}
+          </div>
         }
       />
       {editable ? (
