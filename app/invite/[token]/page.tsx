@@ -58,8 +58,14 @@ export default async function InvitePage({
                 <>
                   {existing ? null : (
                     <>
-                      <input name="name" required placeholder="Your name" className={inputClass} />
-                      <input name="password" type="password" required minLength={8} placeholder="Password" className={inputClass} />
+                      <label className="grid gap-1 text-sm">
+                        Your name
+                        <input name="name" required maxLength={120} placeholder="Your name" className={inputClass} />
+                      </label>
+                      <label className="grid gap-1 text-sm">
+                        Password (at least 8 characters)
+                        <input name="password" type="password" required minLength={8} maxLength={128} placeholder="Password" className={inputClass} />
+                      </label>
                     </>
                   )}
                   <Submit>{existing ? "Accept invite" : "Create account"}</Submit>

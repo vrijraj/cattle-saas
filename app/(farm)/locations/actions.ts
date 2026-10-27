@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { animals, locationMoves, locations } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { farmToday } from "@/lib/dates";
+import { farmToday, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canWriteAnimals } from "@/lib/permissions";
 
@@ -71,8 +71,9 @@ export async function moveAnimal(formData: FormData) {
     .from(locations)
     .where(and(eq(locations.id, locationId), eq(locations.farmId, farm.farmId), eq(locations.active, true)))
     .limit(1);
-  if (!animal || !shed) redirect("/animals?error=location");
-  const movedOn = text(formData, "movedOn") || farmToday(farm.timezone);
+  if (!animal || !shed) redirect(animal ? `/animals/${animal.code}?error=location` : "/animals?error=location");
+  const movedOn = parseFarmDate(text(formData, "movedOn") || farmToday(farm.timezone));
+  if (!movedOn) redirect(`/animals/${animal.code}?error=date`);
   await db.update(animals).set({ locationId: shed.id, updatedAt: new Date() }).where(eq(animals.id, animal.id));
   const [move] = await db
     .insert(locationMoves)
@@ -107,8 +108,9 @@ export async function setIsolation(formData: FormData) {
     .from(animals)
     .where(and(eq(animals.id, animalId), eq(animals.farmId, farm.farmId)))
     .limit(1);
-  if (!animal || !reason) redirect("/animals?error=isolation");
-  const isolatedOn = text(formData, "isolatedOn") || farmToday(farm.timezone);
+  if (!animal || !reason) redirect(animal ? `/animals/${animal.code}?error=isolation` : "/animals?error=isolation");
+  const isolatedOn = parseFarmDate(text(formData, "isolatedOn") || farmToday(farm.timezone));
+  if (!isolatedOn) redirect(`/animals/${animal.code}?error=date`);
   await db.update(animals).set({ isolationReason: reason, isolatedOn, updatedAt: new Date() }).where(eq(animals.id, animal.id));
   await writeAudit(db, {
     farmId: farm.farmId,

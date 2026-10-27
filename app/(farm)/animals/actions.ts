@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { animals, breeds, bulls, codeCounters, locations } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { formatAnimalCode } from "@/lib/animal-code";
+import { farmToday, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canWriteAnimals } from "@/lib/permissions";
 
@@ -53,12 +54,22 @@ export async function createAnimal(_prev: { error: string }, formData: FormData)
   if (!parsed.success) return { error: "Check the animal details and try again." };
 
   const input = parsed.data;
-  if (input.dob && !/^\d{4}-\d{2}-\d{2}$/.test(input.dob)) return { error: "Date of birth is not valid." };
-  if (input.purchaseDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.purchaseDate)) return { error: "Purchase date is not valid." };
+  const today = farmToday(farm.timezone);
+  if (input.dob && (!parseFarmDate(input.dob) || input.dob > today)) return { error: "Date of birth cannot be in the future." };
+  if (input.purchaseDate && (!parseFarmDate(input.purchaseDate) || input.purchaseDate > today)) return { error: "Purchase date cannot be in the future." };
   const priceNum = input.purchasePrice ? Number(input.purchasePrice) : null;
-  if (priceNum !== null && (!Number.isFinite(priceNum) || priceNum < 0)) return { error: "Purchase price must be zero or more." };
+  if (priceNum !== null && (!Number.isFinite(priceNum) || priceNum < 0 || priceNum > 100_000_000)) return { error: "Purchase price must be zero or more." };
   if (input.sex === "male" && (input.reproduction === "pregnant" || input.lactation === "lactating")) {
     return { error: "A male cannot be saved as pregnant or lactating." };
+  }
+
+  if (input.earTag) {
+    const [taken] = await db
+      .select({ id: animals.id })
+      .from(animals)
+      .where(and(eq(animals.farmId, farm.farmId), eq(animals.earTag, input.earTag)))
+      .limit(1);
+    if (taken) return { error: "That ear tag is already used on another animal." };
   }
 
   const [breed] = await db

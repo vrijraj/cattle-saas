@@ -104,11 +104,11 @@ export default async function FeedPage({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1 text-sm">
                     Quantity (kg)
-                    <input name="quantity" required inputMode="decimal" placeholder="Quantity" className={inputClass} />
+                    <input name="quantity" type="number" min={0.1} max={1000000} step="0.1" required inputMode="decimal" placeholder="Quantity" className={inputClass} />
                   </label>
                   <label className="grid gap-1 text-sm">
                     Cost per kg (₹)
-                    <input name="unitCost" inputMode="decimal" placeholder="Cost per kg" className={inputClass} />
+                    <input name="unitCost" type="number" min={0} max={100000} step="0.01" inputMode="decimal" placeholder="Cost per kg" className={inputClass} />
                   </label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -118,7 +118,7 @@ export default async function FeedPage({
                   </label>
                   <label className="grid gap-1 text-sm">
                     Minimum stock (new item)
-                    <input name="minimum" inputMode="decimal" placeholder="Minimum stock, for a new item" className={inputClass} />
+                    <input name="minimum" type="number" min={0} max={1000000} step="0.1" inputMode="decimal" placeholder="Minimum stock, for a new item" className={inputClass} />
                   </label>
                 </div>
                 <label className="grid gap-1 text-sm">

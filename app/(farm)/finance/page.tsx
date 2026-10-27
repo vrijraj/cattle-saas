@@ -2,7 +2,7 @@ import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { animals, farms, feedMovements, financeEntries, healthEvents, inseminations, milkYields, semenBatches, straws } from "@/db/schema";
+import { animals, farms, feedItems, feedMovements, financeEntries, healthEvents, inseminations, milkYields, semenBatches, straws } from "@/db/schema";
 import { saveFinance } from "@/app/(farm)/herd/actions";
 import { confirmSuggestion } from "@/app/(farm)/finance/actions";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
@@ -39,7 +39,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   const query = await searchParams;
   const today = farmToday(farm.timezone);
   const canRecord = canRecordFinance(farm.roles);
-  const [rows, farmRow, herd, milk, health, batches, movements, services, strawRows] = await Promise.all([
+  const [rows, farmRow, herd, milk, health, batches, movements, services, strawRows, feedItemRows] = await Promise.all([
     db.select().from(financeEntries).where(eq(financeEntries.farmId, farm.farmId)),
     db.select().from(farms).where(eq(farms.id, farm.farmId)).limit(1).then((list) => list[0]),
     db.select().from(animals).where(eq(animals.farmId, farm.farmId)).orderBy(animals.code),
@@ -49,7 +49,9 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
     db.select().from(feedMovements).where(eq(feedMovements.farmId, farm.farmId)),
     db.select().from(inseminations).where(eq(inseminations.farmId, farm.farmId)),
     db.select().from(straws).where(eq(straws.farmId, farm.farmId)),
+    db.select().from(feedItems).where(eq(feedItems.farmId, farm.farmId)),
   ]);
+  const feedById = new Map(feedItemRows.map((item) => [item.id, item]));
   const active = rows.filter((row) => !row.voidedAt);
   const notes = active.map((row) => row.note);
   const month = today.slice(0, 7);
@@ -89,6 +91,20 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           existingNotes: notes,
         }),
       ),
+    ...movements
+      .filter((row) => row.kind === "purchase" && Number(row.unitCost) > 0)
+      .map((row) => {
+        const item = feedById.get(row.itemId);
+        return keyedSuggestion({
+          key: `suggested:feed:${row.id}`,
+          kind: "expense",
+          category: "feed",
+          amount: Math.round(Number(row.quantity) * Number(row.unitCost) * 100) / 100,
+          entryOn: row.movedOn,
+          label: `Feed purchase · ${item?.name ?? "Feed"} · ${row.quantity} ${item?.unit ?? "kg"}`,
+          existingNotes: notes,
+        });
+      }),
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
   const months = monthTotals(active.map((row) => ({ entryOn: row.entryOn, kind: row.kind, category: row.category, amount: Number(row.amount), voided: false })));
   const yearRows = active.filter((row) => row.entryOn.startsWith(year));
@@ -212,25 +228,40 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
           {canRecord ? (
             <RecordDialog title="Add entry" button="Add entry">
               <form action={saveFinance} className="grid gap-3">
-                <FormSelect
-                  name="category"
-                  required
-                  defaultValue="income:milk"
-                  options={[
-                    ...INCOME_CATEGORIES.map((category) => ({ value: `income:${category}`, label: `Income · ${category}` })),
-                    ...EXPENSE_CATEGORIES.map((category) => ({ value: `expense:${category}`, label: `Expense · ${category}` })),
-                  ]}
-                />
+                <label className="grid gap-1 text-sm">
+                  Category
+                  <FormSelect
+                    name="category"
+                    required
+                    defaultValue="income:milk"
+                    options={[
+                      ...INCOME_CATEGORIES.map((category) => ({ value: `income:${category}`, label: `Income · ${category}` })),
+                      ...EXPENSE_CATEGORIES.map((category) => ({ value: `expense:${category}`, label: `Expense · ${category}` })),
+                    ]}
+                  />
+                </label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="amount" required inputMode="decimal" placeholder="Amount" className={inputClass} />
-                  <input name="entryOn" type="date" defaultValue={today} className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Amount (₹)
+                    <input name="amount" type="number" min={0.01} max={100000000} step="0.01" required inputMode="decimal" placeholder="Amount" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Date
+                    <input name="entryOn" type="date" defaultValue={today} className={inputClass} />
+                  </label>
                 </div>
-                <input name="note" placeholder="Note" className={inputClass} />
-                <FormSelect
-                  name="animalId"
-                  defaultValue=""
-                  options={[{ value: "", label: "Whole farm" }, ...herd.map((animal) => ({ value: animal.id, label: `${animal.name ?? animal.code} · ${animal.code}` }))]}
-                />
+                <label className="grid gap-1 text-sm">
+                  Note
+                  <input name="note" maxLength={240} placeholder="Note" className={inputClass} />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Animal (optional)
+                  <FormSelect
+                    name="animalId"
+                    defaultValue=""
+                    options={[{ value: "", label: "Whole farm" }, ...herd.map((animal) => ({ value: animal.id, label: `${animal.name ?? animal.code} · ${animal.code}` }))]}
+                  />
+                </label>
                 <div className="flex justify-end">
                   <Submit>Save entry</Submit>
                 </div>

@@ -69,8 +69,9 @@ export async function recordHeat(formData: FormData) {
   const farm = await requireFarm();
   if (!canRecordBreeding(farm.roles)) redirect("/breeding?error=role");
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
-  if (!animal) redirect("/breeding?error=animal");
-  const observedOn = text(formData, "observedOn") || farmToday(farm.timezone);
+  if (!animal || animal.sex === "male") redirect("/breeding?error=animal");
+  const observedOn = parseFarmDate(text(formData, "observedOn") || farmToday(farm.timezone));
+  if (!observedOn) redirect(`/animals/${animal.code}?tab=breeding&error=date`);
   const signs = text(formData, "signs") || "standing";
   const [row] = await db
     .insert(heats)
@@ -103,7 +104,8 @@ export async function recordAi(formData: FormData) {
   const bullCode = text(formData, "bullCode");
   if (!bullCode) redirect(`/animals/${animal.code}?tab=breeding&event=ai&error=bull`);
   const strawCode = text(formData, "strawCode");
-  const performedOn = text(formData, "performedOn") || farmToday(farm.timezone);
+  const performedOn = parseFarmDate(text(formData, "performedOn") || farmToday(farm.timezone));
+  if (!performedOn) redirect(`/animals/${animal.code}?tab=breeding&error=date`);
 
   await db.transaction(async (tx) => {
     if (strawCode) {
@@ -182,10 +184,14 @@ export async function recordPd(formData: FormData) {
   const farm = await requireFarm();
   if (!canRecordBreeding(farm.roles)) redirect("/breeding?error=role");
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
-  if (!animal) redirect("/breeding?error=animal");
+  if (!animal || animal.sex === "male") redirect("/breeding?error=animal");
   const result = text(formData, "result");
+  if (result !== "pregnant" && result !== "not_pregnant" && result !== "doubtful") {
+    redirect(`/animals/${animal.code}?tab=breeding&error=result`);
+  }
   const inseminationId = text(formData, "inseminationId");
-  const checkedOn = text(formData, "checkedOn") || farmToday(farm.timezone);
+  const checkedOn = parseFarmDate(text(formData, "checkedOn") || farmToday(farm.timezone));
+  if (!checkedOn) redirect(`/animals/${animal.code}?tab=breeding&error=date`);
   const [row] = await db
     .insert(pregnancyChecks)
     .values({
@@ -208,27 +214,29 @@ export async function recordPd(formData: FormData) {
     after: { checkedOn, result },
   });
 
-  if (result === "pregnant" && inseminationId) {
-    const [ai] = await db.select().from(inseminations).where(eq(inseminations.id, inseminationId)).limit(1);
+  if (result === "pregnant") {
+    const [ai] = inseminationId
+      ? await db.select().from(inseminations).where(eq(inseminations.id, inseminationId)).limit(1)
+      : [undefined];
     const [breed] = await db.select().from(breeds).where(eq(breeds.id, animal.breedId)).limit(1);
     const gestation = breed?.gestationDays ?? 280;
-    const expected = ai ? addDays(ai.performedOn, gestation) : null;
+    const expected = ai ? addDays(ai.performedOn, gestation) : animal.expectedCalving;
     await db
       .update(animals)
       .set({
         reproduction: "pregnant",
-        conceptionOn: ai?.performedOn ?? null,
+        conceptionOn: ai?.performedOn ?? animal.conceptionOn,
         expectedCalving: expected,
         updatedAt: new Date(),
       })
       .where(eq(animals.id, animal.id));
-    if (expected) {
+    if (expected && ai) {
       await db.insert(alerts).values({
         farmId: farm.farmId,
         animalId: animal.id,
         type: "calving_due",
         title: "Expected calving",
-        body: `${animal.code} expected calving ${expected} (calculated, ${gestation} days from ${ai?.performedOn}).`,
+        body: `${animal.code} expected calving ${expected} (calculated, ${gestation} days from ${ai.performedOn}).`,
         dueOn: expected,
       });
       if (animal.lactation === "lactating") {
@@ -250,6 +258,10 @@ export async function recordPd(formData: FormData) {
       .set({ reproduction: "open", conceptionOn: null, expectedCalving: null, updatedAt: new Date() })
       .where(eq(animals.id, animal.id));
   }
+  await db
+    .update(alerts)
+    .set({ status: "done" })
+    .where(and(eq(alerts.animalId, animal.id), inArray(alerts.type, ["pd_due", "ai_followup"]), eq(alerts.status, "open")));
   if (result === "doubtful") {
     const recheckOn = addDays(checkedOn, 14);
     await db.insert(alerts).values({
@@ -261,10 +273,6 @@ export async function recordPd(formData: FormData) {
       dueOn: recheckOn,
     });
   }
-  await db
-    .update(alerts)
-    .set({ status: "done" })
-    .where(and(eq(alerts.animalId, animal.id), eq(alerts.type, "pd_due"), eq(alerts.status, "open")));
   redirect(`/animals/${animal.code}?tab=breeding`);
 }
 
@@ -283,7 +291,9 @@ export async function recordCalving(formData: FormData) {
   const sire = calfSireFromConception(ai ?? null);
   if (!ai || !sire) redirect(`/animals/${dam.code}?tab=breeding&event=calving&error=conception`);
   const outcome = text(formData, "outcome") || "live";
-  const calvedOn = text(formData, "calvedOn") || farmToday(farm.timezone);
+  if (outcome !== "live" && outcome !== "dead") redirect(`/animals/${dam.code}?tab=breeding&error=outcome`);
+  const calvedOn = parseFarmDate(text(formData, "calvedOn") || farmToday(farm.timezone));
+  if (!calvedOn) redirect(`/animals/${dam.code}?tab=breeding&error=date`);
   const sex = text(formData, "calfSex") === "male" ? "male" : "female";
 
   await db.transaction(async (tx) => {
@@ -361,7 +371,8 @@ export async function recordDryOff(formData: FormData) {
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal || animal.sex === "male") redirect("/breeding?error=animal");
   if (animal.lactation !== "lactating") redirect(`/animals/${animal.code}?tab=breeding&error=dry`);
-  const driedOn = text(formData, "driedOn") || farmToday(farm.timezone);
+  const driedOn = parseFarmDate(text(formData, "driedOn") || farmToday(farm.timezone));
+  if (!driedOn) redirect(`/animals/${animal.code}?tab=breeding&error=date`);
   const [row] = await db
     .insert(dryOffs)
     .values({
@@ -401,9 +412,19 @@ export async function recordHealth(formData: FormData) {
   if (!canRecordHealth(farm.roles)) redirect("/health?error=role");
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal) redirect("/health?error=animal");
-  const followUp = text(formData, "followUpOn");
+  const eventOn = parseFarmDate(text(formData, "eventOn") || farmToday(farm.timezone));
+  if (!eventOn) redirect(`/animals/${animal.code}?tab=health&error=date`);
+  const followUpRaw = text(formData, "followUpOn");
+  const followUp = followUpRaw ? parseFarmDate(followUpRaw) : null;
+  if (followUpRaw && !followUp) redirect(`/animals/${animal.code}?tab=health&error=date`);
   const medicine = text(formData, "medicine");
   const problem = text(formData, "problem") || "Illness";
+  const costRaw = text(formData, "cost");
+  const costNum = costRaw ? Number(costRaw) : null;
+  if (costRaw && (costNum === null || !Number.isFinite(costNum) || costNum < 0 || costNum > 10_000_000)) {
+    redirect(`/animals/${animal.code}?tab=health&error=cost`);
+  }
+  const cost = costNum !== null ? costNum.toFixed(2) : null;
   let attachmentKey: string | null = null;
   let attachmentName: string | null = null;
   const file = formData.get("attachment");
@@ -420,7 +441,7 @@ export async function recordHealth(formData: FormData) {
     .values({
       farmId: farm.farmId,
       animalId: animal.id,
-      eventOn: text(formData, "eventOn") || farmToday(farm.timezone),
+      eventOn,
       problem,
       signs: text(formData, "signs") || null,
       diagnosis: text(formData, "diagnosis") || null,
@@ -432,6 +453,7 @@ export async function recordHealth(formData: FormData) {
       veterinarian: text(formData, "veterinarian") || farm.userName,
       followUpOn: followUp || null,
       outcome: text(formData, "outcome") || "ongoing",
+      cost,
       attachmentKey,
       attachmentName,
       createdBy: farm.userId,
@@ -444,8 +466,12 @@ export async function recordHealth(formData: FormData) {
     entity: "health",
     entityId: row.id,
     summary: `Treatment for ${animal.code}: ${problem}`,
-    after: { problem },
+    after: { problem, cost },
   });
+  await db
+    .update(alerts)
+    .set({ status: "done" })
+    .where(and(eq(alerts.animalId, animal.id), inArray(alerts.type, ["health_followup", "medication_due"]), eq(alerts.status, "open")));
   if (followUp && medicine) {
     await db.insert(alerts).values({
       farmId: farm.farmId,
@@ -473,7 +499,10 @@ export async function recordVaccine(formData: FormData) {
   if (!canRecordHealth(farm.roles)) redirect("/health?error=role");
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal) redirect("/health?error=animal");
-  const nextDue = text(formData, "nextDueOn");
+  const givenOn = parseFarmDate(text(formData, "givenOn") || farmToday(farm.timezone));
+  const nextDueRaw = text(formData, "nextDueOn");
+  const nextDue = nextDueRaw ? parseFarmDate(nextDueRaw) : null;
+  if (!givenOn || (nextDueRaw && !nextDue)) redirect(`/animals/${animal.code}?tab=health&error=date`);
   const vaccine = text(formData, "vaccine") || "Vaccine";
   const [row] = await db
     .insert(vaccinations)
@@ -482,7 +511,7 @@ export async function recordVaccine(formData: FormData) {
       animalId: animal.id,
       vaccine,
       batch: text(formData, "batch") || null,
-      givenOn: text(formData, "givenOn") || farmToday(farm.timezone),
+      givenOn,
       nextDueOn: nextDue || null,
       administeredBy: farm.userName,
     })
@@ -518,6 +547,10 @@ export async function recordDeworming(formData: FormData) {
   if (!canRecordHealth(farm.roles)) redirect("/health?error=role");
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal) redirect("/health?error=animal");
+  const givenOn = parseFarmDate(text(formData, "givenOn") || farmToday(farm.timezone));
+  const nextDueRaw = text(formData, "nextDueOn");
+  const nextDue = nextDueRaw ? parseFarmDate(nextDueRaw) : null;
+  if (!givenOn || (nextDueRaw && !nextDue)) redirect(`/animals/${animal.code}?tab=health&error=date`);
   const product = text(formData, "product") || "Dewormer";
   const [row] = await db
     .insert(dewormings)
@@ -525,8 +558,8 @@ export async function recordDeworming(formData: FormData) {
       farmId: farm.farmId,
       animalId: animal.id,
       product,
-      givenOn: text(formData, "givenOn") || farmToday(farm.timezone),
-      nextDueOn: text(formData, "nextDueOn") || null,
+      givenOn,
+      nextDueOn: nextDue || null,
     })
     .returning({ id: dewormings.id });
   await writeAudit(db, {
@@ -542,7 +575,6 @@ export async function recordDeworming(formData: FormData) {
     .update(alerts)
     .set({ status: "done" })
     .where(and(eq(alerts.animalId, animal.id), eq(alerts.type, "deworming_due"), eq(alerts.status, "open")));
-  const nextDue = text(formData, "nextDueOn");
   if (nextDue) {
     await db.insert(alerts).values({
       farmId: farm.farmId,
@@ -563,10 +595,12 @@ export async function recordWeight(formData: FormData) {
   if (!canWriteMilk(farm.roles) && !canWriteAnimals(farm.roles)) redirect(`/animals/${animal.code}?error=role`);
   const kilograms = Number(text(formData, "kilograms"));
   if (!Number.isFinite(kilograms) || kilograms <= 0 || kilograms > 1200) redirect(`/animals/${animal.code}?error=weight`);
+  const weighedOn = parseFarmDate(text(formData, "weighedOn") || farmToday(farm.timezone));
+  if (!weighedOn) redirect(`/animals/${animal.code}?error=date`);
   await db.insert(weights).values({
     farmId: farm.farmId,
     animalId: animal.id,
-    weighedOn: text(formData, "weighedOn") || farmToday(farm.timezone),
+    weighedOn,
     kilograms: kilograms.toFixed(1),
     note: text(formData, "note") || null,
   });
@@ -1089,11 +1123,16 @@ export async function saveListing(formData: FormData) {
   if (!canPublish(farm.roles) && !canWriteAnimals(farm.roles)) redirect("/animals");
   const animal = await animalInFarm(farm.farmId, text(formData, "animalId"));
   if (!animal) redirect("/animals");
+  const priceRaw = text(formData, "price");
+  const priceNum = priceRaw ? Number(priceRaw) : null;
+  if (priceRaw && (priceNum === null || !Number.isFinite(priceNum) || priceNum < 0)) {
+    redirect(`/animals/${animal.code}?tab=listing&error=price`);
+  }
   await db.insert(listings).values({
     farmId: farm.farmId,
     animalId: animal.id,
     category: text(formData, "category") || "cows",
-    price: text(formData, "price") || null,
+    price: priceNum !== null ? priceNum.toFixed(2) : null,
     published: formData.get("published") === "on" ? "yes" : "no",
     showPedigree: formData.get("showPedigree") === "on" ? "yes" : "no",
     showPregnancy: formData.get("showPregnancy") === "on" ? "yes" : "no",
@@ -1108,28 +1147,39 @@ export async function saveStockListing(formData: FormData) {
   const category = text(formData, "category") === "embryos" ? "embryos" : "semen";
   const title = text(formData, "title");
   if (!title) redirect("/shop?error=listing");
+  const priceRaw = text(formData, "price");
+  const priceNum = priceRaw ? Number(priceRaw) : null;
+  if (priceRaw && (priceNum === null || !Number.isFinite(priceNum) || priceNum < 0)) {
+    redirect("/shop?error=price");
+  }
   await db.insert(listings).values({
     farmId: farm.farmId,
     category,
-    price: text(formData, "price") || null,
+    price: priceNum !== null ? priceNum.toFixed(2) : null,
     published: "yes",
     publicNote: title,
   });
-  redirect("/shop");
+  redirect("/shop?saved=1");
 }
 
 export async function saveProduct(formData: FormData) {
   const farm = await requireFarm();
   if (!canPublish(farm.roles)) redirect("/shop?error=role");
+  const name = text(formData, "name");
+  if (!name) redirect("/shop?error=product");
+  const price = Number(text(formData, "price"));
+  if (!Number.isFinite(price) || price <= 0 || price > 10_000_000) redirect("/shop?error=price");
+  const stock = Number(text(formData, "stock"));
+  if (!Number.isInteger(stock) || stock < 0 || stock > 1_000_000) redirect("/shop?error=stock");
   await db.insert(products).values({
     farmId: farm.farmId,
-    name: text(formData, "name"),
+    name,
     category: text(formData, "category") || "other",
-    price: Number(text(formData, "price") || "0").toFixed(2),
-    stock: Number(text(formData, "stock") || "0"),
+    price: price.toFixed(2),
+    stock,
     published: "yes",
   });
-  redirect("/shop");
+  redirect("/shop?saved=1");
 }
 
 const voidable = {

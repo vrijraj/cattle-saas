@@ -10,8 +10,11 @@ import {
   calvings,
   dewormings,
   dryOffs,
+  embryoTransfers,
+  embryos,
   feedItems,
   feedMovements,
+  financeEntries,
   healthEvents,
   heats,
   inseminations,
@@ -35,7 +38,7 @@ import { WeightChart } from "@/components/weight-chart";
 import { RecordDialog } from "@/components/record-dialog";
 import { VoidRecord } from "@/components/void-record";
 import { FormSelect } from "@/components/form-select";
-import { EmptyRow, inputClass, Panel, Submit, Table, Td } from "@/components/workspace";
+import { EmptyRow, inputClass, Panel, Pill, Submit, Table, Td } from "@/components/workspace";
 import { lifeStageLabel, sexLabel } from "@/lib/labels";
 import { canVoidMatingNote } from "@/lib/permissions";
 import { ancestorChart, type AncestorChart } from "@/lib/pedigree-tree";
@@ -114,7 +117,7 @@ export async function AnimalHub({
     .from(milkYields)
     .where(eq(milkYields.animalId, animal.id))
     .orderBy(desc(milkYields.recordedOn));
-  const [feedItemRows, feedMoveRows, animalAudits] = await Promise.all([
+  const [feedItemRows, feedMoveRows, animalAudits, donorEmbryos, recipientTransfers, animalFinances] = await Promise.all([
     db.select().from(feedItems).where(eq(feedItems.farmId, animal.farmId)),
     db.select().from(feedMovements).where(eq(feedMovements.farmId, animal.farmId)),
     db
@@ -122,6 +125,9 @@ export async function AnimalHub({
       .from(auditLogs)
       .where(and(eq(auditLogs.farmId, animal.farmId), eq(auditLogs.entity, "animal"), eq(auditLogs.entityId, animal.id)))
       .orderBy(desc(auditLogs.createdAt)),
+    db.select().from(embryos).where(eq(embryos.donorId, animal.id)),
+    db.select().from(embryoTransfers).where(eq(embryoTransfers.recipientId, animal.id)),
+    db.select().from(financeEntries).where(eq(financeEntries.animalId, animal.id)),
   ]);
   const feedNameById = new Map(feedItemRows.map((item) => [item.id, item]));
   const shedName = new Map(shedRows.map((row) => [row.id, row.name]));
@@ -143,12 +149,22 @@ export async function AnimalHub({
     ...pdRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.checkedOn, label: `Pregnancy check · ${row.result.replaceAll("_", " ")}${row.method ? ` (${row.method})` : ""}`, group: "breeding" })),
     ...calvingRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.calvedOn, label: `Calving · ${row.outcome}${row.ease ? ` · ${row.ease}` : ""}`, group: "breeding" })),
     ...dryRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.driedOn, label: `Dry-off${row.note ? ` · ${row.note}` : ""}`, group: "breeding" })),
+    ...donorEmbryos.map((row) => ({
+      when: row.frozenOn ?? row.createdAt.toISOString().slice(0, 10),
+      label: `Embryo donor · ${row.code}${row.sireCode ? ` × ${row.sireCode}` : ""}`,
+      group: "breeding",
+    })),
+    ...recipientTransfers.map((row) => ({
+      when: row.transferredOn,
+      label: `Embryo transfer recipient${row.pregnancyResult ? ` · ${row.pregnancyResult.replaceAll("_", " ")}` : ""}`,
+      group: "breeding",
+    })),
     ...(canSeeClinical
       ? healthRows
           .filter((row) => !row.voidedAt)
           .map((row) => ({
             when: row.eventOn,
-            label: `Treatment · ${row.problem}${row.diagnosis ? ` (${row.diagnosis})` : ""}${row.medicine ? ` · ${row.medicine}` : ""}`,
+            label: `Treatment · ${row.problem}${row.diagnosis ? ` (${row.diagnosis})` : ""}${row.medicine ? ` · ${row.medicine}` : ""}${row.cost ? ` · ₹${Number(row.cost).toLocaleString("en-IN")}` : ""}`,
             group: "health",
           }))
       : []),
@@ -160,6 +176,13 @@ export async function AnimalHub({
       label: `Moved to ${row.locationId ? (shedName.get(row.locationId) ?? "Shed") : "Unassigned"}${row.note ? ` · ${row.note}` : ""}`,
       group: "overview",
     })),
+    ...animalFinances
+      .filter((row) => !row.voidedAt)
+      .map((row) => ({
+        when: row.entryOn,
+        label: `Finance (${row.kind}) · ${row.category} · ₹${Number(row.amount).toLocaleString("en-IN")}`,
+        group: "overview",
+      })),
     ...animalFeedRows.map((row) => {
       const item = feedNameById.get(row.itemId);
       return {
@@ -417,6 +440,9 @@ export async function AnimalHub({
                     <Field label="Treatment & visit notes">
                       <input name="treatment" className={inputClass} />
                     </Field>
+                    <Field label="Treatment cost (₹)">
+                      <input name="cost" type="number" min={0} max={10000000} step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass} />
+                    </Field>
                   </div>
                   <Field label="Prescription, document, or photo">
                     <input name="attachment" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className={`${inputClass} h-auto py-2`} />
@@ -438,10 +464,10 @@ export async function AnimalHub({
               </Field>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Morning (L)">
-                  <input name="morningLitres" inputMode="decimal" placeholder="0.0" className={inputClass} />
+                  <input name="morningLitres" type="number" min={0} max={80} step="0.1" inputMode="decimal" placeholder="0.0" className={inputClass} />
                 </Field>
                 <Field label="Evening (L)">
-                  <input name="eveningLitres" inputMode="decimal" placeholder="0.0" className={inputClass} />
+                  <input name="eveningLitres" type="number" min={0} max={80} step="0.1" inputMode="decimal" placeholder="0.0" className={inputClass} />
                 </Field>
               </div>
               <div className="flex justify-end pt-1">
@@ -456,7 +482,7 @@ export async function AnimalHub({
               <input type="hidden" name="animalId" value={animal.id} />
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Kilograms">
-                  <input name="kilograms" required inputMode="decimal" className={inputClass} />
+                  <input name="kilograms" type="number" min={1} max={1200} step="0.1" required inputMode="decimal" className={inputClass} />
                 </Field>
                 <Field label="Date">
                   <input name="weighedOn" type="date" className={inputClass} />
@@ -508,7 +534,7 @@ export async function AnimalHub({
               )}
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Quantity (kg)">
-                  <input name="quantity" required inputMode="decimal" className={inputClass} />
+                  <input name="quantity" type="number" min={0.1} max={1000000} step="0.1" required inputMode="decimal" className={inputClass} />
                 </Field>
                 <Field label="Date">
                   <input name="movedOn" type="date" className={inputClass} />
@@ -984,6 +1010,9 @@ export async function AnimalHub({
                       <Field label="Outcome">
                         <input name="outcome" placeholder="Recovering / Resolved / Ongoing" className={inputClass} />
                       </Field>
+                      <Field label="Treatment cost (₹)">
+                        <input name="cost" type="number" min={0} max={10000000} step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass} />
+                      </Field>
                     </div>
                     <Field label="Prescription, document, or photo">
                       <input
@@ -1020,6 +1049,7 @@ export async function AnimalHub({
                   <Td>
                     <div>{row.veterinarian ?? "—"}</div>
                     {row.outcome ? <div className="text-xs text-muted-foreground">{row.outcome}</div> : null}
+                    {row.cost ? <div className="text-xs font-medium text-foreground">₹{Number(row.cost).toLocaleString("en-IN")}</div> : null}
                   </Td>
                   <Td>{row.followUpOn ? formatDisplayDate(row.followUpOn) : "—"}</Td>
                   <Td>
@@ -1170,10 +1200,10 @@ export async function AnimalHub({
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Morning (L)">
-                      <input name="morningLitres" inputMode="decimal" className={inputClass} />
+                      <input name="morningLitres" type="number" min={0} max={80} step="0.1" inputMode="decimal" placeholder="0.0" className={inputClass} />
                     </Field>
                     <Field label="Evening (L)">
-                      <input name="eveningLitres" inputMode="decimal" className={inputClass} />
+                      <input name="eveningLitres" type="number" min={0} max={80} step="0.1" inputMode="decimal" placeholder="0.0" className={inputClass} />
                     </Field>
                   </div>
                   <div className="flex justify-end pt-1">
@@ -1242,10 +1272,10 @@ export async function AnimalHub({
             <form action={saveListing} className="space-y-3">
               <input type="hidden" name="animalId" value={animal.id} />
               <Field label="Category">
-                <input name="category" defaultValue={animal.sex === "male" ? "bulls" : "cows"} className={inputClass} />
+                <input name="category" required maxLength={60} defaultValue={animal.sex === "male" ? "bulls" : "cows"} className={inputClass} />
               </Field>
               <Field label="Price, INR">
-                <input name="price" className={inputClass} />
+                <input name="price" type="number" min={0} max={100000000} step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass} />
               </Field>
               <label className="flex items-center gap-2 text-sm">
                 <input name="published" type="checkbox" /> Publish on the catalogue
@@ -1296,26 +1326,100 @@ export async function AnimalHub({
   const identity = [
     ["Sex", sexLabel[animal.sex]],
     ["Life stage", lifeStageLabel[animal.lifeStage]],
-    ["Lactation", milkFacts.number > 0 ? `Lactation ${milkFacts.number}` : "No calving yet"],
-    ["Days in milk", milkFacts.daysInMilk === null ? "—" : String(milkFacts.daysInMilk)],
-    ["Location", locationName ?? "Unassigned"],
+    ["Breed", breedName],
     ["Ear tag", animal.earTag ?? "—"],
     ["Colour", animal.colour ?? "—"],
-    ["Marks", animal.marks ?? "—"],
-    ["Dam", damLabel],
-    ["Sire", sireLabel],
+    ["Identifying marks", animal.marks ?? "—"],
+    ["Lactation cycle", milkFacts.number > 0 ? `Lactation ${milkFacts.number}` : "No calving yet"],
+    ["Days in milk", milkFacts.daysInMilk === null ? "—" : `${milkFacts.daysInMilk} days`],
     ["Purchase source", animal.purchaseSource ?? "—"],
     ["Purchase date", animal.purchaseDate ? formatDisplayDate(animal.purchaseDate) : "—"],
     ["Purchase price", animal.purchasePrice ? `₹${Number(animal.purchasePrice).toLocaleString("en-IN")}` : "—"],
   ];
 
+  const activeMilkRows = milkRows.filter((row) => !row.voidedAt);
+  const latestMilk = activeMilkRows[0];
+  const latestMilkTotal = latestMilk ? Number(latestMilk.morningLitres ?? 0) + Number(latestMilk.eveningLitres ?? 0) : null;
+  const sortedWeights = [...weightRows].sort((a, b) => b.weighedOn.localeCompare(a.weighedOn));
+  const latestWeight = sortedWeights[0];
+  const activeAis = aiRows.filter((row) => !row.voidedAt);
+
   return (
     <div className="space-y-4">
       {quickBar}
+
+      {/* 4-Card Live KPI Snapshot */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="flex flex-col justify-between rounded-2xl border border-border/85 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Latest milk yield</span>
+            {animal.sex !== "male" ? (
+              <Link href={`/animals/${animal.code}?tab=milk`} className="text-xs font-medium text-primary hover:underline">
+                Milk →
+              </Link>
+            ) : null}
+          </div>
+          <p className="mt-2 font-display text-2xl font-semibold tracking-tight tabular-nums">
+            {latestMilkTotal !== null ? `${latestMilkTotal.toFixed(1)} L` : "—"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {latestMilk ? `Recorded ${formatDisplayDate(latestMilk.recordedOn)}` : "No milk recorded yet"}
+          </p>
+        </div>
+
+        <div className="flex flex-col justify-between rounded-2xl border border-border/85 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Lactation & cycle</span>
+            {animal.sex !== "male" ? (
+              <Link href={`/animals/${animal.code}?tab=breeding`} className="text-xs font-medium text-primary hover:underline">
+                Breeding →
+              </Link>
+            ) : null}
+          </div>
+          <p className="mt-2 font-display text-2xl font-semibold tracking-tight tabular-nums">
+            {milkFacts.number > 0 ? `Lactation ${milkFacts.number}` : "Cycle 0"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {milkFacts.daysInMilk !== null ? `${milkFacts.daysInMilk} days in milk` : "Not currently in milk"}
+          </p>
+        </div>
+
+        <div className="flex flex-col justify-between rounded-2xl border border-border/85 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Latest weight</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {weightRows.length} {weightRows.length === 1 ? "entry" : "entries"}
+            </span>
+          </div>
+          <p className="mt-2 font-display text-2xl font-semibold tracking-tight tabular-nums">
+            {latestWeight ? `${latestWeight.kilograms} kg` : "—"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {latestWeight ? `Weighed ${formatDisplayDate(latestWeight.weighedOn)}` : "No weight recorded yet"}
+          </p>
+        </div>
+
+        <div className="flex flex-col justify-between rounded-2xl border border-border/85 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Progeny & services</span>
+            <Link href={`/animals/${animal.code}?tab=parentage`} className="text-xs font-medium text-primary hover:underline">
+              Pedigree →
+            </Link>
+          </div>
+          <p className="mt-2 font-display text-2xl font-semibold tracking-tight tabular-nums">
+            {offspring.length} {offspring.length === 1 ? "calf" : "calves"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {activeAis.length} AI {activeAis.length === 1 ? "service" : "services"} recorded
+          </p>
+        </div>
+      </div>
+
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="min-w-0 space-y-4">
           <Panel
-            title="Basic information"
+            title="Master record & acquisition"
+            description="Core physical traits, lineage links, and purchase history."
             action={
               canEdit ? (
                 <RecordDialog title="Basic information" button="Edit details" quiet open={Boolean(detailError)} notice={detailError}>
@@ -1364,10 +1468,10 @@ export async function AnimalHub({
                       <input name="purchaseSource" defaultValue={animal.purchaseSource ?? ""} className={inputClass} />
                     </Field>
                     <Field label="Purchase date">
-                      <input name="purchaseDate" type="date" defaultValue={animal.purchaseDate ?? ""} className={inputClass} />
+                      <input name="purchaseDate" type="date" max={today} defaultValue={animal.purchaseDate ?? ""} className={inputClass} />
                     </Field>
                     <Field label="Purchase price (INR)">
-                      <input name="purchasePrice" inputMode="decimal" defaultValue={animal.purchasePrice ?? ""} className={inputClass} />
+                      <input name="purchasePrice" type="number" min={0} max={100000000} step="0.01" inputMode="decimal" defaultValue={animal.purchasePrice ?? ""} className={inputClass} />
                     </Field>
                     <p className="text-xs text-muted-foreground sm:col-span-2">Lactation number and days in milk follow calving and dry-off. The shed is changed with Move.</p>
                     <div className="flex justify-end sm:col-span-2">
@@ -1378,90 +1482,29 @@ export async function AnimalHub({
               ) : null
             }
           >
-            <dl className="grid gap-2.5 sm:grid-cols-2">
+            <dl className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
               {identity.map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-border/60 bg-muted/25 px-3 py-2">
+                <div key={label} className="rounded-xl border border-border/60 bg-muted/25 px-3 py-2.5">
                   <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</dt>
                   <dd className="mt-0.5 text-sm font-medium text-foreground">{value}</dd>
                 </div>
               ))}
             </dl>
           </Panel>
-          <Panel title="Shed history">
-            {canEdit ? (
-              <form action={moveAnimal} className="mb-4 grid gap-3">
-                <input type="hidden" name="animalId" value={animal.id} />
-                <FormSelect
-                  name="locationId"
-                  required
-                  placeholder="Shed"
-                  options={shedRows.filter((row) => row.active).map((row) => ({ value: row.id, label: row.name }))}
-                />
-                <input name="note" placeholder="Reason for the move" className={inputClass} />
-                <div className="flex justify-end">
-                  <Submit>Move</Submit>
-                </div>
-              </form>
-            ) : null}
-            <Table headers={["Date", "Shed", "Note"]}>
-              {moveRows.length === 0 ? <EmptyRow cols={3}>No move recorded yet.</EmptyRow> : null}
-              {[...moveRows]
-                .sort((a, b) => b.movedOn.localeCompare(a.movedOn))
-                .map((row) => (
-                  <tr key={row.id}>
-                    <Td>{formatDisplayDate(row.movedOn)}</Td>
-                    <Td>{row.locationId ? (shedName.get(row.locationId) ?? "Shed") : "—"}</Td>
-                    <Td>{row.note ?? "—"}</Td>
-                  </tr>
-                ))}
-            </Table>
-          </Panel>
-          <Panel title="Isolation">
-            {animal.isolationReason ? (
-              <div className="space-y-3">
-                <p className="text-sm">
-                  {animal.isolationReason}
-                  {animal.isolatedOn ? ` · since ${formatDisplayDate(animal.isolatedOn)}` : ""}
-                </p>
-                {canEdit ? (
-                  <form action={clearIsolation} className="grid gap-3">
-                    <input type="hidden" name="animalId" value={animal.id} />
-                    <input name="note" required placeholder="Why isolation ended" className={inputClass} />
-                    <div className="flex justify-end">
-                      <Submit>Clear isolation</Submit>
-                    </div>
-                  </form>
-                ) : null}
-              </div>
-            ) : canEdit ? (
-              <form action={setIsolation} className="grid gap-3">
-                <input type="hidden" name="animalId" value={animal.id} />
-                <input name="reason" required placeholder="Reason" className={inputClass} />
-                <div className="flex justify-end">
-                  <Submit>Isolate</Submit>
-                </div>
-              </form>
-            ) : (
-              <p className="text-sm text-muted-foreground">Not isolated.</p>
-            )}
-          </Panel>
-          <Panel title="Weight">
-            <WeightChart
-              points={weightRows
-                .sort((a, b) => a.weighedOn.localeCompare(b.weighedOn))
-                .map((row) => ({ date: row.weighedOn, kg: Number(row.kilograms) }))}
-            />
-            {canWeight ? (
-              <div className="mt-4 flex justify-end">
-                <RecordDialog title="Record weight" button="Record weight">
+
+          <Panel
+            title="Weight & growth"
+            action={
+              canWeight ? (
+                <RecordDialog title="Record weight" button="Record weight" quiet>
                   <form action={recordWeight} className="space-y-3">
                     <input type="hidden" name="animalId" value={animal.id} />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Field label="Kilograms">
-                        <input name="kilograms" required inputMode="decimal" className={inputClass} />
+                        <input name="kilograms" type="number" min={1} max={1200} step="0.1" required inputMode="decimal" placeholder="e.g. 420" className={inputClass} />
                       </Field>
                       <Field label="Date">
-                        <input name="weighedOn" type="date" className={inputClass} />
+                        <input name="weighedOn" type="date" defaultValue={today} className={inputClass} />
                       </Field>
                     </div>
                     <Field label="Note">
@@ -1472,22 +1515,111 @@ export async function AnimalHub({
                     </div>
                   </form>
                 </RecordDialog>
-              </div>
-            ) : null}
-            <div className="mt-4">
-              <Table headers={["Date", "Kilograms", "Note"]}>
-                {weightRows.length === 0 ? <EmptyRow cols={3}>No weight recorded.</EmptyRow> : null}
-                {[...weightRows]
-                  .sort((a, b) => b.weighedOn.localeCompare(a.weighedOn))
-                  .map((row) => (
+              ) : null
+            }
+          >
+            <WeightChart
+              points={[...weightRows]
+                .sort((a, b) => a.weighedOn.localeCompare(b.weighedOn))
+                .map((row) => ({ date: row.weighedOn, kg: Number(row.kilograms) }))}
+            />
+            {sortedWeights.length > 0 ? (
+              <div className="mt-4">
+                <Table headers={["Date", "Kilograms", "Note"]}>
+                  {sortedWeights.map((row) => (
                     <tr key={row.id}>
                       <Td>{formatDisplayDate(row.weighedOn)}</Td>
-                      <Td className="font-medium">{row.kilograms} kg</Td>
+                      <Td className="font-medium tabular-nums">{row.kilograms} kg</Td>
                       <Td>{row.note ?? "—"}</Td>
                     </tr>
                   ))}
-              </Table>
+                </Table>
+              </div>
+            ) : null}
+          </Panel>
+
+          <Panel
+            title="Shed & isolation"
+            description={`Currently assigned to ${locationName ?? "Unassigned"}.`}
+            action={
+              canEdit ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <RecordDialog title="Move shed" button="Move shed" quiet>
+                    <form action={moveAnimal} className="grid gap-3">
+                      <input type="hidden" name="animalId" value={animal.id} />
+                      <Field label="Destination shed">
+                        <FormSelect
+                          name="locationId"
+                          required
+                          placeholder="Select shed"
+                          options={shedRows.filter((row) => row.active).map((row) => ({ value: row.id, label: row.name }))}
+                        />
+                      </Field>
+                      <Field label="Reason for move">
+                        <input name="note" placeholder="e.g. Moved to calving pen" className={inputClass} />
+                      </Field>
+                      <div className="flex justify-end pt-1">
+                        <Submit>Move</Submit>
+                      </div>
+                    </form>
+                  </RecordDialog>
+                  {animal.isolationReason ? (
+                    <RecordDialog title="Clear isolation" button="Clear isolation" quiet>
+                      <form action={clearIsolation} className="grid gap-3">
+                        <input type="hidden" name="animalId" value={animal.id} />
+                        <Field label="Why isolation ended">
+                          <input name="note" required placeholder="e.g. Cleared by veterinarian" className={inputClass} />
+                        </Field>
+                        <div className="flex justify-end pt-1">
+                          <Submit>Clear isolation</Submit>
+                        </div>
+                      </form>
+                    </RecordDialog>
+                  ) : (
+                    <RecordDialog title="Isolate animal" button="Isolate" quiet>
+                      <form action={setIsolation} className="grid gap-3">
+                        <input type="hidden" name="animalId" value={animal.id} />
+                        <Field label="Reason for isolation">
+                          <input name="reason" required placeholder="e.g. Suspected infection / quarantine" className={inputClass} />
+                        </Field>
+                        <div className="flex justify-end pt-1">
+                          <Submit>Isolate</Submit>
+                        </div>
+                      </form>
+                    </RecordDialog>
+                  )}
+                </div>
+              ) : null
+            }
+          >
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-muted/25 px-3.5 py-2.5 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Isolation status:</span>
+                {animal.isolationReason ? (
+                  <Pill tone="warn">
+                    Isolated · {animal.isolationReason}
+                    {animal.isolatedOn ? ` (since ${formatDisplayDate(animal.isolatedOn)})` : ""}
+                  </Pill>
+                ) : (
+                  <Pill tone="good">Clear · Not isolated</Pill>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {moveRows.length} {moveRows.length === 1 ? "move" : "moves"} recorded
+              </span>
             </div>
+            <Table headers={["Date", "Shed", "Note"]}>
+              {moveRows.length === 0 ? <EmptyRow cols={3}>No move recorded yet.</EmptyRow> : null}
+              {[...moveRows]
+                .sort((a, b) => b.movedOn.localeCompare(a.movedOn))
+                .map((row) => (
+                  <tr key={row.id}>
+                    <Td>{formatDisplayDate(row.movedOn)}</Td>
+                    <Td className="font-medium">{row.locationId ? (shedName.get(row.locationId) ?? "Shed") : "—"}</Td>
+                    <Td>{row.note ?? "—"}</Td>
+                  </tr>
+                ))}
+            </Table>
           </Panel>
         </div>
         <ActivityList title="Lifetime history" events={timeline} />
@@ -1506,9 +1638,19 @@ function ActivityList({ title, events }: { title: string; events: { when: string
     return "bg-primary";
   }
 
+  function groupBadge(group?: string) {
+    if (group === "breeding") return { label: "Breeding", cls: "bg-amber-50 text-amber-800 border-amber-200/70" };
+    if (group === "health") return { label: "Health", cls: "bg-rose-50 text-rose-800 border-rose-200/70" };
+    if (group === "milk") return { label: "Milk", cls: "bg-emerald-50 text-emerald-800 border-emerald-200/70" };
+    if (group === "feed") return { label: "Feed", cls: "bg-sky-50 text-sky-800 border-sky-200/70" };
+    if (group === "status") return { label: "Audit", cls: "bg-violet-50 text-violet-800 border-violet-200/70" };
+    return { label: "Record", cls: "bg-muted text-muted-foreground border-border" };
+  }
+
   return (
     <Panel
       title={title}
+      description="Complete chronological log of events and status changes."
       action={
         <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
           {events.length} {events.length === 1 ? "entry" : "entries"}
@@ -1518,14 +1660,25 @@ function ActivityList({ title, events }: { title: string; events: { when: string
       {events.length === 0 ? (
         <p className="py-2 text-sm text-muted-foreground">Nothing recorded yet.</p>
       ) : (
-        <ol className="relative ml-2 space-y-3 border-l border-border/80 pl-4">
-          {events.map((event, index) => (
-            <li key={`${event.when}-${event.label}-${index}`} className="relative text-sm">
-              <span className={`absolute top-1.5 -left-[21px] size-2.5 rounded-full ring-4 ring-card ${dotColor(event.group)}`} />
-              <span className="block text-[11px] font-medium tabular-nums text-muted-foreground">{formatDisplayDate(event.when)}</span>
-              <span className="mt-0.5 block font-medium text-foreground">{event.label}</span>
-            </li>
-          ))}
+        <ol className="relative ml-2 space-y-2.5 border-l border-border/80 pl-4">
+          {events.map((event, index) => {
+            const badge = groupBadge(event.group);
+            return (
+              <li
+                key={`${event.when}-${event.label}-${index}`}
+                className="relative rounded-xl border border-border/60 bg-muted/20 px-3.5 py-2.5 text-sm transition hover:bg-muted/35"
+              >
+                <span className={`absolute top-3.5 -left-[22px] size-2.5 rounded-full ring-4 ring-card ${dotColor(event.group)}`} />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium tabular-nums text-muted-foreground">{formatDisplayDate(event.when)}</span>
+                  <span className={`rounded-md border px-1.5 py-0.2 text-[10px] font-semibold uppercase tracking-wider ${badge.cls}`}>
+                    {badge.label}
+                  </span>
+                </div>
+                <span className="mt-1 block font-medium text-foreground">{event.label}</span>
+              </li>
+            );
+          })}
         </ol>
       )}
     </Panel>

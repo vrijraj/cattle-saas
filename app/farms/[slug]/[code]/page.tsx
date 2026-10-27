@@ -63,9 +63,18 @@ export default async function PublicAnimalPage({ params }: { params: Promise<{ s
           <form action={sendEnquiry} className="grid gap-3">
             <input type="hidden" name="slug" value={slug} />
             <input type="hidden" name="animalCode" value={row.animal.code} />
-            <input name="name" required placeholder="Your name" className={inputClass} />
-            <input name="phone" required placeholder="Phone" className={inputClass} />
-            <textarea name="message" required placeholder="Message" className="min-h-28 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            <label className="grid gap-1 text-sm">
+              Your name
+              <input name="name" required maxLength={120} placeholder="Your name" className={inputClass} />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Phone number
+              <input name="phone" type="tel" required minLength={7} maxLength={20} placeholder="Phone" className={inputClass} />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Message
+              <textarea name="message" required maxLength={1000} placeholder="Message" className="min-h-28 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            </label>
             <Submit>Send enquiry</Submit>
           </form>
         </Panel>

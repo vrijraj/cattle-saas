@@ -89,6 +89,13 @@ button:not(:disabled) {
   outline-offset: 2px;
 }
 
+input:user-invalid,
+select:user-invalid,
+textarea:user-invalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.14);
+}
+
 .search-palette :focus-visible,
 .assistant-composer textarea:focus-visible,
 .sign-in-form :focus-visible {
@@ -308,5 +315,17 @@ dialog[open]::backdrop {
   .ai-sparkle,
   .ai-dots i {
     animation: none;
+  }
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
   }
 }

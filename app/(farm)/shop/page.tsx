@@ -8,7 +8,7 @@ import { requireFarm } from "@/lib/farm-context";
 import { canPublish } from "@/lib/permissions";
 import { FormSelect } from "@/components/form-select";
 import { RecordDialog } from "@/components/record-dialog";
-import { EmptyRow, inputClass, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
+import { EmptyRow, inputClass, Notice, Pill, Submit, Summary, Table, Td } from "@/components/workspace";
 
 const nextStatus: Record<string, string[]> = {
   pending_payment: ["cancelled"],
@@ -17,9 +17,18 @@ const nextStatus: Record<string, string[]> = {
   shipped: ["completed"],
 };
 
+const shopMessages: Record<string, string> = {
+  role: "Your role cannot manage the public shop or listings.",
+  product: "Enter a product name.",
+  price: "Price must be a valid amount greater than zero.",
+  stock: "Stock must be a whole number of zero or more.",
+  listing: "Enter a valid category and public listing note.",
+  status: "That order status transition is not allowed.",
+};
+
 export const metadata = { title: "Shop catalogue" };
 
-export default async function ShopAdminPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function ShopAdminPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; saved?: string }> }) {
   const farm = await requireFarm();
   const query = await searchParams;
   const term = query.q?.trim().toLowerCase() ?? "";
@@ -45,6 +54,8 @@ export default async function ShopAdminPage({ searchParams }: { searchParams: Pr
           </Link>
         }
       />
+      {query.error && shopMessages[query.error] ? <Notice tone="danger">{shopMessages[query.error]}</Notice> : null}
+      {query.saved ? <Notice>Catalogue changes saved.</Notice> : null}
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold">Products</h2>
@@ -53,20 +64,20 @@ export default async function ShopAdminPage({ searchParams }: { searchParams: Pr
               <form action={saveProduct} className="grid gap-3">
                 <label className="grid gap-1 text-sm">
                   Product name
-                  <input name="name" required placeholder="Product" className={inputClass} />
+                  <input name="name" required maxLength={120} placeholder="Product" className={inputClass} />
                 </label>
                 <label className="grid gap-1 text-sm">
                   Category
-                  <input name="category" placeholder="Category (e.g. dairy, ghee)" className={inputClass} />
+                  <input name="category" maxLength={60} placeholder="Category (e.g. dairy, ghee)" className={inputClass} />
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1 text-sm">
                     Price (₹)
-                    <input name="price" required inputMode="decimal" placeholder="Price" className={inputClass} />
+                    <input name="price" type="number" min={0.01} max={10000000} step="0.01" required inputMode="decimal" placeholder="Price" className={inputClass} />
                   </label>
                   <label className="grid gap-1 text-sm">
                     Stock quantity
-                    <input name="stock" required inputMode="numeric" placeholder="Stock" className={inputClass} />
+                    <input name="stock" type="number" min={0} max={1000000} step={1} required inputMode="numeric" placeholder="Stock" className={inputClass} />
                   </label>
                 </div>
                 <div className="flex justify-end">
@@ -131,11 +142,11 @@ export default async function ShopAdminPage({ searchParams }: { searchParams: Pr
                 </label>
                 <label className="grid gap-1 text-sm">
                   Public listing note
-                  <input name="title" required placeholder="What the public page should say" className={inputClass} />
+                  <input name="title" required maxLength={240} placeholder="What the public page should say" className={inputClass} />
                 </label>
                 <label className="grid gap-1 text-sm">
                   Price (₹)
-                  <input name="price" inputMode="decimal" placeholder="Price" className={inputClass} />
+                  <input name="price" type="number" min={0} max={100000000} step="0.01" inputMode="decimal" placeholder="Price" className={inputClass} />
                 </label>
                 <div className="flex justify-end">
                   <Submit>Publish</Submit>

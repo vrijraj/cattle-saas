@@ -184,26 +184,56 @@ export default async function SemenPage({
             <RecordDialog title="Receive straws" button="Receive straws">
               <form action={saveSemenBatch} className="grid gap-3">
                 <input type="hidden" name="returnTab" value="straws" />
-                <FormSelect
-                  name="bullId"
-                  required
-                  defaultValue=""
-                  options={[{ value: "", label: "Bull" }, ...bullRows.map((bull) => ({ value: bull.id, label: `${bull.code} · ${bull.name}` }))]}
-                />
-                <input name="batchNumber" required placeholder="Batch number" className={inputClass} />
+                <label className="grid gap-1 text-sm">
+                  Bull
+                  <FormSelect
+                    name="bullId"
+                    required
+                    defaultValue=""
+                    options={[{ value: "", label: "Select bull" }, ...bullRows.map((bull) => ({ value: bull.id, label: `${bull.code} · ${bull.name}` }))]}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Batch number
+                  <input name="batchNumber" required maxLength={60} placeholder="Batch number" className={inputClass} />
+                </label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="quantity" type="number" min={1} placeholder="Quantity" required className={inputClass} />
-                  <input name="price" inputMode="decimal" placeholder="Price per straw" className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Quantity (1–200)
+                    <input name="quantity" type="number" min={1} max={200} step={1} placeholder="Quantity" required className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Price per straw (₹)
+                    <input name="price" type="number" min={0} max={1000000} step="0.01" inputMode="decimal" placeholder="Price per straw" className={inputClass} />
+                  </label>
                 </div>
-                <FormSelect name="semenType" defaultValue="conventional" options={types} />
+                <label className="grid gap-1 text-sm">
+                  Semen type
+                  <FormSelect name="semenType" defaultValue="conventional" options={types} />
+                </label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="collectedOn" type="date" className={inputClass} />
-                  <input name="receivedOn" type="date" defaultValue={today} className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Collection date
+                    <input name="collectedOn" type="date" max={today} className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Received date
+                    <input name="receivedOn" type="date" defaultValue={today} className={inputClass} />
+                  </label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <input name="tank" placeholder="Tank" className={inputClass} />
-                  <input name="canister" placeholder="Canister" className={inputClass} />
-                  <input name="goblet" placeholder="Goblet" className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Tank
+                    <input name="tank" maxLength={40} placeholder="Tank" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Canister
+                    <input name="canister" maxLength={40} placeholder="Canister" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Goblet
+                    <input name="goblet" maxLength={40} placeholder="Goblet" className={inputClass} />
+                  </label>
                 </div>
                 <div className="flex justify-end">
                   <Submit>Create straws</Submit>
@@ -213,16 +243,22 @@ export default async function SemenPage({
             <RecordDialog title="Adjust a straw" button="Adjust count">
               <form action={discardStraw} className="grid gap-3">
                 <input type="hidden" name="returnTab" value="straws" />
-                <FormSelect
-                  name="code"
-                  required
-                  defaultValue=""
-                  options={[
-                    { value: "", label: "Available straw" },
-                    ...strawRows.filter((straw) => straw.status === "available").map((straw) => ({ value: straw.code, label: straw.code })),
-                  ]}
-                />
-                <input name="reason" required placeholder="Reason for the count" className={inputClass} />
+                <label className="grid gap-1 text-sm">
+                  Available straw
+                  <FormSelect
+                    name="code"
+                    required
+                    defaultValue=""
+                    options={[
+                      { value: "", label: "Select available straw" },
+                      ...strawRows.filter((straw) => straw.status === "available").map((straw) => ({ value: straw.code, label: straw.code })),
+                    ]}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Reason for adjustment
+                  <input name="reason" required maxLength={240} placeholder="Reason for the count" className={inputClass} />
+                </label>
                 <p className="text-xs text-muted-foreground">This marks the straw discarded and keeps the reason on the audit log. The batch receipt stays as it was received.</p>
                 <div className="flex justify-end">
                   <Submit>Discard straw</Submit>
@@ -281,18 +317,44 @@ export default async function SemenPage({
             <RecordDialog title="Add bull" button="Add bull">
               <form action={saveBull} className="grid gap-3">
                 <input type="hidden" name="returnTab" value="bulls" />
-                <input name="code" required placeholder="Bull code" className={inputClass} />
-                <input name="name" required placeholder="Name" className={inputClass} />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="breed" placeholder="Breed" className={inputClass} />
-                  <input name="registration" placeholder="Registration number" className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Bull code
+                    <input name="code" required maxLength={40} placeholder="Bull code" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Name
+                    <input name="name" required maxLength={80} placeholder="Name" className={inputClass} />
+                  </label>
                 </div>
-                <input name="company" placeholder="Semen company" className={inputClass} />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="sireCode" placeholder="Sire code" className={inputClass} />
-                  <input name="damCode" placeholder="Dam code" className={inputClass} />
+                  <label className="grid gap-1 text-sm">
+                    Breed
+                    <input name="breed" maxLength={60} placeholder="Breed" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Registration number
+                    <input name="registration" maxLength={60} placeholder="Registration number" className={inputClass} />
+                  </label>
                 </div>
-                <input name="notes" placeholder="Genetic & performance notes" className={inputClass} />
+                <label className="grid gap-1 text-sm">
+                  Semen company
+                  <input name="company" maxLength={80} placeholder="Semen company" className={inputClass} />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm">
+                    Sire code
+                    <input name="sireCode" maxLength={40} placeholder="Sire code" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Dam code
+                    <input name="damCode" maxLength={40} placeholder="Dam code" className={inputClass} />
+                  </label>
+                </div>
+                <label className="grid gap-1 text-sm">
+                  Genetic & performance notes
+                  <input name="notes" maxLength={240} placeholder="Genetic & performance notes" className={inputClass} />
+                </label>
                 <label className="grid gap-1 text-xs font-medium text-muted-foreground">
                   Bull photograph
                   <input

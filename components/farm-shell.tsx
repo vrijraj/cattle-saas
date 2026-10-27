@@ -67,8 +67,8 @@ export function FarmShell({
 
   return (
     <ScreenTransition>
-      <div className="min-h-screen bg-[#141518] text-foreground md:grid md:grid-cols-[244px_1fr]">
-        <aside className="sticky top-0 hidden h-screen flex-col self-start overflow-hidden bg-[#141518] text-zinc-100 md:flex">
+      <div className="min-h-screen bg-[#141518] text-foreground md:grid md:grid-cols-[244px_1fr] print:block print:min-h-0 print:bg-white">
+        <aside className="sticky top-0 hidden h-screen flex-col self-start overflow-hidden bg-[#141518] text-zinc-100 md:flex print:hidden">
           <div className="flex items-center justify-between px-3.5 pt-3.5 pb-2">
             <Link href="/dashboard" className="flex items-center gap-2">
               <span className="grid size-6 place-items-center rounded-md bg-white text-[#141518]">
@@ -111,8 +111,8 @@ export function FarmShell({
           </div>
         </aside>
 
-        <div className="min-w-0 bg-[#f3f4f6] md:my-2 md:mr-2 md:flex md:min-h-[calc(100vh-1rem)] md:flex-col md:overflow-x-clip md:rounded-[24px] md:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
-          <header className="sticky top-0 z-20 flex items-center justify-between gap-2 bg-[#f3f4f6]/90 px-3 py-2.5 backdrop-blur-md sm:px-6 md:rounded-t-[24px]">
+        <div className="min-w-0 bg-[#f3f4f6] md:my-2 md:mr-2 md:flex md:min-h-[calc(100vh-1rem)] md:flex-col md:overflow-x-clip md:rounded-[24px] md:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] print:m-0 print:min-h-0 print:rounded-none print:bg-white print:shadow-none">
+          <header className="sticky top-0 z-20 flex items-center justify-between gap-2 bg-[#f3f4f6]/90 px-3 py-2.5 backdrop-blur-md sm:px-6 md:rounded-t-[24px] print:hidden">
             <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
               <FarmDrawer
                 farmName={farmName}
@@ -177,7 +177,7 @@ export function FarmShell({
             </div>
           </header>
 
-          <main className="mx-auto w-full min-w-0 max-w-[1220px] flex-1 overflow-x-clip px-4 pt-2 pb-8 sm:px-7 md:px-9">
+          <main className="mx-auto w-full min-w-0 max-w-[1220px] flex-1 overflow-x-clip px-4 pt-2 pb-8 sm:px-7 md:px-9 print:max-w-none print:p-0">
             <PageTransition>{children}</PageTransition>
           </main>
         </div>

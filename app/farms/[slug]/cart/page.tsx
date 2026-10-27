@@ -78,9 +78,18 @@ export default async function CartPage({
             <p className="text-lg font-semibold">Total ₹{total.toLocaleString("en-IN")}</p>
             <form action={placeCart} className="grid gap-3 rounded-2xl border border-border bg-card p-5">
               <input type="hidden" name="slug" value={slug} />
-              <input name="name" required placeholder="Name" className={inputClass} />
-              <input name="phone" required placeholder="Phone" className={inputClass} />
-              <input name="address" required placeholder="Address" className={inputClass} />
+              <label className="grid gap-1 text-sm">
+                Full name
+                <input name="name" required maxLength={120} placeholder="Name" className={inputClass} />
+              </label>
+              <label className="grid gap-1 text-sm">
+                Phone number
+                <input name="phone" type="tel" required minLength={7} maxLength={20} placeholder="Phone" className={inputClass} />
+              </label>
+              <label className="grid gap-1 text-sm">
+                Delivery address
+                <input name="address" required maxLength={240} placeholder="Address" className={inputClass} />
+              </label>
               <div>
                 <Submit>Checkout</Submit>
               </div>

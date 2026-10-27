@@ -95,6 +95,10 @@ export default async function MilkPage({
                     Milk price per litre (INR)
                     <input
                       name="milkPricePerLitre"
+                      type="number"
+                      min={0}
+                      max={1000}
+                      step="0.01"
                       inputMode="decimal"
                       required
                       defaultValue={milkPrice.toFixed(2)}
@@ -206,6 +210,10 @@ export default async function MilkPage({
                   <span className="lg:sr-only">Morning (L)</span>
                   <input
                     name={`morning-${animal.id}`}
+                    type="number"
+                    min={0}
+                    max={80}
+                    step="0.1"
                     inputMode="decimal"
                     placeholder="0.0"
                     defaultValue={row?.morningLitres ?? ""}
@@ -217,6 +225,10 @@ export default async function MilkPage({
                   <span className="lg:sr-only">Evening (L)</span>
                   <input
                     name={`evening-${animal.id}`}
+                    type="number"
+                    min={0}
+                    max={80}
+                    step="0.1"
                     inputMode="decimal"
                     placeholder="0.0"
                     defaultValue={row?.eveningLitres ?? ""}

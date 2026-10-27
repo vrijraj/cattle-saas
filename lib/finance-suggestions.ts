@@ -8,7 +8,7 @@ export function canonicalCategory(kind: "income" | "expense", category: string) 
 
 export function countsInAnimalBooks(note: string | null) {
   if (!note) return true;
-  return !note.includes("suggested:milk:") && !note.includes("suggested:medicine:") && !note.includes("suggested:semen:");
+  return !note.includes("suggested:milk:") && !note.includes("suggested:medicine:") && !note.includes("suggested:semen:") && !note.includes("suggested:feed:");
 }
 
 export function animalResult(input: { litres: number; price: number; sale: number; feed: number; medicine: number; breeding: number }) {

@@ -22,7 +22,7 @@ export function AnimalForm({
       {state.error ? <p className="rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger md:col-span-2">{state.error}</p> : null}
       <label className="text-sm">
         Name
-        <input name="name" className={field} />
+        <input name="name" maxLength={80} className={field} />
       </label>
       <label className="text-sm">
         Sex
@@ -63,19 +63,19 @@ export function AnimalForm({
       </label>
       <label className="text-sm">
         Ear tag
-        <input name="earTag" className={field} />
+        <input name="earTag" maxLength={40} className={field} />
       </label>
       <label className="text-sm">
         Colour
-        <input name="colour" className={field} />
+        <input name="colour" maxLength={80} className={field} />
       </label>
       <label className="text-sm">
         Identification marks
-        <input name="marks" className={field} />
+        <input name="marks" maxLength={200} className={field} />
       </label>
       <label className="text-sm">
         Purchase source
-        <input name="purchaseSource" placeholder="Breeder or market" className={field} />
+        <input name="purchaseSource" maxLength={120} placeholder="Breeder or market" className={field} />
       </label>
       <label className="text-sm">
         Purchase date
@@ -83,7 +83,7 @@ export function AnimalForm({
       </label>
       <label className="text-sm">
         Purchase price (INR)
-        <input name="purchasePrice" inputMode="decimal" placeholder="0.00" className={field} />
+        <input name="purchasePrice" type="number" min={0} max={100000000} step="0.01" inputMode="decimal" placeholder="0.00" className={field} />
       </label>
       <button disabled={pending} className="h-11 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground disabled:opacity-60 md:col-span-2 md:justify-self-start" type="submit">
         {pending ? "Saving…" : "Save animal"}

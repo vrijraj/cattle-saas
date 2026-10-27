@@ -21,7 +21,7 @@ export default async function PublicFarmPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ sent?: string }>;
+  searchParams: Promise<{ sent?: string; error?: string }>;
 }) {
   const { slug } = await params;
   const query = await searchParams;
@@ -47,6 +47,7 @@ export default async function PublicFarmPage({
           }
         />
         {query.sent ? <Notice>Your enquiry has been sent to the farm.</Notice> : null}
+        {query.error ? <Notice tone="danger">Enter your name, phone number, and message before sending.</Notice> : null}
         <ul className="grid gap-3 sm:grid-cols-2">
           {published.map(({ listing, animal, breed }) => (
             <li key={listing.id}>
@@ -74,9 +75,18 @@ export default async function PublicFarmPage({
         <Panel title="Enquiry" className="max-w-lg">
           <form action={sendEnquiry} className="grid gap-3">
             <input type="hidden" name="slug" value={slug} />
-            <input name="name" required placeholder="Your name" className={inputClass} />
-            <input name="phone" required placeholder="Phone" className={inputClass} />
-            <textarea name="message" required placeholder="Message" className="min-h-28 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            <label className="grid gap-1 text-sm">
+              Your name
+              <input name="name" required maxLength={120} placeholder="Your name" className={inputClass} />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Phone number
+              <input name="phone" type="tel" required minLength={7} maxLength={20} placeholder="Phone" className={inputClass} />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Message
+              <textarea name="message" required maxLength={1000} placeholder="Message" className="min-h-28 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+            </label>
             <Submit>Send enquiry</Submit>
           </form>
         </Panel>

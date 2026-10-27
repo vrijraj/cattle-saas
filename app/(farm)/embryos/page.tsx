@@ -143,21 +143,21 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1 text-sm">
                     Flush date
-                    <input name="flushedOn" type="date" defaultValue={today} className={inputClass} />
+                    <input name="flushedOn" type="date" max={today} defaultValue={today} className={inputClass} />
                   </label>
                   <label className="grid gap-1 text-sm">
                     Oocytes collected
-                    <input name="oocytes" required inputMode="numeric" placeholder="Oocytes collected" className={inputClass} />
+                    <input name="oocytes" type="number" min={0} max={200} step={1} required inputMode="numeric" placeholder="Oocytes collected" className={inputClass} />
                   </label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1 text-sm">
                     Embryos produced
-                    <input name="produced" required inputMode="numeric" placeholder="Embryos produced" className={inputClass} />
+                    <input name="produced" type="number" min={0} max={20} step={1} required inputMode="numeric" placeholder="Embryos produced" className={inputClass} />
                   </label>
                   <label className="grid gap-1 text-sm">
                     Grade
-                    <input name="grade" placeholder="Grade" className={inputClass} />
+                    <input name="grade" maxLength={40} placeholder="Grade" className={inputClass} />
                   </label>
                 </div>
                 <label className="grid gap-1 text-sm">
