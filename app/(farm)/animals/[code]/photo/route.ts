@@ -1,11 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { animals, bulls } from "@/db/schema";
-import { requireFarm } from "@/lib/farm-context";
+import { getFarm } from "@/lib/farm-context";
+import { canViewSemen } from "@/lib/permissions";
 import { readPrivateObject, storageConfigured } from "@/lib/storage";
 
 export async function GET(_request: Request, context: { params: Promise<{ code: string }> }) {
-  const farm = await requireFarm();
+  const farm = await getFarm();
+  if (!farm) return new Response("Unauthorized", { status: 401 });
   const { code } = await context.params;
   const [animal] = await db
     .select({ photoKey: animals.photoKey })
@@ -13,7 +15,7 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
     .where(and(eq(animals.farmId, farm.farmId), eq(animals.code, code)))
     .limit(1);
   let photoKey = animal?.photoKey ?? null;
-  if (!photoKey) {
+  if (!photoKey && canViewSemen(farm.roles)) {
     const [bull] = await db
       .select({ photoKey: bulls.photoKey })
       .from(bulls)
@@ -28,7 +30,8 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
   return new Response(new Uint8Array(object.bytes), {
     headers: {
       "Content-Type": object.contentType,
-      "Cache-Control": "private, max-age=3600",
+      "Cache-Control": "private, no-cache",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

@@ -24,11 +24,14 @@ export function RecordDialog({
   children: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const pointerOnBackdrop = useRef(false);
   const titleId = useId();
 
   function show() {
+    const dialog = dialogRef.current;
+    if (!dialog || dialog.open) return;
     const top = window.scrollY;
-    dialogRef.current?.showModal();
+    dialog.showModal();
     window.scrollTo({ top });
   }
 
@@ -36,15 +39,19 @@ export function RecordDialog({
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open) {
-      const top = window.scrollY;
-      dialog.showModal();
-      window.scrollTo({ top });
-    } else if (dialog.open) dialog.close();
+      if (!dialog.open) {
+        const top = window.scrollY;
+        dialog.showModal();
+        window.scrollTo({ top });
+      }
+    } else if (dialog.open) {
+      dialog.close();
+    }
   }, [open]);
 
   function close() {
-    dialogRef.current?.close();
-    onDismiss?.();
+    if (dialogRef.current?.open) dialogRef.current.close();
+    else onDismiss?.();
   }
 
   return (
@@ -65,8 +72,13 @@ export function RecordDialog({
       <dialog
         ref={dialogRef}
         aria-labelledby={titleId}
+        onClose={() => onDismiss?.()}
+        onPointerDown={(event) => {
+          pointerOnBackdrop.current = event.target === event.currentTarget;
+        }}
         onClick={(event) => {
-          if (event.target === event.currentTarget) close();
+          if (pointerOnBackdrop.current && event.target === event.currentTarget) close();
+          pointerOnBackdrop.current = false;
         }}
         className="m-auto w-[min(36rem,calc(100%-2rem))] overflow-visible rounded-2xl border border-border bg-card text-foreground shadow-2xl backdrop:bg-[#0f1f17]/45 backdrop:backdrop-blur-[2px]"
       >

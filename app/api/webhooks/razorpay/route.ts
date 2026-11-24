@@ -14,18 +14,26 @@ export async function POST(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const event = JSON.parse(body) as {
+  let event: {
     event?: string;
     payload?: {
-      payment?: { entity?: { order_id?: string } };
-      order?: { entity?: { id?: string } };
+      payment?: { entity?: { id?: string; order_id?: string; amount?: number } };
+      order?: { entity?: { id?: string; amount?: number } };
     };
   };
+  try {
+    event = JSON.parse(body);
+  } catch {
+    return new Response("Bad Request", { status: 400 });
+  }
+
   if (event.event !== "payment.captured" && event.event !== "order.paid") {
     return new Response("ok");
   }
   const razorpayOrderId = event.payload?.payment?.entity?.order_id ?? event.payload?.order?.entity?.id;
+  const razorpayPaymentId = event.payload?.payment?.entity?.id;
+  const paidAmountPaise = event.payload?.payment?.entity?.amount ?? event.payload?.order?.entity?.amount;
   if (!razorpayOrderId) return new Response("ok");
-  await markOrderPaid(razorpayOrderId);
+  await markOrderPaid(razorpayOrderId, razorpayPaymentId, typeof paidAmountPaise === "number" ? paidAmountPaise : undefined);
   return new Response("ok");
 }

@@ -54,8 +54,9 @@ Answer in short paragraphs. When the answer is a set of animals or rows, use one
 
   const store = sessions();
   await store.whenReady();
-  const existing = sessionId ? await store.getSession({ appName: APP_NAME, userId: scope.userId, sessionId }) : undefined;
-  const session = existing ?? (await store.createSession({ appName: APP_NAME, userId: scope.userId }));
+  const scopedUser = `${scope.farmId}:${scope.userId}`;
+  const existing = sessionId ? await store.getSession({ appName: APP_NAME, userId: scopedUser, sessionId }) : undefined;
+  const session = existing ?? (await store.createSession({ appName: APP_NAME, userId: scopedUser }));
   yield { type: "session", id: session.id, fresh: !existing };
 
   const runner = new Runner({ appName: APP_NAME, agent, sessionService: store });
@@ -79,7 +80,7 @@ Answer in short paragraphs. When the answer is a set of animals or rows, use one
         };
   try {
     for await (const event of runner.runAsync({
-      userId: scope.userId,
+      userId: scopedUser,
       sessionId: session.id,
       abortSignal,
       newMessage,

@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { alerts, animals, breeds, bulls, enquiries, locations, products, semenBatches, straws } from "@/db/schema";
 import { getFarm } from "@/lib/farm-context";
 import { herdMatchField, type HerdMatchRow } from "@/lib/herd-query";
-import { canReadAlert, canViewSemen } from "@/lib/permissions";
+import { canReadAlert, canViewEnquiries, canViewSemen, canViewShopAdmin } from "@/lib/permissions";
 
 function includes(values: Array<string | null | undefined>, term: string) {
   return values.some((value) => value?.toLowerCase().includes(term));
@@ -35,12 +35,17 @@ export async function GET(request: Request) {
     });
   }
 
+  const seeSemen = canViewSemen(farm.roles);
+  const seeShop = canViewShopAdmin(farm.roles);
+  const seeEnquiries = canViewEnquiries(farm.roles);
+
   const [cattleRows, strawRows, bullRows, alertRows, productRows, enquiryRows] = await Promise.all([
     db
       .select({
         code: animals.code,
         name: animals.name,
         earTag: animals.earTag,
+        rfid: animals.rfid,
         breedName: breeds.name,
         locationName: locations.name,
         geneticSireCode: animals.geneticSireCode,
@@ -51,40 +56,48 @@ export async function GET(request: Request) {
       .leftJoin(locations, eq(locations.id, animals.locationId))
       .where(eq(animals.farmId, farm.farmId))
       .orderBy(animals.code),
-    db
-      .select({
-        code: straws.code,
-        tank: straws.tank,
-        status: straws.status,
-        bullCode: bulls.code,
-        bullName: bulls.name,
-        batchNumber: semenBatches.batchNumber,
-        semenType: semenBatches.semenType,
-        semenCompany: bulls.semenCompany,
-      })
-      .from(straws)
-      .innerJoin(semenBatches, eq(semenBatches.id, straws.batchId))
-      .innerJoin(bulls, eq(bulls.id, semenBatches.bullId))
-      .where(eq(straws.farmId, farm.farmId))
-      .orderBy(straws.code),
-    db
-      .select({ code: bulls.code, name: bulls.name, breed: bulls.breed, semenCompany: bulls.semenCompany })
-      .from(bulls)
-      .where(eq(bulls.farmId, farm.farmId))
-      .orderBy(bulls.code),
+    seeSemen
+      ? db
+          .select({
+            code: straws.code,
+            tank: straws.tank,
+            status: straws.status,
+            bullCode: bulls.code,
+            bullName: bulls.name,
+            batchNumber: semenBatches.batchNumber,
+            semenType: semenBatches.semenType,
+            semenCompany: bulls.semenCompany,
+          })
+          .from(straws)
+          .innerJoin(semenBatches, eq(semenBatches.id, straws.batchId))
+          .innerJoin(bulls, eq(bulls.id, semenBatches.bullId))
+          .where(eq(straws.farmId, farm.farmId))
+          .orderBy(straws.code)
+      : Promise.resolve([]),
+    seeSemen
+      ? db
+          .select({ code: bulls.code, name: bulls.name, breed: bulls.breed, semenCompany: bulls.semenCompany })
+          .from(bulls)
+          .where(eq(bulls.farmId, farm.farmId))
+          .orderBy(bulls.code)
+      : Promise.resolve([]),
     db
       .select({ id: alerts.id, title: alerts.title, body: alerts.body, status: alerts.status, type: alerts.type })
       .from(alerts)
       .where(eq(alerts.farmId, farm.farmId)),
-    db
-      .select({ id: products.id, name: products.name, category: products.category })
-      .from(products)
-      .where(eq(products.farmId, farm.farmId))
-      .orderBy(products.name),
-    db
-      .select({ id: enquiries.id, name: enquiries.name, phone: enquiries.phone, animalCode: enquiries.animalCode, message: enquiries.message })
-      .from(enquiries)
-      .where(eq(enquiries.farmId, farm.farmId)),
+    seeShop
+      ? db
+          .select({ id: products.id, name: products.name, category: products.category })
+          .from(products)
+          .where(eq(products.farmId, farm.farmId))
+          .orderBy(products.name)
+      : Promise.resolve([]),
+    seeEnquiries
+      ? db
+          .select({ id: enquiries.id, name: enquiries.name, phone: enquiries.phone, animalCode: enquiries.animalCode, message: enquiries.message })
+          .from(enquiries)
+          .where(eq(enquiries.farmId, farm.farmId))
+      : Promise.resolve([]),
   ]);
 
   const cattle = take(
@@ -94,16 +107,14 @@ export async function GET(request: Request) {
     }),
     8,
   );
-  const seeSemen = canViewSemen(farm.roles);
-  const strawMatches = seeSemen
-    ? take(
-        strawRows.filter((row) => includes([row.code, row.tank, row.bullCode, row.bullName, row.batchNumber, row.semenType, row.semenCompany], term)),
-        5,
-      )
-    : { items: [], count: 0 };
-  const bullMatches = seeSemen
-    ? take(bullRows.filter((row) => includes([row.code, row.name, row.breed, row.semenCompany], term)), 5)
-    : { items: [], count: 0 };
+  const strawMatches = take(
+    strawRows.filter((row) => includes([row.code, row.tank, row.bullCode, row.bullName, row.batchNumber, row.semenType, row.semenCompany], term)),
+    5,
+  );
+  const bullMatches = take(
+    bullRows.filter((row) => includes([row.code, row.name, row.breed, row.semenCompany], term)),
+    5,
+  );
   const alertMatches = take(
     alertRows.filter((row) => row.status === "open" && canReadAlert(farm.roles, row.type) && includes([row.title, row.body], term)),
     5,
@@ -124,6 +135,7 @@ export async function GET(request: Request) {
       breedName: row.breedName,
       locationName: row.locationName,
       earTag: row.earTag,
+      rfid: row.rfid,
       match: row.match,
     })),
     cattleCount: cattle.count,

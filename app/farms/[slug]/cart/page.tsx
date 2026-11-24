@@ -34,7 +34,7 @@ export default async function CartPage({
   const byId = new Map(catalogue.map((product) => [product.id, product]));
   const rows = lines.flatMap((line) => {
     const product = byId.get(line.productId);
-    return product ? [{ product, quantity: line.quantity }] : [];
+    return product ? [{ product, quantity: Math.min(line.quantity, Math.max(product.stock, 1)) }] : [];
   });
   const total = rows.reduce((sum, row) => sum + Number(row.product.price) * row.quantity, 0);
 
@@ -51,10 +51,15 @@ export default async function CartPage({
     >
       <div className="mx-auto max-w-xl space-y-5">
         <h1 className="text-3xl font-semibold tracking-tight">Cart</h1>
-        {query.error === "stock" ? <Notice tone="danger">One of those products does not have enough stock.</Notice> : null}
+        {query.error === "stock" ? <Notice tone="danger">Stock or product availability changed. Check the updated quantities below.</Notice> : null}
         {query.error === "1" ? <Notice tone="danger">Add a name, phone, and address before checkout.</Notice> : null}
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">The cart is empty.</p>
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <p className="text-sm text-muted-foreground">The cart is empty.</p>
+            <Link href={`/farms/${slug}/shop`} className="mt-4 inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground">
+              Browse products
+            </Link>
+          </div>
         ) : (
           <>
             <ul className="divide-y divide-border rounded-2xl border border-border bg-card">
@@ -62,16 +67,37 @@ export default async function CartPage({
                 <li key={row.product.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                   <div>
                     <p className="font-medium">{row.product.name}</p>
-                    <p className="text-sm text-muted-foreground">₹{Number(row.product.price).toLocaleString("en-IN")} each</p>
+                    <p className="text-sm text-muted-foreground">
+                      ₹{Number(row.product.price).toLocaleString("en-IN")} each · {row.product.stock} in stock
+                    </p>
                   </div>
-                  <form action={updateCart} className="flex items-center gap-2">
-                    <input type="hidden" name="slug" value={slug} />
-                    <input type="hidden" name="productId" value={row.product.id} />
-                    <input name="quantity" type="number" min={0} defaultValue={row.quantity} className="h-10 w-16 rounded-xl border border-border bg-background px-2 text-sm" />
-                    <button type="submit" className="text-sm font-medium text-primary">
-                      Update
-                    </button>
-                  </form>
+                  <div className="flex items-center gap-3">
+                    <form action={updateCart} className="flex items-center gap-2">
+                      <input type="hidden" name="slug" value={slug} />
+                      <input type="hidden" name="productId" value={row.product.id} />
+                      <input
+                        name="quantity"
+                        type="number"
+                        min={0}
+                        max={row.product.stock}
+                        step={1}
+                        defaultValue={row.quantity}
+                        aria-label={`Quantity for ${row.product.name}`}
+                        className="h-10 w-16 rounded-xl border border-border bg-background px-2 text-sm"
+                      />
+                      <button type="submit" className="text-sm font-medium text-primary">
+                        Update
+                      </button>
+                    </form>
+                    <form action={updateCart}>
+                      <input type="hidden" name="slug" value={slug} />
+                      <input type="hidden" name="productId" value={row.product.id} />
+                      <input type="hidden" name="quantity" value="0" />
+                      <button type="submit" className="text-xs text-muted-foreground hover:text-foreground">
+                        Remove
+                      </button>
+                    </form>
+                  </div>
                 </li>
               ))}
             </ul>

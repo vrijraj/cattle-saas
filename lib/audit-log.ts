@@ -19,10 +19,14 @@ const entities: Record<string, string> = {
   deworming: "Deworming",
   isolation: "Isolation",
   milk: "Milk",
+  weight: "Weight",
+  feed: "Feed",
+  feed_movement: "Feed movement",
   finance: "Finance",
   semen: "Semen",
   bull: "Bull",
   embryo: "Embryo",
+  embryo_transfer: "Embryo transfer",
   flush: "Embryo collection",
   mating_check: "Mating check",
   alert: "Alert",
@@ -32,7 +36,13 @@ const entities: Record<string, string> = {
   member: "Team member",
   location: "Location",
   location_move: "Shed move",
+  listing: "Listing",
+  product: "Product",
   order: "Order",
+  enquiry: "Enquiry",
+  farm_settings: "Farm settings",
+  farm_milk_settings: "Milk settings",
+  breed: "Breed",
 };
 
 const changeLabels: Record<string, string> = {
@@ -57,10 +67,14 @@ const destinations: Record<string, string> = {
   bull: "/semen",
   semen: "/semen",
   embryo: "/embryos",
+  embryo_transfer: "/embryos?tab=transfers",
   flush: "/embryos",
   location: "/locations",
   location_move: "/locations",
+  listing: "/listings",
+  product: "/shop",
   order: "/shop",
+  enquiry: "/enquiries",
   health: "/health",
   vaccination: "/health",
   deworming: "/health",
@@ -72,9 +86,15 @@ const destinations: Record<string, string> = {
   dry_off: "/breeding",
   mating_check: "/breeding",
   milk: "/milk",
+  weight: "/animals",
+  feed: "/feed",
+  feed_movement: "/feed",
   animal: "/animals",
   invite: "/team",
   member: "/team",
+  farm_settings: "/settings",
+  farm_milk_settings: "/milk",
+  breed: "/settings",
 };
 
 export function auditActionLabel(action: string) {
@@ -87,25 +107,46 @@ export function auditEntityLabel(entity: string) {
 
 export function auditRecordHref(entity: string, after: unknown) {
   if (entity === "export") {
-    const kind = record(after).kind;
+    const data = record(after);
+    const kind = data.kind;
+    if (kind === "pedigree") {
+      const code = typeof data.code === "string" ? data.code : typeof data.animalCode === "string" ? data.animalCode : "";
+      return code ? `/animals/${encodeURIComponent(code)}` : "/animals";
+    }
     return typeof kind === "string" && kind ? `/reports?tab=${encodeURIComponent(kind)}` : "/reports";
   }
   return destinations[entity] ?? null;
 }
 
-export function auditChange(after: unknown) {
-  return Object.entries(record(after))
-    .filter((entry): entry is [string, string | number | boolean] => {
-      const value = entry[1];
-      if (value == null || value === "" || typeof value === "object") return false;
-      if (/id$/i.test(entry[0])) return false;
-      return !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value));
-    })
+function formatScalar(value: string | number | boolean) {
+  const text = String(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return formatDisplayDate(text);
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
+function isDisplayableEntry(key: string, value: unknown): value is string | number | boolean {
+  if (value == null || value === "" || typeof value === "object") return false;
+  if (/id$/i.test(key)) return false;
+  return !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value));
+}
+
+export function auditChange(after: unknown, before?: unknown) {
+  const afterRec = record(after);
+  const beforeRec = record(before);
+  const hasBefore = Object.keys(beforeRec).length > 0;
+
+  return Object.entries(afterRec)
+    .filter((entry): entry is [string, string | number | boolean] => isDisplayableEntry(entry[0], entry[1]))
+    .filter(([key, value]) => !hasBefore || !(key in beforeRec) || beforeRec[key] !== value)
     .slice(0, 6)
     .map(([key, value]) => {
-      const text = String(value);
-      const shown = /^\d{4}-\d{2}-\d{2}$/.test(text) ? formatDisplayDate(text) : text.length > 80 ? `${text.slice(0, 77)}...` : text;
-      return `${changeLabels[key] ?? title(key)} ${shown}`;
+      const label = changeLabels[key] ?? title(key);
+      const shown = formatScalar(value);
+      if (hasBefore && key in beforeRec && isDisplayableEntry(key, beforeRec[key])) {
+        const prev = formatScalar(beforeRec[key]);
+        if (prev !== shown) return `${label} ${prev} → ${shown}`;
+      }
+      return `${label} ${shown}`;
     })
     .join(" · ");
 }

@@ -216,6 +216,11 @@ function PedigreeViewport({ children }: { children: ReactNode }) {
     startMotion();
   }
 
+  const zoomTowardRef = useRef(zoomToward);
+  useEffect(() => {
+    zoomTowardRef.current = zoomToward;
+  });
+
   useEffect(() => {
     const node = frame.current;
     if (!node) return;
@@ -224,7 +229,7 @@ function PedigreeViewport({ children }: { children: ReactNode }) {
       const rect = node.getBoundingClientRect();
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? node.clientHeight : 1;
       const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-      zoomToward(Math.max(-0.18, Math.min(0.18, -(event.deltaY * unit) / 700)), point);
+      zoomTowardRef.current(Math.max(-0.18, Math.min(0.18, -(event.deltaY * unit) / 700)), point);
     };
     node.addEventListener("wheel", onWheel, { passive: false });
     return () => node.removeEventListener("wheel", onWheel);

@@ -109,7 +109,11 @@ export const animals = pgTable(
     purchaseSource: text("purchase_source"),
     purchaseDate: date("purchase_date"),
     purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }),
+    exitOn: date("exit_on"),
+    exitReason: text("exit_reason"),
+    exitAmount: numeric("exit_amount", { precision: 12, scale: 2 }),
     geneticDamId: text("genetic_dam_id").references((): AnyPgColumn => animals.id),
+    birthDamId: text("birth_dam_id").references((): AnyPgColumn => animals.id),
     geneticSireCode: text("genetic_sire_code"),
     geneticSireName: text("genetic_sire_name"),
     conceptionOn: date("conception_on"),
@@ -126,6 +130,9 @@ export const animals = pgTable(
     uniqueIndex("animal_farm_ear_tag")
       .on(table.farmId, table.earTag)
       .where(sql`${table.earTag} is not null`),
+    uniqueIndex("animal_farm_rfid")
+      .on(table.farmId, table.rfid)
+      .where(sql`${table.rfid} is not null`),
   ],
 );
 

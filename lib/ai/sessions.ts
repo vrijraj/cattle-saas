@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { InMemorySessionService } from "@google/adk";
 import type { AppendEventRequest, CreateSessionRequest, GetSessionRequest } from "@google/adk";
 
@@ -100,14 +100,26 @@ export class DurableSessionService extends InMemorySessionService {
   }
 
   private flush() {
-    const rows = [...this.records.values()].sort((a, b) => a.lastUpdateTime - b.lastUpdateTime).slice(-MAX_SESSIONS);
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    writeFileSync(this.filePath, JSON.stringify(rows));
+    const kept = [...this.records.values()].sort((a, b) => a.lastUpdateTime - b.lastUpdateTime).slice(-MAX_SESSIONS);
+    const keptKeys = new Set(kept.map((item) => storageKey(item.appName, item.userId, item.id)));
+    for (const key of this.records.keys()) {
+      if (!keptKeys.has(key)) this.records.delete(key);
+    }
+    try {
+      const dir = dirname(this.filePath);
+      mkdirSync(dir, { recursive: true });
+      const tmp = `${this.filePath}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify(kept));
+      renameSync(tmp, this.filePath);
+    } catch {
+      // Ignore write failures on read-only serverless filesystems; in-memory sessions still work.
+    }
   }
 }
 
 export function sessionFilePath() {
   const databaseUrl = process.env.DATABASE_URL ?? "pglite:.data/pglite";
   const dataDir = databaseUrl.startsWith("pglite:") ? databaseUrl.slice("pglite:".length) : ".data/pglite";
-  return `${dirname(dataDir)}/ai-sessions.json`;
+  const parent = dirname(dataDir);
+  return join(parent === "." ? ".data" : parent, "ai-sessions.json");
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chartFor, inReportRange, reportCharts, reportFacts, reportWindow } from "./report-data";
+import { csvFile, pdfSafeText } from "./report-files";
 
 describe("report windows", () => {
   it("keeps a day inside the chosen dates and swaps a reversed range", () => {
@@ -60,5 +61,20 @@ describe("report charts", () => {
       { label: "Balance", value: "₹0.00" },
       { label: "Voided", value: "1" },
     ]);
+  });
+});
+
+describe("report export formatting", () => {
+  it("transliterates WinAnsi-unsafe characters cleanly for PDF", () => {
+    expect(pdfSafeText("Sagar · ₹1,200 − 5 × 2")).toBe("Sagar  -  Rs. 1,200 - 5 x 2");
+  });
+
+  it("adds UTF-8 BOM and neutralizes CSV formula injection while keeping signed numbers", () => {
+    const csv = csvFile([
+      ["Name", "Delta", "Note"],
+      ["=CMD()", "-120.5", "+500.0"],
+    ]);
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv).toContain("\"'=CMD()\",\"-120.5\",\"+500.0\"");
   });
 });

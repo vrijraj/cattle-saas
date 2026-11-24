@@ -2,6 +2,7 @@ const herdFields = [
   ["code", "Code"],
   ["name", "Name"],
   ["earTag", "Ear tag"],
+  ["rfid", "RFID"],
   ["breedName", "Breed"],
   ["locationName", "Shed"],
   ["geneticSireCode", "Sire code"],
@@ -12,6 +13,7 @@ export type HerdMatchRow = {
   code: string;
   name: string | null;
   earTag: string | null;
+  rfid?: string | null;
   breedName: string | null;
   locationName: string | null;
   geneticSireCode: string | null;

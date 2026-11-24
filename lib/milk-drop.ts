@@ -31,7 +31,7 @@ export function animalMilkDrop(input: {
   dropPercent?: number;
 }): MilkDrop | null {
   const threshold = input.dropPercent ?? DROP_PERCENT;
-  if (input.daysInMilk === null || input.daysInMilk < FRESH_DAYS) return null;
+  if (input.daysInMilk === null || input.daysInMilk <= FRESH_DAYS - 1) return null;
   if (input.requireBothSessions && (input.today.morning === null || input.today.evening === null)) return null;
   if (input.today.morning === null && input.today.evening === null) return null;
 
@@ -68,6 +68,6 @@ export function herdMilkDrop(
   return { todayLitres: todayRow.litres, baselineLitres: baseline, percentBelow };
 }
 
-export function milkDropBody(drop: MilkDrop) {
-  return `Today ${drop.todayLitres.toFixed(1)} L. Baseline ${drop.baselineLitres.toFixed(1)} L over the previous 7 days. Down ${drop.percentBelow}%.`;
+export function milkDropBody(drop: MilkDrop, dropPercent = DROP_PERCENT) {
+  return `Today ${drop.todayLitres.toFixed(1)} L. Baseline ${drop.baselineLitres.toFixed(1)} L over the previous 7 days. Down ${drop.percentBelow}% (rule: ${dropPercent}% or more after day 14 in milk).`;
 }

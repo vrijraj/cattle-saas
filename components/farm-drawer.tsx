@@ -12,9 +12,15 @@ export function FarmDrawer({
   initials,
   showTeam,
   showAudit,
+  showFinance,
+  showReports,
   showHealth,
   showSemen,
   showGenetics,
+  showShop,
+  showListings,
+  showEnquiries,
+  showSettings,
   signOut,
 }: {
   farmName: string;
@@ -23,9 +29,15 @@ export function FarmDrawer({
   initials: string;
   showTeam: boolean;
   showAudit: boolean;
+  showFinance: boolean;
+  showReports: boolean;
   showHealth: boolean;
   showSemen: boolean;
   showGenetics: boolean;
+  showShop: boolean;
+  showListings: boolean;
+  showEnquiries: boolean;
+  showSettings: boolean;
   signOut: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -33,12 +45,11 @@ export function FarmDrawer({
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    dialogRef.current?.close();
-    setOpen(false);
+    if (dialogRef.current?.open) dialogRef.current.close();
   }, [pathname]);
 
   function show() {
-    dialogRef.current?.showModal();
+    if (!dialogRef.current?.open) dialogRef.current?.showModal();
     setOpen(true);
   }
 
@@ -72,7 +83,7 @@ export function FarmDrawer({
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold text-white">{userName}</span>
                 <span className="block truncate text-xs text-zinc-400">
-                  {farmName} · {role.replaceAll("_", " ")}
+                  {farmName} · {role}
                 </span>
               </span>
             </div>
@@ -80,7 +91,20 @@ export function FarmDrawer({
               <X className="size-4" />
             </button>
           </div>
-          <FarmNav showTeam={showTeam} showAudit={showAudit} showHealth={showHealth} showSemen={showSemen} showGenetics={showGenetics} variant="drawer" />
+          <FarmNav
+            showTeam={showTeam}
+            showAudit={showAudit}
+            showFinance={showFinance}
+            showReports={showReports}
+            showHealth={showHealth}
+            showSemen={showSemen}
+            showGenetics={showGenetics}
+            showShop={showShop}
+            showListings={showListings}
+            showEnquiries={showEnquiries}
+            showSettings={showSettings}
+            variant="drawer"
+          />
           <div className="mt-auto border-t border-white/[0.08] px-3 py-3">{signOut}</div>
         </div>
       </dialog>

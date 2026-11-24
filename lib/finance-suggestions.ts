@@ -1,3 +1,5 @@
+import { feedAverageUnitCost } from "@/lib/feed-stock";
+
 export const INCOME_CATEGORIES = ["milk", "cattle sales", "calves", "semen", "embryos", "ghee and dairy products", "farmhouse", "other"] as const;
 export const EXPENSE_CATEGORIES = ["feed", "medicine", "veterinary", "labour", "breeding", "semen", "embryo work", "electricity", "transport", "other"] as const;
 
@@ -6,9 +8,16 @@ export function canonicalCategory(kind: "income" | "expense", category: string) 
   return allowed.find((item) => item.toLowerCase() === category.trim().toLowerCase()) ?? null;
 }
 
-export function countsInAnimalBooks(note: string | null) {
-  if (!note) return true;
-  return !note.includes("suggested:milk:") && !note.includes("suggested:medicine:") && !note.includes("suggested:semen:") && !note.includes("suggested:feed:");
+export function countsInAnimalBooks(note: string | null, sourceKey?: string | null) {
+  const key = sourceKey ?? note ?? "";
+  if (!key) return true;
+  return (
+    !key.includes("suggested:milk:") &&
+    !key.includes("suggested:medicine:") &&
+    !key.includes("suggested:semen:") &&
+    !key.includes("suggested:feed:") &&
+    !key.includes("suggested:sale:")
+  );
 }
 
 export function animalResult(input: { litres: number; price: number; sale: number; feed: number; medicine: number; breeding: number }) {
@@ -17,12 +26,29 @@ export function animalResult(input: { litres: number; price: number; sale: numbe
   return { milkValue, sale: input.sale, feed: input.feed, medicine: input.medicine, breeding: input.breeding, total };
 }
 
-export function allocatedFeedCost(rows: { kind: string; quantity: string | number; unitCost: string | number | null; note: string | null }[], code: string) {
+export function allocatedFeedCost(
+  rows: { itemId?: string; kind: string; quantity: string | number; unitCost: string | number | null; note: string | null; voidedAt?: Date | null }[],
+  code: string,
+) {
   const mark = ` · ${code}`;
-  return rows.reduce((sum, row) => {
-    if (row.kind !== "consumption" || !row.unitCost || !row.note?.endsWith(mark)) return sum;
-    return sum + Number(row.quantity) * Number(row.unitCost);
-  }, 0);
+  const avgByItem = new Map<string, number | null>();
+  for (const row of rows) {
+    if (!row.itemId || avgByItem.has(row.itemId)) continue;
+    avgByItem.set(
+      row.itemId,
+      feedAverageUnitCost(rows.filter((item) => item.itemId === row.itemId)),
+    );
+  }
+  return Math.round(
+    rows.reduce((sum, row) => {
+      if (row.voidedAt || row.kind !== "consumption" || !row.note?.endsWith(mark)) return sum;
+      const directCost = row.unitCost !== null && row.unitCost !== "" ? Number(row.unitCost) : null;
+      const avgCost = row.itemId ? (avgByItem.get(row.itemId) ?? null) : null;
+      const rate = directCost !== null && Number.isFinite(directCost) ? directCost : avgCost;
+      if (rate === null || rate <= 0) return sum;
+      return sum + Math.abs(Number(row.quantity)) * rate;
+    }, 0) * 100,
+  ) / 100;
 }
 
 export type FinanceSuggestion = {
@@ -43,14 +69,14 @@ export function milkValueSuggestion(input: {
 }): FinanceSuggestion | null {
   const key = `suggested:milk:${input.month}`;
   if (!input.price || input.litres <= 0) return null;
-  if (input.existingNotes.some((note) => note?.includes(key))) return null;
+  if (input.existingNotes.some((note) => note === key || note?.includes(key))) return null;
   return {
     key,
     kind: "income",
     category: "milk",
     amount: Math.round(input.litres * input.price * 100) / 100,
     entryOn: `${input.month}-01`,
-    label: `Milk · ${input.litres.toFixed(1)} L × ₹${input.price}`,
+    label: `Milk · ${input.month} · ${input.litres.toFixed(1)} L × ₹${input.price}`,
   };
 }
 
@@ -65,7 +91,7 @@ export function keyedSuggestion(input: {
   animalId?: string;
 }): FinanceSuggestion | null {
   if (input.amount <= 0) return null;
-  if (input.existingNotes.some((note) => note?.includes(input.key))) return null;
+  if (input.existingNotes.some((note) => note === input.key || note?.includes(input.key))) return null;
   return { key: input.key, kind: input.kind, category: input.category, amount: input.amount, entryOn: input.entryOn, label: input.label, animalId: input.animalId };
 }
 

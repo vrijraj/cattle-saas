@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { SubmitButton } from "@/components/submit-button";
 
 export const inputClass =
   "h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm text-foreground shadow-[0_1px_1px_rgba(15,35,24,0.02)] outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/20";
@@ -72,13 +73,20 @@ export function Table({ headers, children }: { headers: string[]; children: Reac
           <thead className="border-b border-border/80 bg-muted/55 text-[11px] tracking-wider text-muted-foreground uppercase">
             <tr>
               {headers.map((header, idx) => (
-                <th key={`${header}-${idx}`} className="px-4 py-3 font-semibold">
+                <th
+                  key={`${header}-${idx}`}
+                  className={`px-4 py-3 font-semibold ${
+                    idx === 0 ? "sticky left-0 z-[1] bg-[#f4f6f8] md:static md:bg-transparent" : ""
+                  }`}
+                >
                   {header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border/75">{children}</tbody>
+          <tbody className="divide-y divide-border/75 [&_td:first-child]:sticky [&_td:first-child]:left-0 [&_td:first-child]:bg-card md:[&_td:first-child]:static md:[&_td:first-child]:bg-transparent">
+            {children}
+          </tbody>
         </table>
       </div>
     </div>
@@ -100,14 +108,7 @@ export function EmptyRow({ cols, children }: { cols: number; children: ReactNode
 }
 
 export function Submit({ children }: { children: ReactNode }) {
-  return (
-    <button
-      className="inline-flex h-10 items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground shadow-xs transition hover:bg-[#0f5c34] active:scale-[0.99]"
-      type="submit"
-    >
-      {children}
-    </button>
-  );
+  return <SubmitButton>{children}</SubmitButton>;
 }
 
 export function Notice({ tone = "ok", children }: { tone?: "ok" | "danger"; children: ReactNode }) {
@@ -115,7 +116,11 @@ export function Notice({ tone = "ok", children }: { tone?: "ok" | "danger"; chil
     tone === "danger"
       ? "border-danger/25 bg-danger/10 text-danger"
       : "border-primary/20 bg-secondary text-secondary-foreground";
-  return <p className={`rounded-xl border px-3.5 py-2.5 text-sm font-medium ${toneClass}`}>{children}</p>;
+  return (
+    <p role={tone === "danger" ? "alert" : "status"} className={`rounded-xl border px-3.5 py-2.5 text-sm font-medium ${toneClass}`}>
+      {children}
+    </p>
+  );
 }
 
 export function Summary({

@@ -1,15 +1,15 @@
-import { and, eq, gte, or } from "drizzle-orm";
+import { and, eq, gte, isNull, or } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
-import { alerts, animals, milkYields } from "@/db/schema";
+import { alerts, animals, healthEvents, milkYields } from "@/db/schema";
 import { addDays, farmToday, formatDisplayDate, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { milkDaySummary } from "@/lib/milk-sheet";
-import { canWriteMilk, hasRole } from "@/lib/permissions";
+import { canManageSettings, canViewFinance, canWriteMilk } from "@/lib/permissions";
 import { MilkDatePicker } from "@/components/milk-date-picker";
 import { RecordDialog } from "@/components/record-dialog";
 import { Button } from "@/components/ui/button";
-import { inputClass, Notice, Submit, Summary } from "@/components/workspace";
+import { inputClass, Notice, Pill, Submit, Summary } from "@/components/workspace";
 import { saveMilk, saveMilkSettings } from "./actions";
 
 const messages: Record<string, string> = {
@@ -32,39 +32,68 @@ export default async function MilkPage({
   const requested = parseFarmDate(query.date);
   const selected = requested && requested <= today ? requested : today;
   const recentStart = addDays(today, -7);
-  const herd = await db
-    .select({
-      id: animals.id,
-      code: animals.code,
-      name: animals.name,
-    })
-    .from(animals)
-    .where(and(eq(animals.farmId, farm.farmId), eq(animals.presence, "on_farm"), eq(animals.lactation, "lactating")))
-    .orderBy(animals.code);
 
-  const existing = await db
-    .select()
-    .from(milkYields)
-    .where(and(eq(milkYields.farmId, farm.farmId), or(gte(milkYields.recordedOn, recentStart), eq(milkYields.recordedOn, selected))));
+  const [herd, existing, drops, withdrawalRows] = await Promise.all([
+    db
+      .select({
+        id: animals.id,
+        code: animals.code,
+        name: animals.name,
+      })
+      .from(animals)
+      .where(and(eq(animals.farmId, farm.farmId), eq(animals.presence, "on_farm"), eq(animals.lactation, "lactating")))
+      .orderBy(animals.code),
+    db
+      .select()
+      .from(milkYields)
+      .where(and(eq(milkYields.farmId, farm.farmId), or(gte(milkYields.recordedOn, recentStart), eq(milkYields.recordedOn, selected)))),
+    db
+      .select()
+      .from(alerts)
+      .where(
+        and(
+          eq(alerts.farmId, farm.farmId),
+          eq(alerts.status, "open"),
+          or(eq(alerts.type, "milk_drop"), eq(alerts.type, "herd_milk_drop")),
+        ),
+      ),
+    db
+      .select({
+        animalId: healthEvents.animalId,
+        problem: healthEvents.problem,
+        medicine: healthEvents.medicine,
+        withdrawalUntil: healthEvents.withdrawalUntil,
+      })
+      .from(healthEvents)
+      .where(and(eq(healthEvents.farmId, farm.farmId), isNull(healthEvents.voidedAt), gte(healthEvents.withdrawalUntil, selected))),
+  ]);
+
   const summary = milkDaySummary(
     herd.map((animal) => animal.id),
     existing.filter((row) => row.recordedOn === selected),
   );
   const canSave = canWriteMilk(farm.roles);
-  const canConfigure = hasRole(farm.roles, ["owner", "manager", "admin", "accountant"]);
-  const milkPrice = Number(farm.milkPricePerLitre ?? 60);
-  const dayValue = summary.total * milkPrice;
-  const drops = await db
-    .select()
-    .from(alerts)
-    .where(
-      and(
-        eq(alerts.farmId, farm.farmId),
-        eq(alerts.status, "open"),
-        or(eq(alerts.type, "milk_drop"), eq(alerts.type, "herd_milk_drop")),
-      ),
-    );
+  const canConfigure = canManageSettings(farm.roles);
+  const configuredPrice = farm.milkPricePerLitre ? Number(farm.milkPricePerLitre) : null;
+  const showValue = configuredPrice !== null && Number.isFinite(configuredPrice) && canViewFinance(farm.roles);
+  const dayValue = showValue ? summary.total * configuredPrice : null;
+
   const byCode = new Map(herd.map((animal) => [animal.id, animal]));
+  const withdrawalByAnimal = new Map<string, { until: string; label: string }>();
+  for (const row of withdrawalRows) {
+    if (!row.withdrawalUntil) continue;
+    const prev = withdrawalByAnimal.get(row.animalId);
+    if (!prev || row.withdrawalUntil > prev.until) {
+      withdrawalByAnimal.set(row.animalId, {
+        until: row.withdrawalUntil,
+        label: row.medicine ? `${row.medicine} (${row.problem})` : row.problem,
+      });
+    }
+  }
+  const activeWithdrawals = herd
+    .filter((animal) => withdrawalByAnimal.has(animal.id))
+    .map((animal) => ({ animal, ...withdrawalByAnimal.get(animal.id)! }));
+
   const herdDays = new Map<string, number>();
   for (const row of existing) {
     if (row.voidedAt) continue;
@@ -73,10 +102,13 @@ export default async function MilkPage({
   }
   const recent = [...herdDays.entries()].filter(([date]) => date >= recentStart).sort(([left], [right]) => left.localeCompare(right));
 
+  const notEntered = Math.max(0, herd.length - summary.entered);
   const stats = [
     [summary.total.toFixed(1) + " L", selected === today ? "Total milk today" : "Total for this day"],
-    [`₹${Math.round(dayValue).toLocaleString("en-IN")}`, `Production value (₹${milkPrice.toFixed(0)}/L)`],
-    [String(summary.entered), "Cows milked"],
+    showValue && dayValue !== null
+      ? [`₹${Math.round(dayValue).toLocaleString("en-IN")}`, `Estimated value (₹${configuredPrice!.toFixed(2)}/L)`]
+      : [String(notEntered), "Lactating not entered"],
+    [`${summary.entered} / ${herd.length}`, "Cows entered"],
     [summary.average.toFixed(1) + " L", "Average entered"],
   ];
 
@@ -92,7 +124,7 @@ export default async function MilkPage({
               <RecordDialog title="Milk price & alert settings" button="Milk settings" quiet>
                 <form action={saveMilkSettings} className="space-y-3">
                   <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-                    Milk price per litre (INR)
+                    Milk price per litre (INR, leave blank if unset)
                     <input
                       name="milkPricePerLitre"
                       type="number"
@@ -100,8 +132,8 @@ export default async function MilkPage({
                       max={1000}
                       step="0.01"
                       inputMode="decimal"
-                      required
-                      defaultValue={milkPrice.toFixed(2)}
+                      defaultValue={configuredPrice !== null ? configuredPrice.toFixed(2) : ""}
+                      placeholder="e.g. 60.00"
                       className={inputClass}
                     />
                   </label>
@@ -116,6 +148,15 @@ export default async function MilkPage({
                       defaultValue={farm.milkDropPercent}
                       className={inputClass}
                     />
+                  </label>
+                  <label className="flex items-start gap-2.5 text-xs text-foreground">
+                    <input
+                      name="requireBothMilkSessions"
+                      type="checkbox"
+                      defaultChecked={farm.requireBothMilkSessions}
+                      className="mt-0.5 size-4"
+                    />
+                    <span>Wait until both morning and evening sessions are entered before firing a milk drop alert</span>
                   </label>
                   <p className="text-xs text-muted-foreground">
                     Alerts trigger when an animal (after 14 days in milk) or the herd drops by at least this percentage relative to its 7-day average.
@@ -133,10 +174,28 @@ export default async function MilkPage({
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {requested && requested > today && query.error !== "date" ? <Notice tone="danger">{messages.date}</Notice> : null}
       {query.saved ? <Notice>Milk for {formatDisplayDate(selected)} is saved.</Notice> : null}
-      {query.settings ? <Notice>Milk price and drop alert threshold updated.</Notice> : null}
+      {query.settings ? <Notice>Milk settings updated.</Notice> : null}
+      {activeWithdrawals.length > 0 ? (
+        <section role="alert" className="space-y-2 rounded-2xl border border-danger/30 bg-danger/5 p-4">
+          <h2 className="text-sm font-semibold text-danger">Milk withdrawal active on {formatDisplayDate(selected)}</h2>
+          <p className="text-xs text-muted-foreground">Keep milk from these cows out of saleable bulk supply until the withdrawal date passes.</p>
+          <ul className="space-y-1.5 text-sm">
+            {activeWithdrawals.map(({ animal, until, label }) => (
+              <li key={animal.id} className="flex flex-wrap items-center justify-between gap-2">
+                <Link href={`/animals/${animal.code}?tab=health`} className="font-medium text-foreground hover:underline">
+                  {animal.name ?? animal.code} · {animal.code}
+                </Link>
+                <span className="text-xs font-medium text-danger">
+                  {label} — discard through {formatDisplayDate(until)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       {drops.length > 0 ? (
         <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
-          <h2 className="font-semibold">Milk drop</h2>
+          <h2 className="font-semibold">Milk drop alerts</h2>
           <ul className="space-y-2">
             {drops.map((alert) => {
               const animal = alert.animalId ? byCode.get(alert.animalId) : undefined;
@@ -167,7 +226,7 @@ export default async function MilkPage({
                   className={`block rounded-xl px-3 py-2 ${date === selected ? "bg-primary/10 ring-1 ring-primary" : "bg-muted hover:bg-muted/70"}`}
                 >
                   <p className="text-xs text-muted-foreground">{formatDisplayDate(date)}</p>
-                  <p className="font-medium">{litres.toFixed(1)} L</p>
+                  <p className="font-medium tabular-nums">{litres.toFixed(1)} L</p>
                 </Link>
               </li>
             ))}
@@ -191,15 +250,21 @@ export default async function MilkPage({
           {herd.map((animal) => {
             const row = summary.active.get(animal.id);
             const sum = Number(row?.morningLitres ?? 0) + Number(row?.eveningLitres ?? 0);
+            const withdrawal = withdrawalByAnimal.get(animal.id);
             return (
               <li
                 key={animal.id}
-                className="grid grid-cols-2 items-end gap-3 p-4 transition-colors hover:bg-muted/30 lg:grid-cols-[7.5rem_minmax(0,1fr)_8.5rem_8.5rem_5.5rem] lg:items-center lg:py-3"
+                className={`grid grid-cols-2 items-end gap-3 p-4 transition-colors hover:bg-muted/30 lg:grid-cols-[7.5rem_minmax(0,1fr)_8.5rem_8.5rem_5.5rem] lg:items-center lg:py-3 ${
+                  withdrawal ? "bg-danger/[0.03]" : ""
+                }`}
               >
                 <div className="col-span-2 flex items-center justify-between gap-3 lg:contents">
                   <Link href={`/animals/${animal.code}?tab=milk`} className="min-w-0 hover:underline lg:contents">
                     <span className="hidden font-mono text-xs font-semibold text-muted-foreground lg:block">{animal.code}</span>
-                    <span className="block truncate font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="truncate font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
+                      {withdrawal ? <Pill tone="warn">Withdrawal until {formatDisplayDate(withdrawal.until)}</Pill> : null}
+                    </span>
                     <span className="font-mono text-xs text-muted-foreground lg:hidden">{animal.code}</span>
                   </Link>
                   <p className="shrink-0 text-right text-sm font-semibold tabular-nums lg:order-1">

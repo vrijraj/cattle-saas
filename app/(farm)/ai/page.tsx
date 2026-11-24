@@ -6,5 +6,5 @@ export const metadata = { title: "Assistant" };
 
 export default async function AiPage() {
   const farm = await requireFarm();
-  return <AiChat farmName={farm.farmName} configured={geminiConfigured()} />;
+  return <AiChat farmName={farm.farmName} storageScope={`${farm.farmId}:${farm.userId}`} configured={geminiConfigured()} />;
 }

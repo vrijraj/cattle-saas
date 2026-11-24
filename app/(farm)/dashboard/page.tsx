@@ -13,16 +13,26 @@ import {
   Milk,
   ScanLine,
   Stethoscope,
+  Wallet,
   Warehouse,
   Wheat,
 } from "lucide-react";
 import { db } from "@/db";
-import { alerts, animals, breeds, feedItems, feedMovements, inseminations, locations, milkYields } from "@/db/schema";
+import { alerts, animals, breeds, feedItems, feedMovements, financeEntries, inseminations, locations, milkYields } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 import { addDays, farmToday, formatDisplayDate } from "@/lib/dates";
 import { feedBalance, feedIsLow } from "@/lib/feed-stock";
 import { herdCounts } from "@/lib/herd-stats";
-import { canReadAlert } from "@/lib/permissions";
+import {
+  canReadAlert,
+  canSeeClinical,
+  canViewFinance,
+  canViewGenetics,
+  canViewHealth,
+  canViewReports,
+  canViewSemen,
+  canWriteAnimals,
+} from "@/lib/permissions";
 
 const breedColors = ["#157347", "#7dce78", "#e0a106", "#3d8bfd", "#8b6cc4", "#94a3a0"];
 
@@ -31,67 +41,29 @@ export const metadata = { title: "Dashboard" };
 export default async function DashboardPage() {
   const farm = await requireFarm();
   const today = farmToday(farm.timezone);
-  const rows = await db
-    .select({ animal: animals, breedName: breeds.name })
-    .from(animals)
-    .innerJoin(breeds, eq(breeds.id, animals.breedId))
-    .where(eq(animals.farmId, farm.farmId));
-  const herd = rows.map((row) => row.animal);
-  const damIds = new Set(herd.map((animal) => animal.geneticDamId).filter((id): id is string => Boolean(id)));
-  const counts = herdCounts(
-    herd.map((animal) => ({
-      id: animal.id,
-      presence: animal.presence,
-      lactation: animal.lactation,
-      reproduction: animal.reproduction,
-      dob: animal.dob,
-      isDam: damIds.has(animal.id),
-    })),
-    today,
-  );
+  const monthStart = `${today.slice(0, 8)}01`;
+  const milkStart = addDays(today, -6);
+  const queryStart = milkStart < monthStart ? milkStart : monthStart;
+  const showClinical = canSeeClinical(farm.roles);
+  const showLowFeed = canReadAlert(farm.roles, "low_feed");
+  const showFinance = canViewFinance(farm.roles);
 
-  const openAlerts = (
-    await db
+  const [rows, alertRows, shedRows, feed, feedMoves, milkRows, aiMonthRows, financeMonthRows] = await Promise.all([
+    db
+      .select({ animal: animals, breedName: breeds.name })
+      .from(animals)
+      .innerJoin(breeds, eq(breeds.id, animals.breedId))
+      .where(eq(animals.farmId, farm.farmId)),
+    db
       .select()
       .from(alerts)
-      .where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open")))
-  )
-    .filter((alert) => canReadAlert(farm.roles, alert.type))
-    .sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999"));
-  const healthAlertTypes = new Set(["vaccine_due", "deworming_due", "deworm_due", "health_followup", "medication_due", "withdrawal"]);
-  const healthAlerts = openAlerts.filter((alert) => healthAlertTypes.has(alert.type));
-
-  const breedTotals = new Map<string, number>();
-  for (const row of rows) {
-    if (row.animal.presence !== "on_farm") continue;
-    breedTotals.set(row.breedName, (breedTotals.get(row.breedName) ?? 0) + 1);
-  }
-  const breedsOnFarm = [...breedTotals.entries()].sort((a, b) => b[1] - a[1]);
-
-  const upcoming = herd
-    .filter((animal) => animal.presence === "on_farm" && animal.reproduction === "pregnant")
-    .sort((a, b) => (a.expectedCalving ?? "9999").localeCompare(b.expectedCalving ?? "9999"));
-  const shedRows = await db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.farmId, farm.farmId));
-  const shedName = new Map(shedRows.map((row) => [row.id, row.name]));
-  const [feed, feedMoves] = await Promise.all([
-    db.select().from(feedItems).where(eq(feedItems.farmId, farm.farmId)),
-    db.select().from(feedMovements).where(eq(feedMovements.farmId, farm.farmId)),
-  ]);
-  const lowFeed = feed
-    .map((item) => {
-      const balance = feedBalance(feedMoves.filter((movement) => movement.itemId === item.id));
-      return { item, balance, low: feedIsLow(balance, item.minimumQuantity) };
-    })
-    .filter((row) => row.low)
-    .sort((left, right) => left.item.name.localeCompare(right.item.name));
-  const onFarm = herd.filter((animal) => animal.presence === "on_farm");
-  const shedBars = countLabels(onFarm.map((animal) => (animal.locationId ? (shedName.get(animal.locationId) ?? "Unassigned") : "Unassigned")));
-  const milkStart = addDays(today, -6);
-  const monthStart = `${today.slice(0, 8)}01`;
-  const queryStart = milkStart < monthStart ? milkStart : monthStart;
-  const [milkRows, aiMonthRows] = await Promise.all([
+      .where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open"))),
+    db.select({ id: locations.id, name: locations.name, active: locations.active }).from(locations).where(eq(locations.farmId, farm.farmId)),
+    showLowFeed ? db.select().from(feedItems).where(eq(feedItems.farmId, farm.farmId)) : Promise.resolve([]),
+    showLowFeed ? db.select().from(feedMovements).where(eq(feedMovements.farmId, farm.farmId)) : Promise.resolve([]),
     db
       .select({
+        animalId: milkYields.animalId,
         recordedOn: milkYields.recordedOn,
         morningLitres: milkYields.morningLitres,
         eveningLitres: milkYields.eveningLitres,
@@ -107,36 +79,116 @@ export default async function DashboardPage() {
       })
       .from(inseminations)
       .where(and(eq(inseminations.farmId, farm.farmId), gte(inseminations.performedOn, monthStart))),
+    showFinance
+      ? db
+          .select({
+            kind: financeEntries.kind,
+            amount: financeEntries.amount,
+            entryOn: financeEntries.entryOn,
+            voidedAt: financeEntries.voidedAt,
+          })
+          .from(financeEntries)
+          .where(and(eq(financeEntries.farmId, farm.farmId), gte(financeEntries.entryOn, monthStart)))
+      : Promise.resolve([]),
   ]);
+
+  const herd = rows.map((row) => row.animal);
+  const byId = new Map(herd.map((animal) => [animal.id, animal]));
+  const damIds = new Set(herd.map((animal) => animal.geneticDamId).filter((id): id is string => Boolean(id)));
+  const counts = herdCounts(
+    herd.map((animal) => ({
+      id: animal.id,
+      presence: animal.presence,
+      lactation: animal.lactation,
+      reproduction: animal.reproduction,
+      dob: animal.dob,
+      isDam: damIds.has(animal.id),
+    })),
+    today,
+  );
+  const onFarm = herd.filter((animal) => animal.presence === "on_farm");
+  const cattleCount = onFarm.filter((animal) => animal.species === "cattle").length;
+  const buffaloCount = onFarm.filter((animal) => animal.species === "buffalo").length;
+
+  const openAlerts = alertRows
+    .filter((alert) => canReadAlert(farm.roles, alert.type))
+    .sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999"));
+  const healthAlertTypes = new Set(["vaccine_due", "deworming_due", "deworm_due", "health_followup", "medication_due", "withdrawal"]);
+  const healthAlerts = openAlerts.filter((alert) => healthAlertTypes.has(alert.type));
+  const healthDueNow = healthAlerts.filter((alert) => !alert.dueOn || alert.dueOn <= today);
+
+  const breedTotals = new Map<string, number>();
+  for (const row of rows) {
+    if (row.animal.presence !== "on_farm") continue;
+    breedTotals.set(row.breedName, (breedTotals.get(row.breedName) ?? 0) + 1);
+  }
+  const breedsOnFarm = [...breedTotals.entries()].sort((a, b) => b[1] - a[1]);
+
+  const upcoming = onFarm
+    .filter((animal) => animal.reproduction === "pregnant")
+    .sort((a, b) => (a.expectedCalving ?? "9999").localeCompare(b.expectedCalving ?? "9999"));
+  const thirtyDaysAhead = addDays(today, 30);
+  const calvingSoonCount = upcoming.filter((animal) => animal.expectedCalving && animal.expectedCalving <= thirtyDaysAhead).length;
+
+  const activeShedCount = shedRows.filter((row) => row.active).length;
+  const shedName = new Map(shedRows.map((row) => [row.id, row.name]));
+  const lowFeed = showLowFeed
+    ? feed
+        .map((item) => {
+          const balance = feedBalance(feedMoves.filter((movement) => movement.itemId === item.id));
+          return { item, balance, low: feedIsLow(balance, item.minimumQuantity) };
+        })
+        .filter((row) => row.low)
+        .sort((left, right) => left.item.name.localeCompare(right.item.name))
+    : [];
+  const shedBars = countLabels(onFarm.map((animal) => (animal.locationId ? (shedName.get(animal.locationId) ?? "Unassigned") : "Unassigned")));
+
   const milkByDay = new Map<string, number>();
   for (let offset = 0; offset < 7; offset += 1) milkByDay.set(addDays(milkStart, offset), 0);
   let milkMonth = 0;
+  const lactatingIds = new Set(onFarm.filter((animal) => animal.lactation === "lactating").map((animal) => animal.id));
+  const enteredTodayIds = new Set<string>();
   for (const row of milkRows) {
     if (row.voidedAt) continue;
     const litres = Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0);
     if (milkByDay.has(row.recordedOn)) {
       milkByDay.set(row.recordedOn, (milkByDay.get(row.recordedOn) ?? 0) + litres);
     }
+    if (row.recordedOn === today && lactatingIds.has(row.animalId)) {
+      enteredTodayIds.add(row.animalId);
+    }
     if (row.recordedOn >= monthStart && row.recordedOn <= today) {
       milkMonth += litres;
     }
   }
+  const notEnteredToday = Math.max(0, lactatingIds.size - enteredTodayIds.size);
   const aiThisMonth = aiMonthRows.filter((row) => !row.voidedAt && row.performedOn <= today).length;
   const milkDays = [...milkByDay.entries()];
   const milkToday = milkDays.find(([day]) => day === today)?.[1] ?? 0;
-  const isolated = herd
-    .filter((animal) => animal.presence === "on_farm" && animal.isolationReason)
+
+  const isolated = onFarm
+    .filter((animal) => Boolean(animal.isolationReason))
     .map((animal) => ({
       ...animal,
       shed: animal.locationId ? (shedName.get(animal.locationId) ?? "Unassigned") : "Unassigned",
       days: animal.isolatedOn ? Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${animal.isolatedOn}T00:00:00Z`)) / 86400000)) : null,
     }));
 
+  const mtdIncome = financeMonthRows
+    .filter((row) => !row.voidedAt && row.entryOn <= today && row.kind === "income")
+    .reduce((sum, row) => sum + Number(row.amount), 0);
+  const mtdExpense = financeMonthRows
+    .filter((row) => !row.voidedAt && row.entryOn <= today && row.kind === "expense")
+    .reduce((sum, row) => sum + Number(row.amount), 0);
+
+  const totalOpenWithFeed = openAlerts.length + lowFeed.length;
+  const healthyRatio = counts.total > 0 ? Math.round(((counts.total - isolated.length) / counts.total) * 100) : 100;
+
   const topKpis = [
     {
-      label: "CATTLE ON FARM",
+      label: "HERD ON FARM",
       value: String(counts.total),
-      badge: String(counts.total),
+      badge: `${cattleCount}C/${buffaloCount}B`,
       badgeClass: "bg-blue-500/12 text-blue-700",
       hint: `${counts.lactating} lactating · ${counts.dry} dry · ${counts.calves} calves`,
       href: "/animals?view=active",
@@ -144,49 +196,52 @@ export default async function DashboardPage() {
     {
       label: "TODAY'S MILK",
       value: `${milkToday.toFixed(1)} L`,
-      badge: String(counts.lactating),
+      badge: `${enteredTodayIds.size}/${lactatingIds.size}`,
       badgeClass: "bg-emerald-500/12 text-emerald-700",
-      hint: `Monthly total: ${milkMonth.toFixed(1)} L`,
+      hint: notEnteredToday > 0 ? `${notEnteredToday} lactating not entered · MTD ${milkMonth.toFixed(1)} L` : `All lactating entered · MTD ${milkMonth.toFixed(1)} L`,
       href: "/milk",
     },
     {
       label: "PREGNANT & AI",
       value: String(counts.pregnant),
-      badge: String(aiThisMonth),
+      badge: String(calvingSoonCount),
       badgeClass: "bg-amber-500/14 text-amber-700",
-      hint: `${aiThisMonth} AI recorded this month`,
+      hint: `${calvingSoonCount} calving in 30d · ${aiThisMonth} AI this month`,
       href: "/breeding",
     },
     {
       label: "OPEN ALERTS",
-      value: String(openAlerts.length),
-      badge: String(healthAlerts.length),
+      value: String(totalOpenWithFeed),
+      badge: String(healthDueNow.length),
       badgeClass: "bg-rose-500/12 text-rose-700",
-      hint: `${healthAlerts.length} health / vaccine due`,
+      hint: `${healthDueNow.length} health due now${showLowFeed && lowFeed.length > 0 ? ` · ${lowFeed.length} low feed` : ""}`,
       href: "/alerts",
     },
   ];
 
   const quickActions = [
-    { label: "Cattle", href: "/animals", icon: Beef },
-    { label: "Milk sheet", href: "/milk", icon: Milk },
-    { label: "Breeding & AI", href: "/breeding", icon: HeartPulse },
-    { label: "Health & vet", href: "/health", icon: Stethoscope },
-    { label: "Semen stock", href: "/semen", icon: Droplets },
-    { label: "Genetics", href: "/genetics", icon: Dna },
-    { label: "Feed & ration", href: "/feed", icon: Wheat },
-    { label: "Sheds", href: "/locations", icon: Warehouse },
-    { label: "Scan QR", href: "/scan", icon: ScanLine },
-    { label: "Reports", href: "/reports", icon: FileBarChart },
-  ];
+    { label: "Cattle", href: "/animals", icon: Beef, show: true },
+    { label: "Milk sheet", href: "/milk", icon: Milk, show: true },
+    { label: "Breeding & AI", href: "/breeding", icon: HeartPulse, show: true },
+    { label: "Health & vet", href: "/health", icon: Stethoscope, show: canViewHealth(farm.roles) },
+    { label: "Semen stock", href: "/semen", icon: Droplets, show: canViewSemen(farm.roles) },
+    { label: "Genetics", href: "/genetics", icon: Dna, show: canViewGenetics(farm.roles) },
+    { label: "Feed & ration", href: "/feed", icon: Wheat, show: true },
+    { label: "Sheds", href: "/locations", icon: Warehouse, show: true },
+    { label: "Scan QR", href: "/scan", icon: ScanLine, show: true },
+    { label: "Finance", href: "/finance", icon: Wallet, show: showFinance },
+    { label: "Reports", href: "/reports", icon: FileBarChart, show: canViewReports(farm.roles) },
+  ].filter((item) => item.show);
 
   const readinessChecks = [
     { label: `${counts.lactating} Lactating animals in milk`, href: "/milk" },
     { label: `${counts.pregnant} Confirmed pregnant cattle`, href: "/breeding" },
-    { label: `${counts.dry} Dry animals between lactations`, href: "/animals" },
+    { label: `${counts.dry} Dry animals between lactations`, href: "/animals?view=active&lactation=dry" },
     { label: `${counts.calves} Calves & young stock on farm`, href: "/animals?view=calves" },
     { label: `${aiThisMonth} Inseminations recorded this month`, href: "/breeding" },
-    { label: lowFeed.length === 0 ? "All feed rations above minimum stock" : `${lowFeed.length} feed item(s) below minimum`, href: "/feed" },
+    ...(showLowFeed
+      ? [{ label: lowFeed.length === 0 ? "All feed rations above minimum stock" : `${lowFeed.length} feed item(s) below minimum`, href: "/feed" }]
+      : []),
   ];
 
   const cardClass = "rounded-2xl border border-black/[0.06] bg-card p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
@@ -219,7 +274,9 @@ export default async function DashboardPage() {
             <span>·</span>
             <span>{farm.farmName}</span>
             <span>·</span>
-            <span>{counts.total} cattle across {shedRows.length} sheds</span>
+            <span>
+              {counts.total} animals across {activeShedCount} active {activeShedCount === 1 ? "shed" : "sheds"}
+            </span>
           </p>
         </div>
 
@@ -238,12 +295,14 @@ export default async function DashboardPage() {
             <Milk className="size-3.5 text-muted-foreground" />
             Milk sheet
           </Link>
-          <Link
-            href="/animals/new"
-            className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
-          >
-            + Add cattle
-          </Link>
+          {canWriteAnimals(farm.roles) ? (
+            <Link
+              href="/animals/new"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
+            >
+              + Add cattle
+            </Link>
+          ) : null}
         </div>
       </section>
 
@@ -257,7 +316,7 @@ export default async function DashboardPage() {
             <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{stat.label}</p>
             <div className="mt-2 flex items-center justify-between gap-2">
               <p className="font-display text-2xl font-semibold tracking-tight tabular-nums text-foreground sm:text-3xl">{stat.value}</p>
-              <span className={`grid size-9 shrink-0 place-items-center rounded-full text-xs font-bold tabular-nums ${stat.badgeClass}`}>
+              <span className={`inline-flex h-7 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-bold tabular-nums ${stat.badgeClass}`}>
                 {stat.badge}
               </span>
             </div>
@@ -266,11 +325,30 @@ export default async function DashboardPage() {
         ))}
       </section>
 
+      {showFinance ? (
+        <section className="grid grid-cols-3 gap-3">
+          <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
+            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Month income</p>
+            <p className="mt-1 font-display text-xl font-semibold tabular-nums text-emerald-700">₹{Math.round(mtdIncome).toLocaleString("en-IN")}</p>
+          </Link>
+          <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
+            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Month expense</p>
+            <p className="mt-1 font-display text-xl font-semibold tabular-nums text-foreground">₹{Math.round(mtdExpense).toLocaleString("en-IN")}</p>
+          </Link>
+          <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
+            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Month net</p>
+            <p className={`mt-1 font-display text-xl font-semibold tabular-nums ${mtdIncome - mtdExpense >= 0 ? "text-emerald-700" : "text-danger"}`}>
+              {mtdIncome - mtdExpense < 0 ? "−" : ""}₹{Math.round(Math.abs(mtdIncome - mtdExpense)).toLocaleString("en-IN")}
+            </p>
+          </Link>
+        </section>
+      ) : null}
+
       <section className="grid gap-3.5 lg:grid-cols-3">
         <article className={cardClass}>
           <h2 className="text-sm font-semibold text-foreground">Quick Actions</h2>
           <div className="mt-3.5 grid grid-cols-2 gap-2">
-            {quickActions.map((action) => (
+            {quickActions.slice(0, 10).map((action) => (
               <Link
                 key={action.label}
                 href={action.href}
@@ -300,18 +378,24 @@ export default async function DashboardPage() {
             </div>
           ) : (
             <ul className="mt-3.5 space-y-2.5">
-              {openAlerts.slice(0, 4).map((alert) => (
-                <li key={alert.id} className="flex items-start gap-2.5 rounded-xl bg-[#f6f7f9] p-3">
-                  <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-foreground">{alert.title}</p>
-                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                      {alert.dueOn ? `Due ${formatDisplayDate(alert.dueOn)} · ` : ""}
-                      {alert.body}
-                    </p>
-                  </div>
-                </li>
-              ))}
+              {openAlerts.slice(0, 4).map((alert) => {
+                const animal = alert.animalId ? byId.get(alert.animalId) : undefined;
+                const href = animal ? `/animals/${animal.code}` : "/alerts";
+                return (
+                  <li key={alert.id}>
+                    <Link href={href} className="flex items-start gap-2.5 rounded-xl bg-[#f6f7f9] p-3 transition hover:bg-muted">
+                      <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-foreground">{alert.title}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {alert.dueOn ? `Due ${formatDisplayDate(alert.dueOn)} · ` : ""}
+                          {alert.body}
+                        </p>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </article>
@@ -319,13 +403,10 @@ export default async function DashboardPage() {
         <article className={cardClass}>
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">Herd readiness</h2>
-            <span className="text-xs font-semibold tabular-nums text-muted-foreground">{counts.total} head</span>
+            <span className="text-xs font-semibold tabular-nums text-muted-foreground">{healthyRatio}% non-isolated</span>
           </div>
           <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary"
-              style={{ width: `${counts.total > 0 ? Math.min(100, Math.max(18, Math.round(((counts.lactating + counts.pregnant + counts.calves) / counts.total) * 100))) : 100}%` }}
-            />
+            <div className="h-full rounded-full bg-primary" style={{ width: `${healthyRatio}%` }} />
           </div>
           <ul className="mt-4 space-y-2.5">
             {readinessChecks.map((item) => (
@@ -347,9 +428,11 @@ export default async function DashboardPage() {
               <h2 className="text-sm font-semibold text-foreground">Milk & reproduction snapshot</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">Live production and breeding counts for {farm.farmName}.</p>
             </div>
-            <Link href="/reports" className="text-xs font-semibold text-primary hover:underline">
-              Analytics
-            </Link>
+            {canViewReports(farm.roles) ? (
+              <Link href="/reports" className="text-xs font-semibold text-primary hover:underline">
+                Reports
+              </Link>
+            ) : null}
           </div>
 
           <div className="mt-4 grid gap-4 lg:grid-cols-12">
@@ -431,39 +514,49 @@ export default async function DashboardPage() {
         <article className={cardClass}>
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">Health & vaccination alerts</h2>
-            <Link href="/health" className="text-xs font-semibold text-primary hover:underline">
-              View all
-            </Link>
+            {canViewHealth(farm.roles) ? (
+              <Link href="/health" className="text-xs font-semibold text-primary hover:underline">
+                View all
+              </Link>
+            ) : null}
           </div>
           <ul className="mt-3 space-y-2.5">
             {healthAlerts.length === 0 ? <li className="py-2 text-xs text-muted-foreground">No vaccinations or health follow-ups due.</li> : null}
-            {healthAlerts.slice(0, 5).map((alert) => (
-              <li key={alert.id} className="flex gap-2.5">
-                <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
-                  <HeartPulse className="size-3.5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold">{alert.title}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">
-                    {alert.dueOn ? `Due ${formatDisplayDate(alert.dueOn)} · ` : ""}
-                    {alert.body}
-                  </p>
-                </div>
-              </li>
-            ))}
+            {healthAlerts.slice(0, 5).map((alert) => {
+              const animal = alert.animalId ? byId.get(alert.animalId) : undefined;
+              const href = animal ? `/animals/${animal.code}?tab=health` : "/alerts";
+              return (
+                <li key={alert.id}>
+                  <Link href={href} className="flex gap-2.5 rounded-xl p-1 -mx-1 transition hover:bg-muted/60">
+                    <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
+                      <HeartPulse className="size-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold">{alert.title}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {alert.dueOn ? `Due ${formatDisplayDate(alert.dueOn)} · ` : ""}
+                        {alert.body}
+                      </p>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </article>
 
         <article className={cardClass}>
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Feed stock & isolation</h2>
-            <Link href="/feed" className="text-xs font-semibold text-primary hover:underline">
+            <h2 className="text-sm font-semibold text-foreground">{showLowFeed ? "Feed stock & isolation" : "Isolation status"}</h2>
+            <Link href={showLowFeed ? "/feed" : "/locations"} className="text-xs font-semibold text-primary hover:underline">
               View all
             </Link>
           </div>
           <ul className="mt-3 divide-y divide-border/70">
             {lowFeed.length === 0 && isolated.length === 0 ? (
-              <li className="py-4 text-xs text-muted-foreground">All feed items above minimum and no cattle isolated.</li>
+              <li className="py-4 text-xs text-muted-foreground">
+                {showLowFeed ? "All feed items above minimum and no cattle isolated." : "No cattle currently isolated."}
+              </li>
             ) : null}
             {lowFeed.map(({ item, balance }) => (
               <li key={item.id} className="flex items-start gap-2.5 py-2.5">
@@ -486,7 +579,8 @@ export default async function DashboardPage() {
                   {animal.name ?? animal.code} (Isolated)
                 </Link>
                 <p className="text-[11px] text-muted-foreground">
-                  {animal.code} · {animal.isolationReason}
+                  {animal.code}
+                  {showClinical && animal.isolationReason ? ` · ${animal.isolationReason}` : ""}
                   {animal.days !== null ? ` · ${animal.days} days` : ""} · {animal.shed}
                 </p>
               </li>
@@ -515,56 +609,48 @@ function MilkLine({ days }: { days: [string, number][] }) {
   return (
     <div className="mt-4">
       <div className="relative">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="xMinYMid meet"
-        style={{ aspectRatio: `${width} / ${height}` }}
-        className="block w-full overflow-visible"
-        role="img"
-        aria-label="Milk litres for the last 7 days"
-      >
-        <path d={area} fill="#157347" opacity="0.12" />
-        <path d={line} fill="none" stroke="#157347" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-        {points.map((point, index) => (
-          <circle key={days[index][0]} cx={point.x} cy={point.y} r="4.5" fill="#ffffff" stroke="#157347" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-        ))}
-      </svg>
-      {points.map((point, index) => {
-        const atStart = index === 0;
-        const atEnd = index === days.length - 1;
-        return (
-          <button
-            key={days[index][0]}
-            type="button"
-            className="group absolute z-10 size-8 -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${(point.x / width) * 100}%`, top: `${(point.y / height) * 100}%` }}
-            aria-label={`${formatDisplayDate(days[index][0])}, ${point.litres.toFixed(1)} litres`}
-          >
-            <span
-              className={`pointer-events-none absolute bottom-full z-10 mb-2 hidden rounded-lg border border-border bg-card px-2.5 py-1.5 text-left text-xs group-hover:block group-focus-visible:block ${atStart ? "left-0" : atEnd ? "right-0" : "left-1/2 -translate-x-1/2"}`}
-            >
-              <span className="block font-medium whitespace-nowrap">{formatDisplayDate(days[index][0])}</span>
-              <span className="text-muted-foreground">{point.litres.toFixed(1)} L</span>
-            </span>
-          </button>
-        );
-      })}
-      </div>
-      <div className="relative mt-2 h-8">
-        {days.map(([day, litres], index) => {
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="xMinYMid meet"
+          style={{ aspectRatio: `${width} / ${height}` }}
+          className="block w-full overflow-visible"
+          role="img"
+          aria-label="Milk litres for the last 7 days"
+        >
+          <path d={area} fill="#157347" opacity="0.12" />
+          <path d={line} fill="none" stroke="#157347" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          {points.map((point, index) => (
+            <circle key={days[index][0]} cx={point.x} cy={point.y} r="4.5" fill="#ffffff" stroke="#157347" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+          ))}
+        </svg>
+        {points.map((point, index) => {
           const atStart = index === 0;
           const atEnd = index === days.length - 1;
           return (
-            <span
-              key={day}
-              className={`absolute top-0 w-14 text-[10px] text-muted-foreground ${atStart ? "left-0 text-left" : atEnd ? "right-0 text-right" : "left-0 -translate-x-1/2 text-center"}`}
-              style={atStart || atEnd ? undefined : { left: `${(index / last) * 100}%` }}
+            <button
+              key={days[index][0]}
+              type="button"
+              className="group absolute z-10 size-8 -translate-x-1/2 -translate-y-1/2"
+              style={{ left: `${(point.x / width) * 100}%`, top: `${(point.y / height) * 100}%` }}
+              aria-label={`${formatDisplayDate(days[index][0])}, ${point.litres.toFixed(1)} litres`}
             >
-              {formatDisplayDate(day).replace(/ \d{4}$/, "")}
-              <span className="mt-0.5 block font-medium text-foreground">{litres.toFixed(1)}</span>
-            </span>
+              <span
+                className={`pointer-events-none absolute bottom-full z-10 mb-2 hidden rounded-lg border border-border bg-card px-2.5 py-1.5 text-left text-xs shadow-sm group-hover:block group-focus-visible:block ${atStart ? "left-0" : atEnd ? "right-0" : "left-1/2 -translate-x-1/2"}`}
+              >
+                <span className="block font-medium whitespace-nowrap">{formatDisplayDate(days[index][0])}</span>
+                <span className="text-muted-foreground">{point.litres.toFixed(1)} L</span>
+              </span>
+            </button>
           );
         })}
+      </div>
+      <div className="mt-2 grid grid-cols-7 gap-0.5 text-center text-[10px] text-muted-foreground">
+        {days.map(([day, litres]) => (
+          <span key={day} className="truncate">
+            <span className="block truncate">{formatDisplayDate(day).replace(/ \d{4}$/, "")}</span>
+            <span className="mt-0.5 block font-medium tabular-nums text-foreground">{litres.toFixed(1)}</span>
+          </span>
+        ))}
       </div>
     </div>
   );

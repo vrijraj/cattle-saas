@@ -10,11 +10,12 @@
   --muted: #eaedf0;
   --muted-foreground: #5c646d;
   --border: #e2e6ea;
+  --input: #d4dbe1;
   --ring: #157347;
-  --danger: #b45309;
+  --danger: #dc2626;
   --secondary: #e6f4ec;
   --secondary-foreground: #0f5c34;
-  --destructive: #b45309;
+  --destructive: #dc2626;
   --radius: 1rem;
 }
 
@@ -28,6 +29,7 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-input: var(--input);
   --color-ring: var(--ring);
   --color-danger: var(--danger);
   --color-secondary: var(--secondary);
@@ -93,13 +95,7 @@ input:user-invalid,
 select:user-invalid,
 textarea:user-invalid {
   border-color: var(--danger);
-  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.14);
-}
-
-.search-palette :focus-visible,
-.assistant-composer textarea:focus-visible,
-.sign-in-form :focus-visible {
-  outline: none;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
 }
 
 tbody tr {

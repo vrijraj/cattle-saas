@@ -10,23 +10,26 @@ import { cn } from "cn";
 
 function safeNext(value: FormDataEntryValue | null) {
   const next = String(value ?? "");
-  if (!next.startsWith("/") || next.startsWith("//")) return "/dashboard";
+  if (!next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return "/dashboard";
   return next;
 }
 
 async function authenticate(formData: FormData) {
   "use server";
   const redirectTo = safeNext(formData.get("callbackUrl"));
+  const email = String(formData.get("email") ?? "").trim();
   try {
     await signIn("credentials", {
-      email: formData.get("email"),
+      email,
       password: formData.get("password"),
       redirectTo,
     });
   } catch (error) {
     if (error instanceof AuthError) {
-      const back = redirectTo === "/dashboard" ? "" : `&callbackUrl=${encodeURIComponent(redirectTo)}`;
-      redirect(`/signin?error=1${back}`);
+      const params = new URLSearchParams({ error: "1" });
+      if (redirectTo !== "/dashboard") params.set("callbackUrl", redirectTo);
+      if (email) params.set("email", email);
+      redirect(`/signin?${params.toString()}`);
     }
     throw error;
   }
@@ -65,7 +68,7 @@ export default async function SignInPage({
   searchParams: Promise<{ error?: string; callbackUrl?: string; email?: string }>;
 }) {
   const { error, callbackUrl, email } = await searchParams;
-  const next = callbackUrl?.startsWith("/") && !callbackUrl.startsWith("//") ? callbackUrl : "/dashboard";
+  const next = callbackUrl?.startsWith("/") && !callbackUrl.startsWith("//") && !callbackUrl.startsWith("/\\") ? callbackUrl : "/dashboard";
   const invalid = Boolean(error);
 
   return (
@@ -103,7 +106,7 @@ export default async function SignInPage({
           <BrandMark />
         </div>
         <div className="flex flex-1 items-center py-8">
-          <form action={authenticate} className="sign-in-form mx-auto w-full max-w-[26rem] [&_:focus-visible]:ring-0 [&_input:focus-visible]:border-border">
+          <form action={authenticate} className="sign-in-form mx-auto w-full max-w-[26rem]">
             <p className="text-sm font-medium text-primary">Welcome back</p>
             <h1 className="mt-1 text-3xl">Sign in</h1>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">Use the email on your farm account.</p>

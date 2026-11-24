@@ -18,7 +18,7 @@ const tabs = [
 
 const saveErrors: Record<string, string> = {
   role: "Your role cannot save a mating check.",
-  animal: "Choose a female on this farm and a bull code.",
+  animal: "Choose a female on this farm and a bull or male animal code.",
 };
 
 function proposedSire(value: string | undefined) {
@@ -26,10 +26,12 @@ function proposedSire(value: string | undefined) {
 }
 
 function flagSentence(flag: MatingFlag, label: string) {
-  if (flag.flag === "Parent") return `${label} is the sire of this female.`;
-  if (flag.flag === "Grandparent") return `${label} is a grandparent of this female.`;
+  if (flag.flag === "Parent") return `${label} is a parent of this animal.`;
+  if (flag.flag === "Grandparent") return `${label} is a grandparent in this pairing.`;
   if (flag.flag === "Son") return `${label} is a son of this female.`;
   if (flag.flag === "Daughter") return `${label} is a daughter of this female.`;
+  if (flag.flag === "Full sibling") return `Both animals share the same recorded sire and dam (${label}).`;
+  if (flag.flag === "Half sibling") return `Both animals share parent ${label}.`;
   const generations = `${flag.generation} generation${flag.generation === 1 ? "" : "s"}`;
   return `${label} appears on both pedigrees, ${generations} back on the female's side.`;
 }
@@ -45,14 +47,16 @@ export default async function GeneticsPage({
   if (!canViewGenetics(farm.roles)) redirect("/dashboard");
   const query = await searchParams;
   const tab = pickTab(query.tab, tabs, "check");
-  const herd = await db.select().from(animals).where(eq(animals.farmId, farm.farmId));
-  const bullRows = await db.select().from(bulls).where(eq(bulls.farmId, farm.farmId));
-  const batches = await db.select().from(semenBatches).where(eq(semenBatches.farmId, farm.farmId));
-  const births = await db.select().from(calvings).where(eq(calvings.farmId, farm.farmId));
-  const health = await db.select().from(healthEvents).where(eq(healthEvents.farmId, farm.farmId));
-  const milk = await db.select().from(milkYields).where(eq(milkYields.farmId, farm.farmId));
-  const ais = await db.select().from(inseminations).where(eq(inseminations.farmId, farm.farmId));
-  const checks = await db.select().from(pregnancyChecks).where(eq(pregnancyChecks.farmId, farm.farmId));
+  const [herd, bullRows, batches, births, health, milk, ais, checks] = await Promise.all([
+    db.select().from(animals).where(eq(animals.farmId, farm.farmId)),
+    db.select().from(bulls).where(eq(bulls.farmId, farm.farmId)),
+    db.select().from(semenBatches).where(eq(semenBatches.farmId, farm.farmId)),
+    db.select().from(calvings).where(eq(calvings.farmId, farm.farmId)),
+    db.select().from(healthEvents).where(eq(healthEvents.farmId, farm.farmId)),
+    db.select().from(milkYields).where(eq(milkYields.farmId, farm.farmId)),
+    db.select().from(inseminations).where(eq(inseminations.farmId, farm.farmId)),
+    db.select().from(pregnancyChecks).where(eq(pregnancyChecks.farmId, farm.farmId)),
+  ]);
   const byId = new Map(herd.map((animal) => [animal.id, animal]));
   const byCode = new Map(herd.map((animal) => [animal.code, animal]));
   const bullById = new Map(bullRows.map((bull) => [bull.id, bull]));
@@ -74,16 +78,17 @@ export default async function GeneticsPage({
   const batchNumber = query.bull?.includes("::") ? query.bull.split("::")[1]?.trim() : "";
   const knownProposal = batchNumber
     ? batches.some((batch) => batch.batchNumber === batchNumber && bullById.get(batch.bullId)?.code === sireCode)
-    : Boolean(sireCode && (bullByCode.has(sireCode) || byCode.has(sireCode)));
+    : Boolean(sireCode && (bullByCode.has(sireCode) || byCode.get(sireCode)?.sex === "male"));
   const ready = Boolean(femaleRow && knownProposal);
-  const flags = ready && query.female ? matingFlags(query.female, sireCode, links) : [];
+  const depth = farm.matingGenerationWindow;
+  const flags = ready && query.female ? matingFlags(query.female, sireCode, links, depth) : [];
   const canSave = canUseGenetics(farm.roles);
   const bullCodes = new Set(bullRows.map((bull) => bull.code));
   const bullOptions = [
     { value: "", label: "Bull or semen batch" },
     ...bullRows.map((bull) => ({ value: bull.code, label: `${bull.name} · ${bull.code}` })),
     ...herd
-      .filter((animal) => !bullCodes.has(animal.code))
+      .filter((animal) => animal.sex === "male" && !bullCodes.has(animal.code))
       .map((animal) => ({ value: animal.code, label: `${animal.name ?? animal.code} · ${animal.code}` })),
     ...batches.flatMap((batch) => {
       const bull = bullById.get(batch.bullId);
@@ -100,7 +105,7 @@ export default async function GeneticsPage({
   const pairError = query.female && !femaleRow
     ? "Choose a female on this farm."
     : query.bull && !knownProposal
-      ? "Choose a bull, a herd animal, or a semen batch from this farm."
+      ? "Choose a bull, a male herd animal, or a semen batch from this farm."
       : undefined;
   const femaleLabel = query.female ? labelFor(query.female, byCode, bullByCode) : "";
   const sireLabel = sireCode ? labelFor(sireCode, byCode, bullByCode) : "";
@@ -109,7 +114,7 @@ export default async function GeneticsPage({
     <div className="space-y-5">
       <Summary
         title="Genetics"
-        description="Decision support. This check lists pedigree overlaps from data entered on this farm. It is not a veterinary opinion, an inbreeding coefficient, or a breed-society approval."
+        description={`Decision support (${depth}-generation window). This check lists pedigree overlaps from data entered on this farm. It is not a veterinary opinion, an inbreeding coefficient, or a breed-society approval.`}
         facts={[{ label: "Sires with offspring", value: String(allSires.length) }]}
       />
       <TabBar tabs={tabs} current={tab} base="/genetics" />
@@ -193,7 +198,7 @@ export default async function GeneticsPage({
             {ready && query.female ? (
               <div className="space-y-4">
                 {flags.length === 0 ? (
-                  <Notice>No shared ancestor was found in the stored pedigree.</Notice>
+                  <Notice>No shared ancestor was found within {depth} generations of stored pedigree.</Notice>
                 ) : (
                   <ul className="space-y-2 text-sm">
                     {flags.map((flag) => (
@@ -205,8 +210,8 @@ export default async function GeneticsPage({
                   </ul>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <PedigreeList title={femaleLabel} code={query.female} links={links} herd={byCode} bulls={bullByCode} />
-                  <PedigreeList title={sireLabel} code={sireCode} links={links} herd={byCode} bulls={bullByCode} />
+                  <PedigreeList title={femaleLabel} code={query.female} links={links} herd={byCode} bulls={bullByCode} maxDepth={depth} />
+                  <PedigreeList title={sireLabel} code={sireCode} links={links} herd={byCode} bulls={bullByCode} maxDepth={depth} />
                 </div>
               </div>
             ) : (
@@ -229,7 +234,7 @@ function labelFor(code: string, herd: Map<string, { name: string | null; code: s
 
 function RecordLink({ code, herd, bulls }: { code: string; herd: Map<string, { name: string | null; code: string }>; bulls: Map<string, { name: string; code: string }> }) {
   const label = labelFor(code, herd, bulls);
-  const href = herd.has(code) ? `/animals/${code}` : `/semen?q=${encodeURIComponent(code)}`;
+  const href = herd.has(code) ? `/animals/${code}` : `/semen?tab=bulls&q=${encodeURIComponent(code)}`;
   return (
     <Link href={href} className="text-primary">
       {label}
@@ -243,22 +248,24 @@ function PedigreeList({
   links,
   herd,
   bulls,
+  maxDepth,
 }: {
   title: string;
   code: string;
   links: PedigreeLink[];
   herd: Map<string, { name: string | null; code: string }>;
   bulls: Map<string, { name: string; code: string }>;
+  maxDepth: number;
 }) {
-  const lines = pedigreeLines(code, links);
-  const pad = ["pl-0", "pl-3", "pl-6", "pl-9", "pl-12"] as const;
+  const lines = pedigreeLines(code, links, maxDepth);
+  const pad = ["pl-0", "pl-3", "pl-6", "pl-9", "pl-12", "pl-14", "pl-16"] as const;
   return (
     <div className="rounded-xl bg-muted/70 p-3">
       <h3 className="text-sm font-semibold">{title}</h3>
       {lines.length === 0 ? <p className="mt-2 text-sm text-muted-foreground">No parents linked.</p> : null}
       <ul className="mt-2 space-y-1 text-sm">
         {lines.map((line) => (
-          <li key={`${line.generation}-${line.role}-${line.code}`} className={pad[line.generation] ?? "pl-12"}>
+          <li key={`${line.generation}-${line.role}-${line.code}`} className={pad[line.generation] ?? "pl-16"}>
             <span className="text-muted-foreground">{line.role}</span>{" "}
             <RecordLink code={line.code} herd={herd} bulls={bulls} />
           </li>

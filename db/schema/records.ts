@@ -1,4 +1,5 @@
-import { date, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { type AnyPgColumn, date, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { users } from "./auth";
 import { animals, locations } from "./animal";
 import { farms } from "./farm";
@@ -123,6 +124,7 @@ export const pregnancyChecks = pgTable("pregnancy_check", {
     .notNull()
     .references(() => animals.id, { onDelete: "cascade" }),
   inseminationId: text("insemination_id").references(() => inseminations.id),
+  embryoTransferId: text("embryo_transfer_id").references((): AnyPgColumn => embryoTransfers.id),
   checkedOn: date("checked_on").notNull(),
   result: text("result").notNull(),
   method: text("method"),
@@ -170,7 +172,9 @@ export const calvings = pgTable("calving", {
     .notNull()
     .references(() => animals.id, { onDelete: "cascade" }),
   inseminationId: text("insemination_id").references(() => inseminations.id),
+  embryoTransferId: text("embryo_transfer_id").references((): AnyPgColumn => embryoTransfers.id),
   calvedOn: date("calved_on").notNull(),
+  expectedCalving: date("expected_calving"),
   calfId: text("calf_id").references(() => animals.id),
   outcome: text("outcome").notNull(),
   ease: text("ease"),
@@ -197,6 +201,9 @@ export const healthEvents = pgTable("health_event", {
   dose: text("dose"),
   route: text("route"),
   duration: text("duration"),
+  quarters: text("quarters"),
+  withdrawalDays: integer("withdrawal_days"),
+  withdrawalUntil: date("withdrawal_until"),
   veterinarian: text("veterinarian"),
   followUpOn: date("follow_up_on"),
   outcome: text("outcome").notNull().default("ongoing"),
@@ -222,6 +229,7 @@ export const vaccinations = pgTable("vaccination", {
   nextDueOn: date("next_due_on"),
   administeredBy: text("administered_by"),
   ...voidFields(),
+  createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -237,6 +245,7 @@ export const dewormings = pgTable("deworming", {
   givenOn: date("given_on").notNull(),
   nextDueOn: date("next_due_on"),
   ...voidFields(),
+  createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -251,6 +260,8 @@ export const weights = pgTable("weight", {
   weighedOn: date("weighed_on").notNull(),
   kilograms: numeric("kilograms", { precision: 6, scale: 1 }).notNull(),
   note: text("note"),
+  ...voidFields(),
+  createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -279,24 +290,35 @@ export const feedMovements = pgTable("feed_movement", {
   unitCost: numeric("unit_cost", { precision: 12, scale: 2 }),
   movedOn: date("moved_on").notNull(),
   note: text("note"),
-  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
-});
-
-export const financeEntries = pgTable("finance_entry", {
-  id: id(),
-  farmId: text("farm_id")
-    .notNull()
-    .references(() => farms.id, { onDelete: "cascade" }),
-  kind: text("kind").notNull(),
-  category: text("category").notNull(),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  entryOn: date("entry_on").notNull(),
-  animalId: text("animal_id").references(() => animals.id),
-  note: text("note"),
   ...voidFields(),
   createdBy: text("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
+
+export const financeEntries = pgTable(
+  "finance_entry",
+  {
+    id: id(),
+    farmId: text("farm_id")
+      .notNull()
+      .references(() => farms.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    category: text("category").notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    entryOn: date("entry_on").notNull(),
+    animalId: text("animal_id").references(() => animals.id),
+    sourceKey: text("source_key"),
+    note: text("note"),
+    ...voidFields(),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("finance_farm_source_key")
+      .on(table.farmId, table.sourceKey)
+      .where(sql`${table.sourceKey} is not null and ${table.voidedAt} is null`),
+  ],
+);
 
 export const embryos = pgTable(
   "embryo",
@@ -343,8 +365,12 @@ export const listings = pgTable("listing", {
   category: text("category").notNull(),
   price: numeric("price", { precision: 12, scale: 2 }),
   published: text("published").notNull().default("no"),
+  showName: text("show_name").notNull().default("yes"),
   showPedigree: text("show_pedigree").notNull().default("no"),
+  pedigreeDepth: integer("pedigree_depth").notNull().default(2),
+  showMilk: text("show_milk").notNull().default("no"),
   showPregnancy: text("show_pregnancy").notNull().default("no"),
+  publicHealthNote: text("public_health_note"),
   publicNote: text("public_note"),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -358,6 +384,7 @@ export const enquiries = pgTable("enquiry", {
   name: text("name").notNull(),
   phone: text("phone").notNull(),
   message: text("message").notNull(),
+  status: text("status").notNull().default("new"),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -386,6 +413,7 @@ export const orders = pgTable("order", {
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   status: text("status").notNull().default("pending_payment"),
   razorpayOrderId: text("razorpay_order_id"),
+  razorpayPaymentId: text("razorpay_payment_id"),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 

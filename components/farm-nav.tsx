@@ -11,6 +11,7 @@ import {
   Dna,
   Droplets,
   FileBarChart,
+  Globe,
   HeartPulse,
   LayoutGrid,
   Lightbulb,
@@ -18,6 +19,7 @@ import {
   Milk,
   ScanLine,
   ScrollText,
+  Settings,
   ShoppingBag,
   Sparkles,
   Sprout,
@@ -43,9 +45,9 @@ type CollapsibleGroup = {
 
 const topLinks: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutGrid },
-  { href: "/animals", label: "Cattle details", icon: Beef },
+  { href: "/animals", label: "Cattle register", icon: Beef },
   { href: "/ai", label: "AI Assistant", icon: Sparkles },
-  { href: "/reports", label: "Analytics", icon: FileBarChart },
+  { href: "/reports", label: "Reports", icon: FileBarChart },
 ];
 
 const accordionGroups: CollapsibleGroup[] = [
@@ -54,7 +56,6 @@ const accordionGroups: CollapsibleGroup[] = [
     label: "Herd & sheds",
     icon: Warehouse,
     links: [
-      { href: "/animals", label: "Cattle register", icon: Beef },
       { href: "/locations", label: "Sheds & pens", icon: Warehouse },
       { href: "/milk", label: "Milk production", icon: Milk },
       { href: "/feed", label: "Feed & nutrition", icon: Wheat },
@@ -84,10 +85,11 @@ const accordionGroups: CollapsibleGroup[] = [
   },
   {
     id: "commerce",
-    label: "Marketplace",
+    label: "Public & shop",
     icon: ShoppingBag,
     links: [
-      { href: "/shop", label: "Shop listings", icon: ShoppingBag },
+      { href: "/listings", label: "Public listings", icon: Globe },
+      { href: "/shop", label: "Shop & orders", icon: ShoppingBag },
       { href: "/enquiries", label: "Buyer enquiries", icon: Mail },
     ],
   },
@@ -95,6 +97,7 @@ const accordionGroups: CollapsibleGroup[] = [
 
 const footerLinks: NavItem[] = [
   { href: "/finance", label: "Finance", icon: Wallet },
+  { href: "/settings", label: "Farm settings", icon: Settings },
   { href: "/team", label: "Team & roles", icon: Users },
   { href: "/audit", label: "Audit log", icon: ScrollText },
 ];
@@ -102,16 +105,28 @@ const footerLinks: NavItem[] = [
 export function FarmNav({
   showTeam = false,
   showAudit = false,
+  showFinance = false,
+  showReports = false,
   showHealth = false,
   showSemen = false,
   showGenetics = false,
+  showShop = false,
+  showListings = false,
+  showEnquiries = false,
+  showSettings = false,
   variant = "sidebar",
 }: {
   showTeam?: boolean;
   showAudit?: boolean;
+  showFinance?: boolean;
+  showReports?: boolean;
   showHealth?: boolean;
   showSemen?: boolean;
   showGenetics?: boolean;
+  showShop?: boolean;
+  showListings?: boolean;
+  showEnquiries?: boolean;
+  showSettings?: boolean;
   variant?: "sidebar" | "drawer";
 }) {
   const pathname = usePathname();
@@ -119,9 +134,15 @@ export function FarmNav({
   function allowed(href: string) {
     if (href === "/team" && !showTeam) return false;
     if (href === "/audit" && !showAudit) return false;
+    if (href === "/finance" && !showFinance) return false;
+    if (href === "/reports" && !showReports) return false;
     if (href === "/health" && !showHealth) return false;
     if (href === "/semen" && !showSemen) return false;
-    if (href === "/embryos" && !showGenetics) return false;
+    if ((href === "/genetics" || href === "/embryos") && !showGenetics) return false;
+    if (href === "/shop" && !showShop) return false;
+    if (href === "/listings" && !showListings) return false;
+    if (href === "/enquiries" && !showEnquiries) return false;
+    if (href === "/settings" && !showSettings) return false;
     return true;
   }
 
@@ -138,22 +159,16 @@ export function FarmNav({
 
   const visibleFooter = footerLinks.filter((link) => allowed(link.href));
 
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {};
-    for (const group of accordionGroups) {
-      if (group.links.some((link) => pathname === link.href || pathname.startsWith(`${link.href}/`))) {
-        initial[group.id] = true;
-      }
-    }
-    if (Object.keys(initial).length === 0) {
-      initial.herd = true;
-      initial.breeding = true;
-    }
-    return initial;
-  });
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
 
-  function toggleGroup(id: string) {
-    setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+  function isGroupOpen(group: CollapsibleGroup, hasActiveChild: boolean) {
+    if (group.id in toggled) return toggled[group.id];
+    if (hasActiveChild) return true;
+    return group.id === "herd" || group.id === "breeding";
+  }
+
+  function toggleGroup(id: string, currentlyOpen: boolean) {
+    setToggled((prev) => ({ ...prev, [id]: !currentlyOpen }));
   }
 
   const stacked = variant === "drawer";
@@ -196,12 +211,12 @@ export function FarmNav({
         {visibleGroups.map((group) => {
           const GroupIcon = group.icon;
           const hasActiveChild = group.links.some((link) => isRouteActive(link.href));
-          const isOpen = Boolean(openGroups[group.id] || hasActiveChild);
+          const isOpen = isGroupOpen(group, hasActiveChild);
           return (
             <div key={group.id}>
               <button
                 type="button"
-                onClick={() => toggleGroup(group.id)}
+                onClick={() => toggleGroup(group.id, isOpen)}
                 aria-expanded={isOpen}
                 className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition ${
                   hasActiveChild ? "font-medium text-zinc-100" : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
@@ -240,26 +255,28 @@ export function FarmNav({
         })}
       </div>
 
-      <div className="mt-auto pt-4">
-        <div className="mb-2 border-t border-white/[0.07]" />
-        <div className="space-y-0.5">
-          {visibleFooter.map((link) => {
-            const active = isRouteActive(link.href);
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`flex h-8.5 items-center justify-between rounded-lg px-2.5 text-[13px] transition ${
-                  active ? "bg-white/[0.1] font-medium text-white" : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
-                }`}
-              >
-                <span className="truncate">{link.label}</span>
-                <ChevronRight className="size-3.5 shrink-0 text-zinc-500" />
-              </Link>
-            );
-          })}
+      {visibleFooter.length > 0 ? (
+        <div className="mt-auto pt-4">
+          <div className="mb-2 border-t border-white/[0.07]" />
+          <div className="space-y-0.5">
+            {visibleFooter.map((link) => {
+              const active = isRouteActive(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex h-8.5 items-center justify-between rounded-lg px-2.5 text-[13px] transition ${
+                    active ? "bg-white/[0.1] font-medium text-white" : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
+                  }`}
+                >
+                  <span className="truncate">{link.label}</span>
+                  <ChevronRight className="size-3.5 shrink-0 text-zinc-500" />
+                </Link>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      ) : null}
     </nav>
   );
 }

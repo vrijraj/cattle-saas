@@ -38,8 +38,35 @@ export function feedSign(kind: string) {
   return SIGN[kind] ?? 0;
 }
 
-export function feedBalance(rows: { kind: string; quantity: string | number }[]) {
-  return rows.reduce((sum, row) => sum + Number(row.quantity) * feedSign(row.kind), 0);
+export function feedSignedDelta(kind: string, quantity: string | number) {
+  const num = Number(quantity);
+  if (!Number.isFinite(num)) return 0;
+  if (kind === "adjustment") return num;
+  const sign = feedSign(kind);
+  if (sign === 0) return 0;
+  return Math.abs(num) * sign;
+}
+
+export function feedBalance(rows: { kind: string; quantity: string | number; voidedAt?: Date | null }[]) {
+  return rows.reduce((sum, row) => {
+    if (row.voidedAt) return sum;
+    return sum + feedSignedDelta(row.kind, row.quantity);
+  }, 0);
+}
+
+export function feedAverageUnitCost(rows: { kind: string; quantity: string | number; unitCost: string | number | null; voidedAt?: Date | null }[]) {
+  let totalCost = 0;
+  let totalQty = 0;
+  for (const row of rows) {
+    if (row.voidedAt) continue;
+    if (row.kind !== "purchase" && row.kind !== "opening") continue;
+    const cost = row.unitCost === null || row.unitCost === "" ? NaN : Number(row.unitCost);
+    const qty = Math.abs(Number(row.quantity));
+    if (!Number.isFinite(cost) || cost < 0 || !Number.isFinite(qty) || qty <= 0) continue;
+    totalCost += qty * cost;
+    totalQty += qty;
+  }
+  return totalQty > 0 ? Math.round((totalCost / totalQty) * 100) / 100 : null;
 }
 
 export function feedIsLow(balance: number, minimum: string | null) {
@@ -47,9 +74,9 @@ export function feedIsLow(balance: number, minimum: string | null) {
 }
 
 export function feedQuantityLabel(kind: string, quantity: string | number) {
-  const amount = Math.abs(Number(quantity)).toFixed(1);
-  const sign = feedSign(kind);
-  if (sign < 0) return `−${amount}`;
-  if (sign > 0) return `+${amount}`;
+  const delta = feedSignedDelta(kind, quantity);
+  const amount = Math.abs(delta).toFixed(1);
+  if (delta < 0) return `−${amount}`;
+  if (delta > 0) return `+${amount}`;
   return amount;
 }

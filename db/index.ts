@@ -24,6 +24,11 @@ export function getDb() {
   return globalForDb.db;
 }
 
+export function resetDb() {
+  globalForDb.db = undefined;
+  globalForDb.pg = undefined;
+}
+
 export const db = new Proxy({} as Database, {
   get(_target, prop, receiver) {
     const real = getDb();

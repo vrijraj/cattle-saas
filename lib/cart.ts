@@ -13,8 +13,10 @@ export async function readCart(): Promise<Cart> {
     const parsed = JSON.parse(raw) as Cart;
     if (!parsed || !Array.isArray(parsed.lines)) return empty;
     return {
-      slug: parsed.slug ?? "",
-      lines: parsed.lines.filter((line) => line.productId && line.quantity > 0),
+      slug: typeof parsed.slug === "string" ? parsed.slug : "",
+      lines: parsed.lines
+        .filter((line) => typeof line?.productId === "string" && line.productId && Number.isFinite(line.quantity) && Math.trunc(line.quantity) >= 1)
+        .map((line) => ({ productId: line.productId, quantity: Math.trunc(line.quantity) })),
     };
   } catch {
     return empty;
@@ -23,5 +25,11 @@ export async function readCart(): Promise<Cart> {
 
 export async function writeCart(cart: Cart) {
   const jar = await cookies();
-  jar.set("shop_cart", JSON.stringify(cart), { httpOnly: true, sameSite: "lax", path: "/" });
+  jar.set("shop_cart", JSON.stringify(cart), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 7,
+    path: "/",
+  });
 }

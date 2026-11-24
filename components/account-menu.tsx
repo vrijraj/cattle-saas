@@ -2,14 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { User } from "lucide-react";
+import { Building2, Check, User } from "lucide-react";
+import { switchFarm } from "@/app/(farm)/profile/actions";
 
 export function AccountMenu({
+  farmName,
+  currentFarmId,
+  farms = [],
   userName,
   role,
   initials,
   logout,
 }: {
+  farmName: string;
+  currentFarmId: string;
+  farms?: { id: string; name: string; slug: string; roles: string[] }[];
   userName: string;
   role: string;
   initials: string;
@@ -47,16 +54,43 @@ export function AccountMenu({
         {initials}
       </button>
       {open ? (
-        <div role="menu" className="absolute top-full right-0 z-30 mt-2 w-52 rounded-2xl border border-border bg-card p-1.5 shadow-xl">
+        <div role="menu" className="absolute top-full right-0 z-30 mt-2 w-60 rounded-2xl border border-border bg-card p-1.5 shadow-xl">
           <div className="border-b border-border/60 px-3 py-2">
             <p className="truncate text-sm font-semibold">{userName}</p>
-            <p className="text-xs capitalize text-muted-foreground">{role.replaceAll("_", " ")}</p>
+            <p className="truncate text-xs text-muted-foreground">{farmName}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{role}</p>
           </div>
+          {farms.length > 1 ? (
+            <div className="border-b border-border/60 py-1.5">
+              <p className="px-3 pb-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Switch farm</p>
+              {farms.map((item) => {
+                const active = item.id === currentFarmId;
+                return (
+                  <form key={item.id} action={switchFarm}>
+                    <input type="hidden" name="farmId" value={item.id} />
+                    <button
+                      type="submit"
+                      role="menuitem"
+                      disabled={active}
+                      onClick={() => setOpen(false)}
+                      className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-medium transition ${
+                        active ? "bg-secondary/70 text-secondary-foreground" : "hover:bg-muted"
+                      }`}
+                    >
+                      <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                      {active ? <Check className="size-3.5 shrink-0 text-primary" /> : null}
+                    </button>
+                  </form>
+                );
+              })}
+            </div>
+          ) : null}
           <Link
             role="menuitem"
             href="/profile"
             onClick={() => setOpen(false)}
-            className="flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium transition hover:bg-muted"
+            className="mt-0.5 flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium transition hover:bg-muted"
           >
             <User className="size-4 text-muted-foreground" />
             Profile

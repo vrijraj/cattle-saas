@@ -20,6 +20,7 @@ const messages: Record<string, string> = {
   last: "This farm needs one owner or admin who can still sign in.",
   farms: "This person also belongs to another farm, so their sign-in stays as it is.",
   roles: "Choose at least one role.",
+  owner: "Only an owner can grant, remove, or disable the Owner role.",
   reason: "Enter the reason for turning off this sign-in.",
 };
 
@@ -40,6 +41,7 @@ export default async function TeamPage({
       name: users.name,
       email: users.email,
       roles: farmMembers.roles,
+      canRecordVaccines: farmMembers.canRecordVaccines,
       disabledAt: users.disabledAt,
     })
     .from(farmMembers)
@@ -85,7 +87,7 @@ export default async function TeamPage({
       <form className="flex flex-wrap items-end gap-2" method="get">
         <label className="text-sm">
           <span className="mb-1 block text-muted-foreground">Search</span>
-          <input className="h-10 rounded-lg border border-border bg-background px-3" name="q" defaultValue={query.q ?? ""} placeholder="Name or email" />
+          <input key={query.q ?? ""} className="h-10 rounded-lg border border-border bg-background px-3" name="q" defaultValue={query.q ?? ""} placeholder="Name or email" />
         </label>
         <button className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground" type="submit">
           Apply
@@ -98,6 +100,7 @@ export default async function TeamPage({
       </form>
       {query.sent === "1" ? <Notice>The invitation email was sent. The link is also in the table below.</Notice> : null}
       {query.sent === "0" ? <Notice>Email is not configured, so the invite was not mailed. Copy the link from the table.</Notice> : null}
+      {query.sent === "err" ? <Notice tone="danger">The invite was saved, but the email provider returned an error. Copy the link from the table.</Notice> : null}
       {query.error && messages[query.error] && query.error !== "form" ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
 
       <section className="space-y-3">
@@ -111,7 +114,10 @@ export default async function TeamPage({
               <tr key={member.userId}>
                 <Td>{member.name ?? "—"}</Td>
                 <Td>{member.email}</Td>
-                <Td>{member.roles.map((role) => roleLabel[role] ?? role).join(", ")}</Td>
+                <Td>
+                  {member.roles.map((role) => roleLabel[role] ?? role).join(", ")}
+                  {member.canRecordVaccines && member.roles.includes("worker") ? " · Vaccine entry" : ""}
+                </Td>
                 <Td>{member.disabledAt ? "Disabled" : mine ? "You" : "Active"}</Td>
                 <Td>
                   <div className="flex flex-wrap items-center gap-3">
@@ -119,6 +125,10 @@ export default async function TeamPage({
                       <form action={updateRoles} className="grid gap-3">
                         <input type="hidden" name="userId" value={member.userId} />
                         <RoleChoices selected={member.roles} />
+                        <label className="flex items-center gap-2 border-t border-border pt-2 text-sm">
+                          <input type="checkbox" name="canRecordVaccines" defaultChecked={member.canRecordVaccines} />
+                          <span>Allow worker to record vaccines &amp; deworming</span>
+                        </label>
                         <Submit>Save roles</Submit>
                       </form>
                     </RecordDialog>

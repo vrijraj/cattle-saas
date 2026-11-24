@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { hash } from "@node-rs/argon2";
 import { and, eq } from "drizzle-orm";
 import { addDays, farmToday } from "../../lib/dates";
@@ -32,37 +33,47 @@ export async function seedLaunchGaps(db: Database, farmId: string) {
       .limit(1);
     if (existingMilk.length === 0) {
       const prior = Array.from({ length: 7 }, (_, index) => addDays(today, index - 7));
-      await db.insert(milkYields).values([
-        ...prior.map((recordedOn) => ({
-          farmId,
-          animalId: jamuna.id,
-          recordedOn,
-          morningLitres: "6.0",
-          eveningLitres: "6.0",
-        })),
-        {
-          farmId,
-          animalId: jamuna.id,
-          recordedOn: today,
-          morningLitres: "3.0",
-          eveningLitres: "4.0",
-        },
-      ]);
+      await db
+        .insert(milkYields)
+        .values([
+          ...prior.map((recordedOn) => ({
+            farmId,
+            animalId: jamuna.id,
+            recordedOn,
+            morningLitres: "6.0",
+            eveningLitres: "6.0",
+          })),
+          {
+            farmId,
+            animalId: jamuna.id,
+            recordedOn: today,
+            morningLitres: "3.0",
+            eveningLitres: "4.0",
+          },
+        ])
+        .onConflictDoNothing();
       const drop = animalMilkDrop({
         daysInMilk: 50,
         prior: prior.map((date) => ({ date, morning: 6, evening: 6, explained: false })),
         today: { date: today, morning: 3, evening: 4, explained: false },
       });
       if (drop) {
-        await db.insert(alerts).values({
-          farmId,
-          animalId: jamuna.id,
-          type: "milk_drop",
-          title: `Milk drop · ${jamuna.name ?? jamuna.code}`,
-          body: milkDropBody(drop),
-          dueOn: today,
-          status: "open",
-        });
+        const existingDrop = await db
+          .select({ id: alerts.id })
+          .from(alerts)
+          .where(and(eq(alerts.animalId, jamuna.id), eq(alerts.type, "milk_drop"), eq(alerts.dueOn, today)))
+          .limit(1);
+        if (existingDrop.length === 0) {
+          await db.insert(alerts).values({
+            farmId,
+            animalId: jamuna.id,
+            type: "milk_drop",
+            title: `Milk drop · ${jamuna.name ?? jamuna.code}`,
+            body: milkDropBody(drop),
+            dueOn: today,
+            status: "open",
+          });
+        }
       }
     }
     const moves = await db.select({ id: locationMoves.id }).from(locationMoves).where(eq(locationMoves.animalId, jamuna.id)).limit(1);
@@ -186,7 +197,7 @@ async function seedSecondFarm(db: Database) {
     reproduction: "open",
     lactation: "lactating",
     locationId: shed.id,
-    qrToken: `narmada-${farm.id}`,
+    qrToken: randomBytes(32).toString("base64url"),
     createdBy: user.id,
   });
 }

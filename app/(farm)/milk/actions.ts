@@ -7,7 +7,7 @@ import { animals, farms, milkYields } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { farmToday, formatDisplayDate, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
-import { canWriteMilk, hasRole } from "@/lib/permissions";
+import { canManageSettings, canWriteMilk } from "@/lib/permissions";
 import { syncMilkDrops } from "@/lib/sync-milk-drops";
 
 function parseLitres(value: FormDataEntryValue | null) {
@@ -32,10 +32,17 @@ export async function saveMilk(formData: FormData) {
   const today = farmToday(farm.timezone);
   const recordedOn = parseFarmDate(String(formData.get("recordedOn") ?? ""));
   if (!recordedOn || recordedOn > today) redirect("/milk?error=date");
-  const herd = await db
-    .select({ id: animals.id, code: animals.code })
-    .from(animals)
-    .where(and(eq(animals.farmId, farm.farmId), eq(animals.presence, "on_farm"), eq(animals.lactation, "lactating")));
+  const [herd, existingRows] = await Promise.all([
+    db
+      .select({ id: animals.id, code: animals.code })
+      .from(animals)
+      .where(and(eq(animals.farmId, farm.farmId), eq(animals.presence, "on_farm"), eq(animals.lactation, "lactating"))),
+    db
+      .select()
+      .from(milkYields)
+      .where(and(eq(milkYields.farmId, farm.farmId), eq(milkYields.recordedOn, recordedOn))),
+  ]);
+  const existingByAnimal = new Map(existingRows.map((row) => [row.animalId, row]));
 
   const rows: { id: string; code: string; morning: string | null; evening: string | null }[] = [];
   for (const animal of herd) {
@@ -47,7 +54,10 @@ export async function saveMilk(formData: FormData) {
 
   await db.transaction(async (tx) => {
     for (const row of rows) {
+      const prev = existingByAnimal.get(row.id);
       if (row.morning === null && row.evening === null) continue;
+      if (prev && !prev.voidedAt && prev.morningLitres === row.morning && prev.eveningLitres === row.evening) continue;
+
       const [saved] = await tx
         .insert(milkYields)
         .values({
@@ -73,10 +83,11 @@ export async function saveMilk(formData: FormData) {
       await writeAudit(tx, {
         farmId: farm.farmId,
         actorId: farm.userId,
-        action: "update",
+        action: prev ? "update" : "create",
         entity: "milk",
         entityId: saved.id,
         summary: `Milk for ${row.code} on ${formatDisplayDate(recordedOn)}: ${[row.morning ? `${row.morning} L morning` : "", row.evening ? `${row.evening} L evening` : ""].filter(Boolean).join(", ") || "no litres entered"}`,
+        before: prev ? { recordedOn, morning: prev.morningLitres, evening: prev.eveningLitres } : null,
         after: { recordedOn, morning: row.morning, evening: row.evening },
       });
     }
@@ -88,22 +99,24 @@ export async function saveMilk(formData: FormData) {
 
 export async function saveMilkSettings(formData: FormData) {
   const farm = await requireFarm();
-  if (!hasRole(farm.roles, ["owner", "manager", "admin", "accountant"])) redirect("/milk?error=role");
+  if (!canManageSettings(farm.roles)) redirect("/milk?error=role");
   const priceText = String(formData.get("milkPricePerLitre") ?? "").trim();
   const dropText = String(formData.get("milkDropPercent") ?? "").trim();
-  const price = Number(priceText);
+  const price = priceText ? Number(priceText) : null;
   const dropPercent = Number(dropText);
-  if (!Number.isFinite(price) || price < 0 || price > 1000) redirect("/milk?error=settings");
+  if (price !== null && (!Number.isFinite(price) || price < 0 || price > 1000)) redirect("/milk?error=settings");
   if (!Number.isFinite(dropPercent) || dropPercent < 5 || dropPercent > 90) redirect("/milk?error=settings");
+  const requireBoth = formData.has("requireBothMilkSessions") ? formData.get("requireBothMilkSessions") === "on" : farm.requireBothMilkSessions;
 
   const roundedDrop = Math.round(dropPercent);
-  const formattedPrice = price.toFixed(2);
+  const formattedPrice = price !== null ? price.toFixed(2) : null;
   await db.transaction(async (tx) => {
     await tx
       .update(farms)
       .set({
         milkPricePerLitre: formattedPrice,
         milkDropPercent: roundedDrop,
+        requireBothMilkSessions: requireBoth,
       })
       .where(eq(farms.id, farm.farmId));
     await writeAudit(tx, {
@@ -112,8 +125,13 @@ export async function saveMilkSettings(formData: FormData) {
       action: "update",
       entity: "farm_milk_settings",
       entityId: farm.farmId,
-      summary: `Milk settings updated: ₹${formattedPrice}/L · ${roundedDrop}% drop alert threshold`,
-      after: { milkPricePerLitre: formattedPrice, milkDropPercent: roundedDrop },
+      summary: `Milk settings updated: ${formattedPrice ? `₹${formattedPrice}/L` : "price unset"} · ${roundedDrop}% drop threshold`,
+      before: {
+        milkPricePerLitre: farm.milkPricePerLitre,
+        milkDropPercent: farm.milkDropPercent,
+        requireBothMilkSessions: farm.requireBothMilkSessions,
+      },
+      after: { milkPricePerLitre: formattedPrice, milkDropPercent: roundedDrop, requireBothMilkSessions: requireBoth },
     });
   });
 

@@ -33,9 +33,17 @@ export async function POST(request: Request) {
   const turn: AiTurn = confirmation ?? { kind: "text", text: message };
 
   const encoder = new TextEncoder();
+  let closed = false;
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (event: AiEvent) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      const send = (event: AiEvent) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        } catch {
+          closed = true;
+        }
+      };
       try {
         const { runFarmAssistant } = await import("@/lib/ai/run");
         for await (const event of runFarmAssistant(
@@ -46,12 +54,15 @@ export async function POST(request: Request) {
             farmSlug: farm.farmSlug,
             timezone: farm.timezone,
             roles: farm.roles,
+            canRecordVaccines: farm.canRecordVaccines,
+            matingGenerationWindow: farm.matingGenerationWindow,
             userName: farm.userName ?? farm.email,
           },
           turn,
           sessionId,
           request.signal,
         )) {
+          if (closed) break;
           send(event);
         }
       } catch (error) {
@@ -59,8 +70,18 @@ export async function POST(request: Request) {
         send({ type: "error", message: detail });
         send({ type: "done" });
       } finally {
-        controller.close();
+        if (!closed) {
+          closed = true;
+          try {
+            controller.close();
+          } catch {
+            // stream already closed
+          }
+        }
       }
+    },
+    cancel() {
+      closed = true;
     },
   });
 

@@ -5,6 +5,25 @@ import { useRouter } from "next/navigation";
 import { scanLookupError } from "@/lib/scan-lookup";
 
 type Detector = { detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>> };
+type DetectorConstructor = {
+  new (options: { formats: string[] }): Detector;
+  getSupportedFormats?: () => Promise<string[]>;
+};
+
+const DESIRED_FORMATS = ["qr_code", "code_128", "code_39", "ean_13", "ean_8"];
+
+async function resolveFormats(Ctor: DetectorConstructor) {
+  try {
+    if (Ctor.getSupportedFormats) {
+      const supported = await Ctor.getSupportedFormats();
+      const chosen = DESIRED_FORMATS.filter((fmt) => supported.includes(fmt));
+      if (chosen.length > 0) return chosen;
+    }
+  } catch {
+    // Fall back to qr_code only.
+  }
+  return ["qr_code"];
+}
 
 export function CodeScanner({ code = "", error = null }: { code?: string; error?: string | null }) {
   const router = useRouter();
@@ -13,6 +32,17 @@ export function CodeScanner({ code = "", error = null }: { code?: string; error?
   const [note, setNote] = useState("");
   const [lookup, setLookup] = useState(code);
   const [lookupError, setLookupError] = useState(error);
+  const [prevCode, setPrevCode] = useState(code);
+  const [prevError, setPrevError] = useState(error);
+
+  if (code !== prevCode) {
+    setPrevCode(code);
+    setLookup(code);
+  }
+  if (error !== prevError) {
+    setPrevError(error);
+    setLookupError(error);
+  }
 
   function closeCamera() {
     setScanning(false);
@@ -22,10 +52,11 @@ export function CodeScanner({ code = "", error = null }: { code?: string; error?
     if (!scanning) return;
     let stop = false;
     let stream: MediaStream | null = null;
+    let timer: number | null = null;
     const video = videoRef.current;
 
     async function run() {
-      const DetectorCtor = (window as unknown as { BarcodeDetector?: new (options: { formats: string[] }) => Detector }).BarcodeDetector;
+      const DetectorCtor = (window as unknown as { BarcodeDetector?: DetectorConstructor }).BarcodeDetector;
       if (!DetectorCtor || !video) {
         setNote("This browser has no camera scanner. Type the code below.");
         setScanning(false);
@@ -38,9 +69,14 @@ export function CodeScanner({ code = "", error = null }: { code?: string; error?
         setScanning(false);
         return;
       }
+      if (stop) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       video.srcObject = stream;
       await video.play();
-      const detector = new DetectorCtor({ formats: ["qr_code"] });
+      const formats = await resolveFormats(DetectorCtor);
+      const detector = new DetectorCtor({ formats });
       const tick = async () => {
         if (stop || !video) return;
         try {
@@ -49,13 +85,14 @@ export function CodeScanner({ code = "", error = null }: { code?: string; error?
           if (value) {
             stop = true;
             stream?.getTracks().forEach((track) => track.stop());
+            setScanning(false);
             router.push(`/scan?code=${encodeURIComponent(value)}`);
             return;
           }
         } catch {
           setNote("The camera could not read a code. Type it below.");
         }
-        if (!stop) window.setTimeout(() => void tick(), 400);
+        if (!stop) timer = window.setTimeout(() => void tick(), 400);
       };
       void tick();
     }
@@ -63,19 +100,22 @@ export function CodeScanner({ code = "", error = null }: { code?: string; error?
     void run();
     return () => {
       stop = true;
+      if (timer !== null) window.clearTimeout(timer);
       stream?.getTracks().forEach((track) => track.stop());
     };
   }, [router, scanning]);
 
   async function readTagPhoto(file: File) {
-    const DetectorCtor = (window as unknown as { BarcodeDetector?: new (options: { formats: string[] }) => Detector }).BarcodeDetector;
+    const DetectorCtor = (window as unknown as { BarcodeDetector?: DetectorConstructor }).BarcodeDetector;
     if (!DetectorCtor) {
       setNote("This browser cannot read a tag photo. Type the code.");
       return;
     }
+    let bitmap: ImageBitmap | null = null;
     try {
-      const bitmap = await createImageBitmap(file);
-      const found = await new DetectorCtor({ formats: ["qr_code"] }).detect(bitmap);
+      bitmap = await createImageBitmap(file);
+      const formats = await resolveFormats(DetectorCtor);
+      const found = await new DetectorCtor({ formats }).detect(bitmap);
       const value = found[0]?.rawValue?.trim();
       if (!value) {
         setNote("No tag was found in that photo.");
@@ -84,6 +124,8 @@ export function CodeScanner({ code = "", error = null }: { code?: string; error?
       router.push(`/scan?code=${encodeURIComponent(value)}`);
     } catch {
       setNote("That photo could not be read. Type the code.");
+    } finally {
+      bitmap?.close();
     }
   }
 
@@ -122,7 +164,7 @@ export function CodeScanner({ code = "", error = null }: { code?: string; error?
       {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
       <form action="/scan" className="grid gap-2" onSubmit={lookUp}>
         <label className="text-sm font-medium" htmlFor="lookup-code">
-          Animal code, straw code, or tag link
+          Animal code, ear tag, RFID, straw code, or tag link
         </label>
         <input
           id="lookup-code"
@@ -138,7 +180,7 @@ export function CodeScanner({ code = "", error = null }: { code?: string; error?
           }}
         />
         {lookupError ? (
-          <p id="lookup-code-error" className="text-sm text-destructive">
+          <p id="lookup-code-error" role="alert" className="text-sm text-destructive">
             {lookupError}
           </p>
         ) : null}

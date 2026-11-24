@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -9,6 +9,7 @@ import {
   Dna,
   Droplets,
   FileBarChart,
+  Globe,
   HeartPulse,
   LayoutDashboard,
   Lightbulb,
@@ -17,6 +18,7 @@ import {
   ScanLine,
   ScrollText,
   Search,
+  Settings,
   ShoppingBag,
   Sparkles,
   Sprout,
@@ -30,6 +32,19 @@ import {
 
 type Kind = "page" | "animal" | "straw" | "bull" | "alert" | "product" | "enquiry";
 
+type GateKey =
+  | "team"
+  | "audit"
+  | "finance"
+  | "reports"
+  | "genetics"
+  | "health"
+  | "semen"
+  | "shop"
+  | "listings"
+  | "enquiries"
+  | "settings";
+
 type Item = {
   id: string;
   href: string;
@@ -41,7 +56,15 @@ type Item = {
 };
 
 type SearchBody = {
-  cattle: { code: string; name: string | null; breedName: string | null; locationName: string | null; earTag: string | null; match: string }[];
+  cattle: {
+    code: string;
+    name: string | null;
+    breedName: string | null;
+    locationName: string | null;
+    earTag: string | null;
+    rfid?: string | null;
+    match: string;
+  }[];
   cattleCount: number;
   straws: { code: string; bullName: string; status: string }[];
   strawCount: number;
@@ -70,27 +93,29 @@ const emptyBody: SearchBody = {
   enquiryCount: 0,
 };
 
-const pages: { href: string; label: string; icon: LucideIcon; gate?: "team" | "audit" | "finance" | "reports" | "genetics" | "health" | "semen" }[] = [
+const pages: { href: string; label: string; icon: LucideIcon; gate?: GateKey }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ai", label: "Assistant", icon: Sparkles },
-  { href: "/animals", label: "Cattle", icon: Beef },
-  { href: "/locations", label: "Sheds", icon: Warehouse },
-  { href: "/breeding", label: "Breeding", icon: HeartPulse },
+  { href: "/animals", label: "Cattle register", icon: Beef },
+  { href: "/locations", label: "Sheds & pens", icon: Warehouse },
+  { href: "/breeding", label: "Breeding & AI", icon: HeartPulse },
   { href: "/health", label: "Health", icon: Stethoscope, gate: "health" },
   { href: "/milk", label: "Milk", icon: Milk },
   { href: "/feed", label: "Feed & nutrition", icon: Wheat },
-  { href: "/semen", label: "Semen", icon: Droplets, gate: "semen" },
-  { href: "/genetics", label: "Genetics", icon: Dna, gate: "genetics" },
+  { href: "/semen", label: "Bulls & semen", icon: Droplets, gate: "semen" },
+  { href: "/genetics", label: "Pedigree & mating", icon: Dna, gate: "genetics" },
   { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/embryos", label: "Embryos", icon: Sprout, gate: "genetics" },
   { href: "/finance", label: "Finance", icon: Wallet, gate: "finance" },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/reports", label: "Reports", icon: FileBarChart, gate: "reports" },
-  { href: "/scan", label: "Scan", icon: ScanLine },
-  { href: "/shop", label: "Shop", icon: ShoppingBag },
-  { href: "/enquiries", label: "Enquiries", icon: Mail },
-  { href: "/audit", label: "Audit", icon: ScrollText, gate: "audit" },
-  { href: "/team", label: "Team", icon: Users, gate: "team" },
+  { href: "/scan", label: "Scan QR / Tag", icon: ScanLine },
+  { href: "/listings", label: "Public listings", icon: Globe, gate: "listings" },
+  { href: "/shop", label: "Shop & orders", icon: ShoppingBag, gate: "shop" },
+  { href: "/enquiries", label: "Enquiries", icon: Mail, gate: "enquiries" },
+  { href: "/settings", label: "Farm settings", icon: Settings, gate: "settings" },
+  { href: "/audit", label: "Audit log", icon: ScrollText, gate: "audit" },
+  { href: "/team", label: "Team & roles", icon: Users, gate: "team" },
 ];
 
 const kindIcon: Record<Kind, LucideIcon> = {
@@ -103,8 +128,8 @@ const kindIcon: Record<Kind, LucideIcon> = {
   enquiry: Mail,
 };
 
-function recentKey(farmId: string) {
-  return `farm-search-recent:${farmId}`;
+function recentKey(farmId: string, userId: string) {
+  return `farm-search-recent:${farmId}:${userId}`;
 }
 
 function pageIcon(href: string) {
@@ -112,42 +137,63 @@ function pageIcon(href: string) {
   return pages.find((page) => page.href === path)?.icon ?? LayoutDashboard;
 }
 
-function blocked(href: string, gates: Record<"team" | "audit" | "finance" | "reports" | "genetics" | "health" | "semen", boolean>) {
+function blocked(href: string, gates: Record<GateKey, boolean>) {
   const path = href.split("?")[0] ?? href;
   const page = pages.find((item) => item.href === path);
   return page?.gate ? !gates[page.gate] : false;
 }
 
-function readRecent(farmId: string, gates: Record<"team" | "audit" | "finance" | "reports" | "genetics" | "health" | "semen", boolean>): Item[] {
+function readRecent(farmId: string, userId: string, gates: Record<GateKey, boolean>): Item[] {
   try {
-    const parsed = JSON.parse(localStorage.getItem(recentKey(farmId)) ?? "[]") as unknown;
+    const parsed = JSON.parse(localStorage.getItem(recentKey(farmId, userId)) ?? "[]") as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((entry) => {
-      if (!entry || typeof entry !== "object") return [];
-      const row = entry as { href?: unknown; title?: unknown; detail?: unknown; kind?: unknown };
-      if (typeof row.href !== "string" || typeof row.title !== "string" || typeof row.detail !== "string") return [];
-      if (blocked(row.href, gates)) return [];
-      const kind = (Object.keys(kindIcon) as Kind[]).includes(row.kind as Kind) ? (row.kind as Kind) : "page";
-      const icon = kind === "page" ? pageIcon(row.href) : kindIcon[kind];
-      return [{ id: `recent:${row.href}`, href: row.href, title: row.title, detail: row.detail, section: "Recent", icon, kind }];
-    }).slice(0, 6);
+    return parsed
+      .flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const row = entry as { href?: unknown; title?: unknown; detail?: unknown; kind?: unknown };
+        if (typeof row.href !== "string" || typeof row.title !== "string" || typeof row.detail !== "string") return [];
+        if (blocked(row.href, gates)) return [];
+        const kind = (Object.keys(kindIcon) as Kind[]).includes(row.kind as Kind) ? (row.kind as Kind) : "page";
+        const icon = kind === "page" ? pageIcon(row.href) : kindIcon[kind];
+        return [{ id: `recent:${row.href}`, href: row.href, title: row.title, detail: row.detail, section: "Recent", icon, kind }];
+      })
+      .slice(0, 6);
   } catch {
     return [];
   }
 }
 
-function remember(farmId: string, item: Item) {
-  const stored = readRecent(farmId, { team: true, audit: true, finance: true, reports: true, genetics: true, health: true, semen: true })
-    .filter((entry) => entry.href !== item.href)
-    .map((entry) => ({ href: entry.href, title: entry.title, detail: entry.detail, kind: entry.kind }));
-  localStorage.setItem(
-    recentKey(farmId),
-    JSON.stringify([{ href: item.href, title: item.title, detail: item.detail, kind: item.kind }, ...stored].slice(0, 6)),
-  );
+const ALL_GATES: Record<GateKey, boolean> = {
+  team: true,
+  audit: true,
+  finance: true,
+  reports: true,
+  genetics: true,
+  health: true,
+  semen: true,
+  shop: true,
+  listings: true,
+  enquiries: true,
+  settings: true,
+};
+
+function remember(farmId: string, userId: string, item: Item) {
+  try {
+    const stored = readRecent(farmId, userId, ALL_GATES)
+      .filter((entry) => entry.href !== item.href)
+      .map((entry) => ({ href: entry.href, title: entry.title, detail: entry.detail, kind: entry.kind }));
+    localStorage.setItem(
+      recentKey(farmId, userId),
+      JSON.stringify([{ href: item.href, title: item.title, detail: item.detail, kind: item.kind }, ...stored].slice(0, 6)),
+    );
+  } catch {
+    // Ignore storage quota or private browsing errors.
+  }
 }
 
 function cattleDetail(animal: SearchBody["cattle"][number]) {
   if (animal.match === "Ear tag" && animal.earTag) return `Ear tag ${animal.earTag} · ${animal.code}`;
+  if (animal.match === "RFID" && animal.rfid) return `RFID ${animal.rfid} · ${animal.code}`;
   if (animal.match === "Sire" || animal.match === "Sire code") return `Sire · ${animal.code}`;
   if (animal.match === "Breed" && animal.breedName) return `Breed ${animal.breedName} · ${animal.code}`;
   if (animal.match === "Shed") return `Shed ${animal.locationName ?? "Unassigned"} · ${animal.code}`;
@@ -157,6 +203,7 @@ function cattleDetail(animal: SearchBody["cattle"][number]) {
 export function HerdSearch({
   variant = "header",
   farmId,
+  userId,
   showTeam = false,
   showAudit = false,
   showFinance = false,
@@ -164,9 +211,14 @@ export function HerdSearch({
   showGenetics = false,
   showHealth = false,
   showSemen = false,
+  showShop = false,
+  showListings = false,
+  showEnquiries = false,
+  showSettings = false,
 }: {
   variant?: "header" | "field" | "sidebar";
   farmId: string;
+  userId: string;
   showTeam?: boolean;
   showAudit?: boolean;
   showFinance?: boolean;
@@ -174,6 +226,10 @@ export function HerdSearch({
   showGenetics?: boolean;
   showHealth?: boolean;
   showSemen?: boolean;
+  showShop?: boolean;
+  showListings?: boolean;
+  showEnquiries?: boolean;
+  showSettings?: boolean;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -181,7 +237,23 @@ export function HerdSearch({
   const listRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const router = useRouter();
-  const gates = { team: showTeam, audit: showAudit, finance: showFinance, reports: showReports, genetics: showGenetics, health: showHealth, semen: showSemen };
+  const gates = useMemo<Record<GateKey, boolean>>(
+    () => ({
+      team: showTeam,
+      audit: showAudit,
+      finance: showFinance,
+      reports: showReports,
+      genetics: showGenetics,
+      health: showHealth,
+      semen: showSemen,
+      shop: showShop,
+      listings: showListings,
+      enquiries: showEnquiries,
+      settings: showSettings,
+    }),
+    [showTeam, showAudit, showFinance, showReports, showGenetics, showHealth, showSemen, showShop, showListings, showEnquiries, showSettings],
+  );
+  const [isOpen, setIsOpen] = useState(false);
   const [value, setValue] = useState("");
   const [body, setBody] = useState<SearchBody>(emptyBody);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -234,7 +306,7 @@ export function HerdSearch({
           ? [
               {
                 id: "straw-all",
-                href: `/semen?q=${encoded}`,
+                href: `/semen?tab=straws&q=${encoded}`,
                 title: `${body.strawCount} straws`,
                 detail: "Open the semen register",
                 section: "Straws",
@@ -246,7 +318,7 @@ export function HerdSearch({
         ...(showSemen
           ? body.bulls.map((bull) => ({
               id: `bull:${bull.code}`,
-              href: `/semen?q=${encodeURIComponent(bull.code)}`,
+              href: `/semen?tab=bulls&q=${encodeURIComponent(bull.code)}`,
               title: bull.name,
               detail: [bull.code, bull.breed].filter(Boolean).join(" · "),
               section: "Bulls",
@@ -276,40 +348,36 @@ export function HerdSearch({
               },
             ]
           : []),
-        ...body.products.map((product) => ({
-          id: `product:${product.id}`,
-          href: `/shop?q=${encodeURIComponent(product.name)}`,
-          title: product.name,
-          detail: product.category,
-          section: "Products",
-          icon: ShoppingBag,
-          kind: "product" as const,
-        })),
-        ...body.enquiries.map((enquiry) => ({
-          id: `enquiry:${enquiry.id}`,
-          href: `/enquiries?q=${encodeURIComponent(enquiry.name)}`,
-          title: enquiry.name,
-          detail: enquiry.about,
-          section: "Enquiries",
-          icon: Mail,
-          kind: "enquiry" as const,
-        })),
+        ...(showShop
+          ? body.products.map((product) => ({
+              id: `product:${product.id}`,
+              href: `/shop?q=${encodeURIComponent(product.name)}`,
+              title: product.name,
+              detail: product.category,
+              section: "Products",
+              icon: ShoppingBag,
+              kind: "product" as const,
+            }))
+          : []),
+        ...(showEnquiries
+          ? body.enquiries.map((enquiry) => ({
+              id: `enquiry:${enquiry.id}`,
+              href: `/enquiries?q=${encodeURIComponent(enquiry.name)}`,
+              title: enquiry.name,
+              detail: enquiry.about,
+              section: "Enquiries",
+              icon: Mail,
+              kind: "enquiry" as const,
+            }))
+          : []),
       ]
     : [];
   const items: Item[] = term ? [...pageItems, ...recordItems] : recent.length > 0 ? recent : pageItems.slice(0, 7);
-
-  useEffect(() => {
-    setActive(0);
-    setBody(emptyBody);
-  }, [term]);
-
-  useEffect(() => {
-    setActive((current) => (items.length === 0 ? 0 : Math.min(current, items.length - 1)));
-  }, [items.length]);
+  const safeActive = items.length === 0 ? 0 : Math.min(active, items.length - 1);
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>("[data-active='true']")?.scrollIntoView({ block: "nearest" });
-  }, [active]);
+  }, [safeActive]);
 
   useEffect(() => {
     if (!term) return;
@@ -348,23 +416,31 @@ export function HerdSearch({
   }, [variant]);
 
   function open() {
+    if (dialogRef.current?.open) {
+      inputRef.current?.focus();
+      return;
+    }
     setValue("");
     setBody(emptyBody);
     setState("idle");
     setActive(0);
-    setRecent(readRecent(farmId, gates));
+    setRecent(readRecent(farmId, userId, gates));
     dialogRef.current?.showModal();
+    setIsOpen(true);
     inputRef.current?.focus();
   }
 
-  openRef.current = open;
+  useEffect(() => {
+    openRef.current = open;
+  });
 
   function close() {
     dialogRef.current?.close();
+    setIsOpen(false);
   }
 
   function choose(item: Item) {
-    remember(farmId, item);
+    remember(farmId, userId, item);
     close();
     router.push(item.href);
   }
@@ -377,13 +453,11 @@ export function HerdSearch({
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActive((current) => Math.max(0, current - 1));
-    } else if (event.key === "Enter" && items[active]) {
+    } else if (event.key === "Enter" && items[safeActive]) {
       event.preventDefault();
-      choose(items[active]);
+      choose(items[safeActive]);
     }
   }
-
-  let section = "";
 
   return (
     <>
@@ -400,7 +474,7 @@ export function HerdSearch({
         }
       >
         <Search className="size-3.5 shrink-0 opacity-75" />
-        <span className="truncate">{variant === "sidebar" ? "Search in CattleOS" : "Search"}</span>
+        <span className="truncate">{variant === "sidebar" ? "Search herd & pages" : "Search"}</span>
         {variant === "sidebar" ? (
           <kbd className="ml-auto rounded border border-white/[0.12] bg-white/[0.06] px-1.5 py-0.5 font-sans text-[10px] font-medium text-zinc-400">
             ⌘K
@@ -413,6 +487,7 @@ export function HerdSearch({
         ref={dialogRef}
         aria-labelledby={titleId}
         onKeyDown={onKeyDown}
+        onClose={() => setIsOpen(false)}
         onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
@@ -429,18 +504,19 @@ export function HerdSearch({
             onChange={(event) => {
               const next = event.target.value;
               setValue(next);
+              setActive(0);
+              setBody(emptyBody);
               if (!next.trim()) {
-                setBody(emptyBody);
                 setState("idle");
               }
             }}
-            placeholder="Search cattle, straws, alerts, or pages"
+            placeholder="Search cattle, ear tags, RFID, straws, alerts, or pages"
             className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-white/40"
             autoFocus
             role="combobox"
-            aria-expanded="true"
+            aria-expanded={isOpen}
             aria-controls={`${titleId}-results`}
-            aria-activedescendant={items[active] ? `search-item-${items[active].id}` : undefined}
+            aria-activedescendant={items[safeActive] ? `search-item-${items[safeActive].id}` : undefined}
           />
           <kbd className="rounded-md border border-white/15 px-1.5 py-0.5 text-[10px] text-white/70">Esc</kbd>
         </label>
@@ -451,9 +527,8 @@ export function HerdSearch({
           {term && state === "error" ? <p className="px-2 py-8 text-center text-sm text-[#fdba74]">Search is unavailable. Try again.</p> : null}
           {term && state === "ready" && items.length === 0 ? <p className="px-2 py-8 text-center text-sm text-white/55">No results for “{term}”.</p> : null}
           {items.map((item, index) => {
-            const showSection = item.section !== section;
-            section = item.section;
-            const selected = index === active;
+            const showSection = index === 0 || items[index - 1]?.section !== item.section;
+            const selected = index === safeActive;
             const Icon = item.icon;
             return (
               <div key={item.id}>

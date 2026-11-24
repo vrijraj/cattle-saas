@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { FunctionTool } from "@google/adk";
 import { z } from "zod";
 import { db } from "@/db";
@@ -41,10 +41,20 @@ import { matingFlags, type PedigreeLink } from "@/lib/mating";
 import { feedBalance, feedIsLow } from "@/lib/feed-stock";
 import { writeTools } from "@/lib/ai/write-tools";
 import {
+  canExportReport,
   canManageTeam,
-  canRecordHealth,
+  canPublish,
+  canReadAlert,
+  canSeeClinical,
   canViewAudit,
   canViewFinance,
+  canViewGenetics,
+  canViewHealth,
+  canViewPurchasePrice,
+  canViewReports,
+  canViewSemen,
+  canViewSemenCost,
+  canViewShopAdmin,
 } from "@/lib/permissions";
 
 export type FarmScope = {
@@ -54,6 +64,8 @@ export type FarmScope = {
   farmSlug: string;
   timezone: string;
   roles: string[];
+  canRecordVaccines: boolean;
+  matingGenerationWindow: number;
   userName: string;
 };
 
@@ -122,7 +134,11 @@ export function farmTools(scope: FarmScope) {
         if (row.animal.presence !== "on_farm") continue;
         breedsOnFarm.set(row.breedName, (breedsOnFarm.get(row.breedName) ?? 0) + 1);
       }
-      const open = await db.select().from(alerts).where(eq(alerts.farmId, scope.farmId));
+      const open = await db
+        .select()
+        .from(alerts)
+        .where(and(eq(alerts.farmId, scope.farmId), eq(alerts.status, "open")));
+      const visibleOpen = open.filter((alert) => canReadAlert(scope.roles, alert.type));
       const upcoming = rows
         .filter((row) => row.animal.presence === "on_farm" && row.animal.reproduction === "pregnant")
         .sort((a, b) => (a.animal.expectedCalving ?? "9999").localeCompare(b.animal.expectedCalving ?? "9999"))
@@ -141,16 +157,16 @@ export function farmTools(scope: FarmScope) {
         dry: herd.filter((animal) => animal.presence === "on_farm" && animal.lactation === "dry").length,
         breeds: [...breedsOnFarm.entries()].map(([name, count]) => ({ name, count })),
         upcomingCalvings: upcoming,
-        openAlerts: open.filter((alert) => alert.status === "open").length,
+        openAlerts: visibleOpen.length,
       };
     },
   });
 
   const searchCattle = new FunctionTool({
     name: "search_cattle",
-    description: "Find cattle on this farm by name, code, ear tag, or breed, with optional status filters.",
+    description: "Find cattle on this farm by name, code, ear tag, RFID, or breed, with optional status filters.",
     parameters: z.object({
-      query: z.string().optional().describe("Name, code, ear tag, or breed. Omit to list the herd."),
+      query: z.string().optional().describe("Name, code, ear tag, RFID, or breed. Omit to list the herd."),
       presence: z.enum(["on_farm", "sold", "dead", "transferred", "any"]).optional(),
       lactation: z.enum(["lactating", "dry", "pre_lactation", "not_applicable", "any"]).optional(),
       reproduction: z.enum(["open", "bred", "pregnant", "fresh", "not_applicable", "any"]).optional(),
@@ -164,7 +180,7 @@ export function farmTools(scope: FarmScope) {
         if (lactation && lactation !== "any" && animal.lactation !== lactation) return false;
         if (reproduction && reproduction !== "any" && animal.reproduction !== reproduction) return false;
         if (!needle) return true;
-        const hay = [animal.code, animal.name, animal.earTag, row.breedName, animal.geneticSireCode]
+        const hay = [animal.code, animal.name, animal.earTag, animal.rfid, row.breedName, animal.geneticSireCode]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -180,7 +196,7 @@ export function farmTools(scope: FarmScope) {
 
   const animalProfile = new FunctionTool({
     name: "animal_profile",
-    description: "One animal: identity, parentage, offspring, recent breeding, health, milk, weight, and listing.",
+    description: "One animal: identity, parentage, offspring, recent breeding, health (role-scoped), milk, weight, and listing.",
     parameters: z.object({
       code: z.string().describe("Animal code such as MIL-GIR-001."),
     }),
@@ -194,63 +210,80 @@ export function farmTools(scope: FarmScope) {
       const offspring = rows
         .filter((item) => item.animal.geneticDamId === animal.id || item.animal.geneticSireCode === animal.code)
         .map((item) => ({ code: item.animal.code, name: item.animal.name, href: `/animals/${item.animal.code}` }));
+
+      const clinical = canSeeClinical(scope.roles);
+      const viewHealth = canViewHealth(scope.roles);
+      const showListing = canPublish(scope.roles);
+
       const [heat, ai, checks, births, illness, doses, worms, milkRows, mass, listing] = await Promise.all([
-        db.select().from(heats).where(eq(heats.farmId, scope.farmId)),
-        db.select().from(inseminations).where(eq(inseminations.farmId, scope.farmId)),
-        db.select().from(pregnancyChecks).where(eq(pregnancyChecks.farmId, scope.farmId)),
-        db.select().from(calvings).where(eq(calvings.farmId, scope.farmId)),
-        db.select().from(healthEvents).where(eq(healthEvents.farmId, scope.farmId)),
-        db.select().from(vaccinations).where(eq(vaccinations.farmId, scope.farmId)),
-        db.select().from(dewormings).where(eq(dewormings.farmId, scope.farmId)),
-        db.select().from(milkYields).where(eq(milkYields.farmId, scope.farmId)),
-        db.select().from(weights).where(eq(weights.farmId, scope.farmId)),
-        db.select().from(listings).where(eq(listings.farmId, scope.farmId)),
+        db.select().from(heats).where(and(eq(heats.farmId, scope.farmId), eq(heats.animalId, animal.id), isNull(heats.voidedAt))).orderBy(desc(heats.observedOn)).limit(6),
+        db.select().from(inseminations).where(and(eq(inseminations.farmId, scope.farmId), eq(inseminations.animalId, animal.id), isNull(inseminations.voidedAt))).orderBy(desc(inseminations.performedOn)).limit(6),
+        db.select().from(pregnancyChecks).where(and(eq(pregnancyChecks.farmId, scope.farmId), eq(pregnancyChecks.animalId, animal.id), isNull(pregnancyChecks.voidedAt))).orderBy(desc(pregnancyChecks.checkedOn)).limit(6),
+        db.select().from(calvings).where(and(eq(calvings.farmId, scope.farmId), eq(calvings.damId, animal.id), isNull(calvings.voidedAt))).orderBy(desc(calvings.calvedOn)).limit(4),
+        clinical
+          ? db.select().from(healthEvents).where(and(eq(healthEvents.farmId, scope.farmId), eq(healthEvents.animalId, animal.id), isNull(healthEvents.voidedAt))).orderBy(desc(healthEvents.eventOn)).limit(6)
+          : Promise.resolve([]),
+        viewHealth
+          ? db.select().from(vaccinations).where(and(eq(vaccinations.farmId, scope.farmId), eq(vaccinations.animalId, animal.id), isNull(vaccinations.voidedAt))).orderBy(desc(vaccinations.givenOn)).limit(6)
+          : Promise.resolve([]),
+        viewHealth
+          ? db.select().from(dewormings).where(and(eq(dewormings.farmId, scope.farmId), eq(dewormings.animalId, animal.id), isNull(dewormings.voidedAt))).orderBy(desc(dewormings.givenOn)).limit(4)
+          : Promise.resolve([]),
+        db.select().from(milkYields).where(and(eq(milkYields.farmId, scope.farmId), eq(milkYields.animalId, animal.id), isNull(milkYields.voidedAt))).orderBy(desc(milkYields.recordedOn)).limit(7),
+        db.select().from(weights).where(and(eq(weights.farmId, scope.farmId), eq(weights.animalId, animal.id), isNull(weights.voidedAt))).orderBy(desc(weights.weighedOn)).limit(4),
+        showListing
+          ? db.select().from(listings).where(and(eq(listings.farmId, scope.farmId), eq(listings.animalId, animal.id))).orderBy(desc(listings.createdAt)).limit(2)
+          : Promise.resolve([]),
       ]);
-      const mine = <T extends { animalId: string; voidedAt?: Date | null }>(list: T[]) =>
-        list.filter((item) => item.animalId === animal.id && !item.voidedAt);
+
       return {
         found: true,
         ...card(row),
         colour: animal.colour,
         earTag: animal.earTag,
+        rfid: animal.rfid,
+        ...(canViewPurchasePrice(scope.roles) ? { purchasePrice: money(animal.purchasePrice) } : {}),
+        ...(clinical && animal.isolationReason ? { isolation: { reason: animal.isolationReason, since: day(animal.isolatedOn) } } : {}),
         sire: animal.geneticSireCode ? { code: animal.geneticSireCode, name: animal.geneticSireName } : null,
         dam: dam ? { code: dam.code, name: dam.name, href: `/animals/${dam.code}` } : null,
         conceptionOn: day(animal.conceptionOn),
         offspring,
-        heats: mine(heat).slice(-6).map((item) => ({ date: day(item.observedOn), signs: item.signs })),
-        inseminations: mine(ai).slice(-6).map((item) => ({
+        heats: heat.map((item) => ({ date: day(item.observedOn), signs: item.signs })),
+        inseminations: ai.map((item) => ({
           date: day(item.performedOn),
           bull: item.bullCode,
           straw: item.strawCode,
           technician: item.technicianName,
         })),
-        pregnancyChecks: mine(checks).slice(-6).map((item) => ({ date: day(item.checkedOn), result: item.result })),
-        calvings: births
-          .filter((item) => item.damId === animal.id && !item.voidedAt)
-          .slice(-4)
-          .map((item) => ({ date: day(item.calvedOn), outcome: item.outcome })),
-        health: mine(illness).slice(-6).map((item) => ({
-          date: day(item.eventOn),
-          problem: item.problem,
-          treatment: item.treatment,
-          outcome: item.outcome,
+        pregnancyChecks: checks.map((item) => ({ date: day(item.checkedOn), result: item.result })),
+        calvings: births.map((item) => ({ date: day(item.calvedOn), outcome: item.outcome })),
+        ...(clinical
+          ? {
+              health: illness.map((item) => ({
+                date: day(item.eventOn),
+                problem: item.problem,
+                treatment: item.treatment,
+                outcome: item.outcome,
+              })),
+            }
+          : {}),
+        ...(viewHealth
+          ? {
+              vaccines: doses.map((item) => ({ vaccine: item.vaccine, given: day(item.givenOn), nextDue: day(item.nextDueOn) })),
+              deworming: worms.map((item) => ({ product: item.product, given: day(item.givenOn), nextDue: day(item.nextDueOn) })),
+            }
+          : {}),
+        milk: milkRows.map((item) => ({
+          date: day(item.recordedOn),
+          morning: item.morningLitres ? Number(item.morningLitres) : null,
+          evening: item.eveningLitres ? Number(item.eveningLitres) : null,
         })),
-        vaccines: mine(doses).slice(-6).map((item) => ({ vaccine: item.vaccine, given: day(item.givenOn), nextDue: day(item.nextDueOn) })),
-        deworming: mine(worms).slice(-4).map((item) => ({ product: item.product, given: day(item.givenOn), nextDue: day(item.nextDueOn) })),
-        milk: mine(milkRows)
-          .slice(-7)
-          .map((item) => ({
-            date: day(item.recordedOn),
-            morning: item.morningLitres ? Number(item.morningLitres) : null,
-            evening: item.eveningLitres ? Number(item.eveningLitres) : null,
-          })),
-        weights: mass
-          .filter((item) => item.animalId === animal.id)
-          .slice(-4)
-          .map((item) => ({ date: day(item.weighedOn), kilograms: Number(item.kilograms) })),
-        listing: listing
-          .filter((item) => item.animalId === animal.id)
-          .map((item) => ({ category: item.category, price: money(item.price), published: item.published === "yes" })),
+        weights: mass.map((item) => ({ date: day(item.weighedOn), kilograms: Number(item.kilograms) })),
+        ...(showListing
+          ? {
+              listing: listing.map((item) => ({ category: item.category, price: money(item.price), published: item.published === "yes" })),
+            }
+          : {}),
         tabs: {
           overview: `/animals/${animal.code}`,
           parentage: `/animals/${animal.code}?tab=parentage`,
@@ -275,32 +308,31 @@ export function farmTools(scope: FarmScope) {
       if (wanted && !animal) return { found: false, code };
       const id = animal?.id;
       const [heat, ai, checks, births] = await Promise.all([
-        db.select().from(heats).where(eq(heats.farmId, scope.farmId)),
-        db.select().from(inseminations).where(eq(inseminations.farmId, scope.farmId)),
-        db.select().from(pregnancyChecks).where(eq(pregnancyChecks.farmId, scope.farmId)),
-        db.select().from(calvings).where(eq(calvings.farmId, scope.farmId)),
+        db.select().from(heats).where(and(eq(heats.farmId, scope.farmId), isNull(heats.voidedAt), ...(id ? [eq(heats.animalId, id)] : []))).orderBy(desc(heats.observedOn)).limit(12),
+        db.select().from(inseminations).where(and(eq(inseminations.farmId, scope.farmId), isNull(inseminations.voidedAt), ...(id ? [eq(inseminations.animalId, id)] : []))).orderBy(desc(inseminations.performedOn)).limit(12),
+        db.select().from(pregnancyChecks).where(and(eq(pregnancyChecks.farmId, scope.farmId), isNull(pregnancyChecks.voidedAt), ...(id ? [eq(pregnancyChecks.animalId, id)] : []))).orderBy(desc(pregnancyChecks.checkedOn)).limit(12),
+        db.select().from(calvings).where(and(eq(calvings.farmId, scope.farmId), isNull(calvings.voidedAt), ...(id ? [eq(calvings.damId, id)] : []))).orderBy(desc(calvings.calvedOn)).limit(12),
       ]);
       const nameOf = (animalId: string) => {
         const match = rows.find((row) => row.animal.id === animalId)?.animal;
         return match ? { code: match.code, name: match.name } : { code: animalId, name: null };
       };
-      const recent = <T extends { voidedAt: Date | null }>(list: T[], take = 12) => list.filter((item) => !item.voidedAt).slice(-take);
       return {
         href: "/breeding",
         animal: animal ? { code: animal.code, name: animal.name } : null,
-        heats: recent(heat.filter((item) => !id || item.animalId === id)).map((item) => ({ ...nameOf(item.animalId), date: day(item.observedOn), signs: item.signs })),
-        inseminations: recent(ai.filter((item) => !id || item.animalId === id)).map((item) => ({
+        heats: heat.map((item) => ({ ...nameOf(item.animalId), date: day(item.observedOn), signs: item.signs })),
+        inseminations: ai.map((item) => ({
           ...nameOf(item.animalId),
           date: day(item.performedOn),
           bull: item.bullCode,
           straw: item.strawCode,
         })),
-        pregnancyChecks: recent(checks.filter((item) => !id || item.animalId === id)).map((item) => ({
+        pregnancyChecks: checks.map((item) => ({
           ...nameOf(item.animalId),
           date: day(item.checkedOn),
           result: item.result,
         })),
-        calvings: recent(births.filter((item) => !id || item.damId === id)).map((item) => ({
+        calvings: births.map((item) => ({
           ...nameOf(item.damId),
           date: day(item.calvedOn),
           outcome: item.outcome,
@@ -311,11 +343,13 @@ export function farmTools(scope: FarmScope) {
 
   const healthRecords = new FunctionTool({
     name: "health_records",
-    description: "Treatments, vaccinations, and deworming, including what is due.",
+    description: "Treatments (clinical roles only), vaccinations, and deworming, including what is due.",
     parameters: z.object({
       code: z.string().optional().describe("Limit to this animal code. Omit for the whole farm."),
     }),
     execute: async ({ code }) => {
+      if (!canViewHealth(scope.roles)) return denied("health records");
+      const clinical = canSeeClinical(scope.roles);
       const rows = await loadHerd(scope.farmId);
       const wanted = code?.trim().toLowerCase();
       const animal = wanted ? rows.find((row) => row.animal.code.toLowerCase() === wanted)?.animal : undefined;
@@ -323,29 +357,34 @@ export function farmTools(scope: FarmScope) {
       const id = animal?.id;
       const today = farmToday(scope.timezone);
       const [illness, doses, worms] = await Promise.all([
-        db.select().from(healthEvents).where(eq(healthEvents.farmId, scope.farmId)),
-        db.select().from(vaccinations).where(eq(vaccinations.farmId, scope.farmId)),
-        db.select().from(dewormings).where(eq(dewormings.farmId, scope.farmId)),
+        clinical
+          ? db.select().from(healthEvents).where(and(eq(healthEvents.farmId, scope.farmId), isNull(healthEvents.voidedAt), ...(id ? [eq(healthEvents.animalId, id)] : []))).orderBy(desc(healthEvents.eventOn)).limit(12)
+          : Promise.resolve([]),
+        db.select().from(vaccinations).where(and(eq(vaccinations.farmId, scope.farmId), isNull(vaccinations.voidedAt), ...(id ? [eq(vaccinations.animalId, id)] : []))).orderBy(desc(vaccinations.givenOn)),
+        db.select().from(dewormings).where(and(eq(dewormings.farmId, scope.farmId), isNull(dewormings.voidedAt), ...(id ? [eq(dewormings.animalId, id)] : []))).orderBy(desc(dewormings.givenOn)),
       ]);
       const nameOf = (animalId: string) => rows.find((row) => row.animal.id === animalId)?.animal.code ?? animalId;
       return {
         href: "/health",
-        treatments: illness
-          .filter((item) => !item.voidedAt && (!id || item.animalId === id))
-          .slice(-12)
-          .map((item) => ({
-            code: nameOf(item.animalId),
-            date: day(item.eventOn),
-            problem: item.problem,
-            treatment: item.treatment,
-            outcome: item.outcome,
-            followUp: day(item.followUpOn),
-          })),
+        ...(clinical
+          ? {
+              treatments: illness.map((item) => ({
+                code: nameOf(item.animalId),
+                date: day(item.eventOn),
+                problem: item.problem,
+                treatment: item.treatment,
+                outcome: item.outcome,
+                followUp: day(item.followUpOn),
+              })),
+            }
+          : { clinicalNote: "Clinical treatment notes are restricted for this role." }),
         vaccinesDue: doses
-          .filter((item) => !item.voidedAt && item.nextDueOn && item.nextDueOn <= today && (!id || item.animalId === id))
+          .filter((item) => item.nextDueOn && item.nextDueOn <= today)
+          .slice(0, 15)
           .map((item) => ({ code: nameOf(item.animalId), vaccine: item.vaccine, due: day(item.nextDueOn) })),
         dewormingDue: worms
-          .filter((item) => !item.voidedAt && item.nextDueOn && item.nextDueOn <= today && (!id || item.animalId === id))
+          .filter((item) => item.nextDueOn && item.nextDueOn <= today)
+          .slice(0, 15)
           .map((item) => ({ code: nameOf(item.animalId), product: item.product, due: day(item.nextDueOn) })),
       };
     },
@@ -362,16 +401,20 @@ export function farmTools(scope: FarmScope) {
       const wanted = code?.trim().toLowerCase();
       const animal = wanted ? rows.find((row) => row.animal.code.toLowerCase() === wanted)?.animal : undefined;
       if (wanted && !animal) return { found: false, code };
-      const yields = (await db.select().from(milkYields).where(eq(milkYields.farmId, scope.farmId))).filter((item) => !item.voidedAt);
-      const relevant = yields.filter((item) => !animal || item.animalId === animal.id);
+      const yields = await db
+        .select()
+        .from(milkYields)
+        .where(and(eq(milkYields.farmId, scope.farmId), isNull(milkYields.voidedAt), ...(animal ? [eq(milkYields.animalId, animal.id)] : [])))
+        .orderBy(desc(milkYields.recordedOn))
+        .limit(400);
       const byDay = new Map<string, number>();
-      for (const item of relevant) {
+      for (const item of yields) {
         const total = Number(item.morningLitres ?? 0) + Number(item.eveningLitres ?? 0);
         byDay.set(item.recordedOn, (byDay.get(item.recordedOn) ?? 0) + total);
       }
       const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-14);
       const latest = days.at(-1)?.[0];
-      const latestRows = latest ? relevant.filter((item) => item.recordedOn === latest) : [];
+      const latestRows = latest ? yields.filter((item) => item.recordedOn === latest) : [];
       return {
         href: "/milk",
         animal: animal ? { code: animal.code, name: animal.name } : null,
@@ -393,8 +436,10 @@ export function farmTools(scope: FarmScope) {
     name: "feed_stock",
     description: "Feed items, current balance, and whether stock is at or under the minimum.",
     execute: async () => {
-      const items = await db.select().from(feedItems).where(eq(feedItems.farmId, scope.farmId));
-      const movements = await db.select().from(feedMovements).where(eq(feedMovements.farmId, scope.farmId));
+      const [items, movements] = await Promise.all([
+        db.select().from(feedItems).where(eq(feedItems.farmId, scope.farmId)),
+        db.select().from(feedMovements).where(and(eq(feedMovements.farmId, scope.farmId), isNull(feedMovements.voidedAt))),
+      ]);
       return {
         href: "/feed",
         items: items.map((item) => {
@@ -417,6 +462,8 @@ export function farmTools(scope: FarmScope) {
     name: "semen_inventory",
     description: "Bulls, semen batches, available straws, and offspring counts.",
     execute: async () => {
+      if (!canViewSemen(scope.roles)) return denied("semen inventory");
+      const showCost = canViewSemenCost(scope.roles);
       const [bullRows, batches, strawRows, herd] = await Promise.all([
         db.select().from(bulls).where(eq(bulls.farmId, scope.farmId)),
         db.select().from(semenBatches).where(eq(semenBatches.farmId, scope.farmId)),
@@ -443,7 +490,7 @@ export function farmTools(scope: FarmScope) {
           batchNumber: batch.batchNumber,
           type: batch.semenType,
           received: batch.quantityReceived,
-          pricePerStraw: money(batch.pricePerStraw),
+          ...(showCost ? { pricePerStraw: money(batch.pricePerStraw) } : {}),
         })),
       };
     },
@@ -457,6 +504,7 @@ export function farmTools(scope: FarmScope) {
       sireCode: z.string().describe("Proposed bull or semen code."),
     }),
     execute: async ({ femaleCode, sireCode }) => {
+      if (!canViewGenetics(scope.roles)) return denied("mating check");
       const [herd, bullRows] = await Promise.all([
         db.select().from(animals).where(eq(animals.farmId, scope.farmId)),
         db.select().from(bulls).where(eq(bulls.farmId, scope.farmId)),
@@ -467,10 +515,11 @@ export function farmTools(scope: FarmScope) {
           code: animal.code,
           sireCode: animal.geneticSireCode,
           damCode: animal.geneticDamId ? (byId.get(animal.geneticDamId)?.code ?? null) : null,
+          sex: animal.sex,
         })),
-        ...bullRows.map((bull) => ({ code: bull.code, sireCode: bull.sireCode, damCode: bull.damCode })),
+        ...bullRows.map((bull) => ({ code: bull.code, sireCode: bull.sireCode, damCode: bull.damCode, sex: "male" })),
       ];
-      const flags = matingFlags(femaleCode.trim(), sireCode.trim(), links);
+      const flags = matingFlags(femaleCode.trim(), sireCode.trim(), links, scope.matingGenerationWindow);
       return {
         href: `/genetics?female=${encodeURIComponent(femaleCode.trim())}&bull=${encodeURIComponent(sireCode.trim())}`,
         femaleCode: femaleCode.trim(),
@@ -486,9 +535,10 @@ export function farmTools(scope: FarmScope) {
     name: "embryo_stock",
     description: "Embryos in storage and recorded transfers.",
     execute: async () => {
+      if (!canViewGenetics(scope.roles)) return denied("embryo records");
       const [stock, transfers, herd] = await Promise.all([
         db.select().from(embryos).where(eq(embryos.farmId, scope.farmId)),
-        db.select().from(embryoTransfers).where(eq(embryoTransfers.farmId, scope.farmId)),
+        db.select().from(embryoTransfers).where(eq(embryoTransfers.farmId, scope.farmId)).orderBy(desc(embryoTransfers.transferredOn)).limit(12),
         db.select().from(animals).where(eq(animals.farmId, scope.farmId)),
       ]);
       const codeOf = (id: string | null) => (id ? herd.find((animal) => animal.id === id)?.code ?? null : null);
@@ -502,7 +552,7 @@ export function farmTools(scope: FarmScope) {
           storage: item.storage,
           status: item.status,
         })),
-        transfers: transfers.slice(-12).map((item) => ({
+        transfers: transfers.map((item) => ({
           embryo: stock.find((embryo) => embryo.id === item.embryoId)?.code ?? item.embryoId,
           recipient: codeOf(item.recipientId),
           date: day(item.transferredOn),
@@ -517,7 +567,11 @@ export function farmTools(scope: FarmScope) {
     description: "Income and expense totals, excluding voided entries. Refuses the call when this role cannot view finance.",
     execute: async () => {
       if (!canViewFinance(scope.roles)) return denied("finance");
-      const entries = (await db.select().from(financeEntries).where(eq(financeEntries.farmId, scope.farmId))).filter((item) => !item.voidedAt);
+      const entries = await db
+        .select()
+        .from(financeEntries)
+        .where(and(eq(financeEntries.farmId, scope.farmId), isNull(financeEntries.voidedAt)))
+        .orderBy(desc(financeEntries.entryOn));
       const income = entries.filter((item) => item.kind === "income").reduce((sum, item) => sum + Number(item.amount), 0);
       const expense = entries.filter((item) => item.kind === "expense").reduce((sum, item) => sum + Number(item.amount), 0);
       return {
@@ -525,7 +579,7 @@ export function farmTools(scope: FarmScope) {
         income: money(income.toFixed(2)),
         expense: money(expense.toFixed(2)),
         net: money((income - expense).toFixed(2)),
-        recent: entries.slice(-10).map((item) => ({
+        recent: entries.slice(0, 10).map((item) => ({
           date: day(item.entryOn),
           kind: item.kind,
           category: item.category,
@@ -538,20 +592,24 @@ export function farmTools(scope: FarmScope) {
 
   const openAlerts = new FunctionTool({
     name: "open_alerts",
-    description: "Alerts that are still open, including vaccine and other due items.",
+    description: "Alerts that are still open and visible to this role.",
     execute: async () => {
-      const list = await db.select().from(alerts).where(eq(alerts.farmId, scope.farmId));
-      const herd = await db.select().from(animals).where(eq(animals.farmId, scope.farmId));
+      const [list, herd] = await Promise.all([
+        db.select().from(alerts).where(and(eq(alerts.farmId, scope.farmId), eq(alerts.status, "open"))),
+        db.select({ id: animals.id, code: animals.code }).from(animals).where(eq(animals.farmId, scope.farmId)),
+      ]);
+      const byId = new Map(herd.map((a) => [a.id, a.code]));
       return {
         href: "/alerts",
         alerts: list
-          .filter((alert) => alert.status === "open")
+          .filter((alert) => canReadAlert(scope.roles, alert.type))
+          .sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999"))
           .map((alert) => ({
             title: alert.title,
             body: alert.body,
             type: alert.type,
             due: day(alert.dueOn),
-            animal: alert.animalId ? herd.find((animal) => animal.id === alert.animalId)?.code ?? null : null,
+            animal: alert.animalId ? (byId.get(alert.animalId) ?? null) : null,
           })),
       };
     },
@@ -561,12 +619,14 @@ export function farmTools(scope: FarmScope) {
     name: "shop_overview",
     description: "Shop products, published animal listings, and recent orders for this farm.",
     execute: async () => {
+      if (!canViewShopAdmin(scope.roles)) return denied("shop and orders");
       const [goods, listingRows, orderRows, herd] = await Promise.all([
         db.select().from(products).where(eq(products.farmId, scope.farmId)),
         db.select().from(listings).where(eq(listings.farmId, scope.farmId)),
-        db.select().from(orders).where(eq(orders.farmId, scope.farmId)),
-        db.select().from(animals).where(eq(animals.farmId, scope.farmId)),
+        db.select().from(orders).where(eq(orders.farmId, scope.farmId)).orderBy(desc(orders.createdAt)).limit(8),
+        db.select({ id: animals.id, code: animals.code }).from(animals).where(eq(animals.farmId, scope.farmId)),
       ]);
+      const byId = new Map(herd.map((a) => [a.id, a.code]));
       return {
         href: "/shop",
         publicShop: `/farms/${scope.farmSlug}/shop`,
@@ -578,12 +638,12 @@ export function farmTools(scope: FarmScope) {
           published: item.published === "yes",
         })),
         listings: listingRows.map((item) => ({
-          animal: item.animalId ? herd.find((animal) => animal.id === item.animalId)?.code ?? null : null,
+          animal: item.animalId ? (byId.get(item.animalId) ?? null) : null,
           category: item.category,
           price: money(item.price),
           published: item.published === "yes",
         })),
-        orders: orderRows.slice(-8).map((item) => ({
+        orders: orderRows.map((item) => ({
           customer: item.customerName,
           amount: money(item.amount),
           status: item.status,
@@ -622,10 +682,15 @@ export function farmTools(scope: FarmScope) {
       if (!canViewAudit(scope.roles)) {
         result.audit = denied("the audit log");
       } else {
-        const logs = await db.select().from(auditLogs).where(eq(auditLogs.farmId, scope.farmId));
+        const logs = await db
+          .select()
+          .from(auditLogs)
+          .where(eq(auditLogs.farmId, scope.farmId))
+          .orderBy(desc(auditLogs.createdAt))
+          .limit(12);
         result.audit = {
           href: "/audit",
-          entries: logs.slice(-12).map((entry) => ({
+          entries: logs.map((entry) => ({
             action: entry.action,
             entity: entry.entity,
             summary: entry.summary,
@@ -641,13 +706,10 @@ export function farmTools(scope: FarmScope) {
     name: "report_catalogue",
     description: "Which reports this role can open, with the chart page and CSV, Excel, and PDF download paths.",
     execute: async () => {
-      const workerOnly = scope.roles.length === 1 && scope.roles[0] === "worker";
-      if (workerOnly) return denied("reports");
-      const kinds = ["cattle", "breeding", "milk", "health", "feed", "semen", "weight", "finance", "embryos", "genetics"].filter((kind) => {
-        if (kind === "health" && !canRecordHealth(scope.roles) && !scope.roles.includes("owner") && !scope.roles.includes("manager")) return false;
-        if (kind === "finance" && !canViewFinance(scope.roles)) return false;
-        return true;
-      });
+      if (!canViewReports(scope.roles)) return denied("reports");
+      const kinds = ["cattle", "breeding", "milk", "health", "feed", "semen", "weight", "finance", "embryos", "genetics"].filter((kind) =>
+        canExportReport(scope.roles, kind),
+      );
       return {
         href: "/reports",
         reports: kinds.map((kind) => ({
@@ -685,8 +747,10 @@ export function farmTools(scope: FarmScope) {
         { task: "Open alerts", path: "/alerts" },
         { task: "Charts and CSV, Excel, PDF downloads", path: "/reports" },
         { task: "Products and orders", path: "/shop" },
+        { task: "Public listings management", path: "/listings" },
         { task: "Catalogue enquiries", path: "/enquiries" },
         { task: "Public catalogue", path: `/farms/${scope.farmSlug}` },
+        { task: "Farm settings & breeds", path: "/settings" },
         { task: "Staff invites", path: "/team" },
         { task: "Audit log", path: "/audit" },
       ],

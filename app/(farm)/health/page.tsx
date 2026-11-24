@@ -111,11 +111,15 @@ export default async function HealthPage({ searchParams }: { searchParams: Promi
                   <div className="font-medium">{event.problem}</div>
                   {event.diagnosis ? <div className="text-xs text-muted-foreground">Dx: {event.diagnosis}</div> : null}
                   {event.signs ? <div className="text-xs text-muted-foreground">Signs: {event.signs}</div> : null}
+                  {event.quarters ? <div className="text-xs text-muted-foreground">Quarters: {event.quarters}</div> : null}
                 </Td>
                 <Td>
                   <div>{event.medicine ?? "—"}</div>
                   {event.dose || event.route || event.duration ? (
                     <div className="text-xs text-muted-foreground">{[event.dose, event.route, event.duration].filter(Boolean).join(" · ")}</div>
+                  ) : null}
+                  {event.withdrawalUntil ? (
+                    <div className="text-xs font-medium text-danger">Milk withdrawal until {formatDisplayDate(event.withdrawalUntil)}</div>
                   ) : null}
                   {event.treatment ? <div className="text-xs text-muted-foreground">{event.treatment}</div> : null}
                 </Td>

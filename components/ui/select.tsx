@@ -1,6 +1,5 @@
 "use client"
 
-import type { RefObject } from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { Check, ChevronDown } from "lucide-react"
 import { cn } from "cn"
@@ -43,50 +42,28 @@ function SelectContent({
 
   return (
     <SelectPrimitive.Portal container={portal ?? undefined}>
-      <SelectPosition portal={portal} className={className} side={side} sideOffset={sideOffset} align={align} {...props}>
-        {children}
-      </SelectPosition>
-    </SelectPrimitive.Portal>
-  )
-}
-
-function SelectPosition({
-  portal,
-  className,
-  children,
-  side,
-  sideOffset,
-  align,
-  ...props
-}: SelectPrimitive.Popup.Props &
-  Pick<SelectPrimitive.Positioner.Props, "align" | "side" | "sideOffset"> & {
-    portal: RefObject<HTMLElement | null> | null
-  }) {
-  const boundary = portal?.current ?? undefined
-
-  return (
-    <SelectPrimitive.Positioner
-      side={side}
-      sideOffset={sideOffset}
-      align={align}
-      alignItemWithTrigger
-      positionMethod="fixed"
-      collisionBoundary={boundary}
-      collisionPadding={8}
-      collisionAvoidance={{ side: "flip", align: "shift" }}
-      className="isolate z-50 outline-none"
-    >
-      <SelectPrimitive.Popup
-        data-slot="select-content"
-        className={cn(
-          "z-50 max-h-[min(15rem,var(--available-height))] w-(--anchor-width) origin-(--transform-origin) overflow-y-auto rounded-xl border border-border bg-card p-1 text-foreground outline-none transition duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0",
-          className,
-        )}
-        {...props}
+      <SelectPrimitive.Positioner
+        side={side}
+        sideOffset={sideOffset}
+        align={align}
+        alignItemWithTrigger
+        positionMethod="fixed"
+        collisionPadding={8}
+        collisionAvoidance={{ side: "flip", align: "shift" }}
+        className="isolate z-50 outline-none"
       >
-        <SelectPrimitive.List>{children}</SelectPrimitive.List>
-      </SelectPrimitive.Popup>
-    </SelectPrimitive.Positioner>
+        <SelectPrimitive.Popup
+          data-slot="select-content"
+          className={cn(
+            "z-50 max-h-[min(15rem,var(--available-height))] w-(--anchor-width) origin-(--transform-origin) overflow-y-auto rounded-xl border border-border bg-card p-1 text-foreground shadow-lg outline-none transition duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0",
+            className,
+          )}
+          {...props}
+        >
+          <SelectPrimitive.List>{children}</SelectPrimitive.List>
+        </SelectPrimitive.Popup>
+      </SelectPrimitive.Positioner>
+    </SelectPrimitive.Portal>
   )
 }
 

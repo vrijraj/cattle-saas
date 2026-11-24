@@ -1,7 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { ArrowUp, Bell, Beef, Droplets, FileBarChart, HeartPulse, LayoutDashboard, Milk, Plus, Scale, ShoppingBag, Sparkles, Sprout, Stethoscope, User, Users, Wallet, Wheat, X } from "lucide-react";
+import {
+  ArrowUp,
+  Bell,
+  Beef,
+  Droplets,
+  FileBarChart,
+  HeartPulse,
+  LayoutDashboard,
+  Milk,
+  Plus,
+  Scale,
+  ShoppingBag,
+  Sparkles,
+  Sprout,
+  Stethoscope,
+  User,
+  Users,
+  Wallet,
+  Wheat,
+  X,
+} from "lucide-react";
 
 type ConfirmCard = {
   id: string;
@@ -16,10 +37,15 @@ type ChatMessage = {
   text: string;
   tools: string[];
   pending?: boolean;
+  restored?: boolean;
+  confirms?: ConfirmCard[];
   confirm?: ConfirmCard;
 };
 
-const STORAGE_KEY = "farm-ai-chat";
+type SavedChat = {
+  sessionId?: string;
+  messages?: ChatMessage[];
+};
 
 const suggestions: { label: string; prompt: string; icon: ComponentType<{ className?: string }> }[] = [
   { label: "Herd", prompt: "How is the herd today?", icon: Beef },
@@ -40,6 +66,7 @@ const toolIcons: Record<string, ComponentType<{ className?: string }>> = {
   record_insemination: HeartPulse,
   record_pregnancy_check: HeartPulse,
   record_calving: HeartPulse,
+  record_dry_off: HeartPulse,
   mating_check: HeartPulse,
   health_records: Stethoscope,
   record_treatment: Stethoscope,
@@ -57,6 +84,7 @@ const toolIcons: Record<string, ComponentType<{ className?: string }>> = {
   finance_summary: Wallet,
   record_finance: Wallet,
   open_alerts: Bell,
+  schedule_task: Bell,
   shop_overview: ShoppingBag,
   publish_listing: ShoppingBag,
   add_product: ShoppingBag,
@@ -89,6 +117,7 @@ const toolLabels: Record<string, string> = {
   record_insemination: "Record insemination",
   record_pregnancy_check: "Record pregnancy check",
   record_calving: "Record calving",
+  record_dry_off: "Record dry-off",
   record_treatment: "Record treatment",
   record_vaccine: "Record vaccine",
   record_deworming: "Record deworming",
@@ -96,6 +125,7 @@ const toolLabels: Record<string, string> = {
   record_milk: "Record milk",
   record_feed: "Record feed",
   record_finance: "Record finance",
+  schedule_task: "Schedule task",
   add_animal: "Add animal",
   void_record: "Void record",
   receive_straws: "Receive straws",
@@ -111,7 +141,10 @@ function ToolGlyph({ name, className }: { name: string; className?: string }) {
   return <Icon className={className} />;
 }
 
-type TextBlock = { type: "p"; text: string } | { type: "ul" | "ol"; items: string[] };
+type TextBlock =
+  | { type: "p"; text: string }
+  | { type: "h"; text: string }
+  | { type: "ul" | "ol"; items: string[] };
 
 function parseBlocks(text: string): TextBlock[] {
   const blocks: TextBlock[] = [];
@@ -131,9 +164,14 @@ function parseBlocks(text: string): TextBlock[] {
   }
 
   for (const line of text.replaceAll("\r\n", "\n").split("\n")) {
+    const heading = line.match(/^\s*#{1,3}\s+(.*)$/);
     const bullet = line.match(/^\s*(?:[-*]|•)\s+(.*)$/);
     const ordered = line.match(/^\s*\d+[.)]\s+(.*)$/);
-    if (bullet) {
+    if (heading) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "h", text: heading[1].trim() });
+    } else if (bullet) {
       flushParagraph();
       if (list?.type !== "ul") {
         flushList();
@@ -161,32 +199,40 @@ function parseBlocks(text: string): TextBlock[] {
 }
 
 function screenLink(href: string, key: number, label = href) {
-  if (!href.startsWith("/") || href.startsWith("//")) return null;
+  if (!href.startsWith("/") || href.startsWith("//") || href.startsWith("/\\")) return null;
   return (
-    <a key={key} href={href} className="font-medium text-primary underline-offset-2 hover:underline">
+    <Link key={key} href={href} className="font-medium text-primary underline-offset-2 hover:underline">
       {label}
-    </a>
+    </Link>
   );
 }
 
+const KNOWN_PATH_PATTERN =
+  /(^|[\s(])(\/(?:dashboard|animals|breeding|health|milk|feed|semen|genetics|insights|embryos|finance|alerts|reports|shop|listings|enquiries|team|audit|locations|settings|scan|profile|farms|ai)(?:\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*)?)/g;
+
 function inlineText(source: string) {
-  const pattern = /\*\*([^*]+)\*\*|\*([^*\n]+)\*|`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)|(\/[A-Za-z][A-Za-z0-9/_?&=%.-]*)/g;
+  // Replace bare known app paths only when preceded by start or whitespace/( so "₹55/L" or "morning/evening" stay plain text
+  const normalized = source.replace(KNOWN_PATH_PATTERN, (full, prefix: string, path: string, offset: number, str: string) => {
+    const before = str.slice(Math.max(0, offset - 2), offset);
+    if (before.endsWith("](") || before.endsWith("`")) return full;
+    return `${prefix}[${path}](${path})`;
+  });
+  const pattern = /\*\*([^*]+)\*\*|\*([^*\n]+)\*|`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)/g;
   const nodes: ReactNode[] = [];
   let last = 0;
   let key = 0;
-  for (const match of source.matchAll(pattern)) {
+  for (const match of normalized.matchAll(pattern)) {
     const index = match.index ?? 0;
-    if (index > last) nodes.push(source.slice(last, index));
-    const [raw, bold, italic, code, linkLabel, linkHref, path] = match;
+    if (index > last) nodes.push(normalized.slice(last, index));
+    const [raw, bold, italic, code, linkLabel, linkHref] = match;
     if (bold) nodes.push(<strong key={key++} className="font-semibold">{bold}</strong>);
     else if (italic) nodes.push(<em key={key++}>{italic}</em>);
     else if (code) nodes.push(screenLink(code, key++) ?? <code key={key++} className="rounded-md bg-secondary px-1.5 py-0.5 text-[0.85em]">{code}</code>);
     else if (linkLabel && linkHref) nodes.push(screenLink(linkHref, key++, linkLabel) ?? linkLabel);
-    else if (path) nodes.push(screenLink(path, key++) ?? path);
     else nodes.push(raw);
     last = index + raw.length;
   }
-  if (last < source.length) nodes.push(source.slice(last));
+  if (last < normalized.length) nodes.push(normalized.slice(last));
   return nodes;
 }
 
@@ -194,7 +240,9 @@ function AssistantMessage({ text }: { text: string }) {
   return (
     <div className="space-y-3">
       {parseBlocks(text).map((block, index) =>
-        block.type === "p" ? (
+        block.type === "h" ? (
+          <h3 key={index} className="font-semibold text-foreground">{inlineText(block.text)}</h3>
+        ) : block.type === "p" ? (
           <p key={index}>{inlineText(block.text)}</p>
         ) : block.type === "ol" ? (
           <ol key={index} className="list-decimal space-y-2 pl-5">
@@ -217,48 +265,93 @@ function AssistantMessage({ text }: { text: string }) {
   );
 }
 
-export function AiChat({ farmName, configured }: { farmName: string; configured: boolean }) {
+function confirmsOf(message: ChatMessage): ConfirmCard[] {
+  if (message.confirms && message.confirms.length > 0) return message.confirms;
+  if (message.confirm) return [message.confirm];
+  return [];
+}
+
+export function AiChat({
+  farmName,
+  storageScope,
+  configured,
+}: {
+  farmName: string;
+  storageScope: string;
+  configured: boolean;
+}) {
+  const storageKey = `farm-ai-chat:${storageScope}`;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState<string | null>(configured ? null : "Add GEMINI_API_KEY to .env and restart the server.");
   const sessionId = useRef<string | null>(null);
-  const settledIds = useRef<Set<string>>(new Set());
   const scroller = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as { sessionId?: string; messages?: ChatMessage[] };
-        sessionId.current = parsed.sessionId ?? null;
-        const stored = (parsed.messages ?? []).filter((message) => !message.pending);
-        settledIds.current = new Set(stored.map((message) => message.id));
-        setMessages(stored);
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved) as SavedChat;
+          sessionId.current = parsed.sessionId ?? null;
+          const stored = (parsed.messages ?? [])
+            .filter((message) => !message.pending)
+            .map((message) => ({ ...message, restored: true }));
+          setMessages(stored);
+        } else {
+          sessionId.current = null;
+          setMessages([]);
+        }
+      } catch {
+        localStorage.removeItem(storageKey);
+        sessionId.current = null;
+        setMessages([]);
       }
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-    setReady(true);
-  }, []);
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey]);
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ sessionId: sessionId.current, messages: messages.filter((message) => !message.pending) }),
-    );
-  }, [messages, ready]);
+    try {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({ sessionId: sessionId.current, messages: messages.filter((message) => !message.pending) }),
+      );
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [messages, ready, storageKey]);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [messages, busy]);
 
+  function setCardDecision(cardId: string, decided?: "saved" | "cancelled") {
+    setMessages((current) =>
+      current.map((item) => {
+        const cards = confirmsOf(item);
+        if (!cards.some((c) => c.id === cardId)) return item;
+        return {
+          ...item,
+          confirm: undefined,
+          confirms: cards.map((c) => (c.id === cardId ? { ...c, decided } : c)),
+        };
+      }),
+    );
+  }
+
   async function send(raw: string, confirmation?: { id: string; confirmed: boolean }) {
     const text = raw.trim();
-    if (busy || (!confirmation && !text)) return;
+    if (!configured || busy || (!confirmation && !text)) return;
     setDraft("");
     setNotice(null);
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", text, tools: [] };
@@ -272,6 +365,8 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
       setMessages((current) => current.map((message) => (message.id === assistantId ? update(message) : message)));
     };
 
+    let succeeded = false;
+    let sessionEvicted = false;
     try {
       const response = await fetch("/api/ai", {
         method: "POST",
@@ -307,7 +402,10 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
             args?: Record<string, unknown>;
           };
           if (event.type === "session" && event.id) {
-            if (event.fresh && sessionId.current) setNotice("This reply starts a new chat. The earlier one was no longer on the server.");
+            if (event.fresh && sessionId.current) {
+              sessionEvicted = true;
+              setNotice("This reply starts a new chat. The earlier one was no longer on the server.");
+            }
             sessionId.current = event.id;
           } else if (event.type === "delta" && event.text) {
             patch((message) => ({ ...message, text: message.text + event.text }));
@@ -316,16 +414,29 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
           } else if (event.type === "tool" && event.name) {
             patch((message) => ({ ...message, tools: message.tools.includes(event.name!) ? message.tools : [...message.tools, event.name!] }));
           } else if (event.type === "confirm" && event.id && event.tool) {
-            patch((message) => ({ ...message, confirm: { id: event.id!, tool: event.tool!, args: event.args ?? {} } }));
+            patch((message) => {
+              const existing = confirmsOf(message);
+              if (existing.some((c) => c.id === event.id)) return message;
+              return {
+                ...message,
+                confirm: undefined,
+                confirms: [...existing, { id: event.id!, tool: event.tool!, args: event.args ?? {} }],
+              };
+            });
           } else if (event.type === "error" && event.message) {
             patch((message) => ({ ...message, text: message.text || event.message || "" }));
+          } else if (event.type === "done") {
+            succeeded = true;
           }
         }
+      }
+      if (confirmation && succeeded && !sessionEvicted) {
+        setCardDecision(confirmation.id, confirmation.confirmed ? "saved" : "cancelled");
       }
       patch((message) => ({
         ...message,
         pending: false,
-        text: message.text || (message.confirm ? "" : "The assistant returned an empty reply."),
+        text: message.text || (confirmsOf(message).length > 0 ? "" : "The assistant returned an empty reply."),
       }));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -347,7 +458,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
   function reset() {
     abortRef.current?.abort();
     sessionId.current = null;
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey);
     setMessages([]);
     setNotice(configured ? null : "Add GEMINI_API_KEY to .env and restart the server.");
     setBusy(false);
@@ -358,6 +469,7 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
       <div className="assistant-composer flex items-end gap-2 rounded-3xl border border-border bg-card p-2">
         <textarea
           value={draft}
+          disabled={!configured}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -367,14 +479,18 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
           }}
           rows={1}
           placeholder={configured ? "Ask about cattle, milk, breeding, money…" : "Gemini key needed before the first question"}
-          className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+          className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
         />
         {busy ? (
           <button type="button" onClick={() => abortRef.current?.abort()} className="h-11 shrink-0 rounded-full border border-border px-4 text-sm font-medium">
             Stop
           </button>
         ) : (
-          <button type="submit" disabled={!draft.trim()} className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40">
+          <button
+            type="submit"
+            disabled={!configured || !draft.trim()}
+            className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+          >
             <ArrowUp className="size-4" />
             <span className="sr-only">Send</span>
           </button>
@@ -446,86 +562,72 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
           New chat
         </button>
       </div>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scroller} role="log" aria-live="polite" className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-4 pb-4">
           {notice ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-center text-sm text-muted-foreground">{notice}</p> : null}
-          {messages.map((message) => (
-            <article
-              key={message.id}
-              className={`${message.role === "user" ? "flex justify-end" : "flex justify-start"} items-end gap-2 ${settledIds.current.has(message.id) ? "" : message.role === "user" ? "ai-in-user" : "ai-in"}`}
-            >
-              {message.role === "assistant" ? (
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-primary">
-                  <Sparkles className="size-3.5" />
-                </span>
-              ) : null}
-              <div className={message.role === "user" ? "max-w-[85%] rounded-3xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground" : "max-w-[85%]"}>
-                {message.role === "assistant" && message.tools.length > 0 ? (
-                  <p className="mb-2 flex flex-wrap gap-1.5">
-                    {message.tools.map((tool) => (
-                      <span key={tool} className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
-                        <ToolGlyph name={tool} className="size-3" />
-                        {toolLabels[tool] ?? tool.replaceAll("_", " ")}
-                      </span>
-                    ))}
-                  </p>
+          {messages.map((message) => {
+            const cards = confirmsOf(message);
+            return (
+              <article
+                key={message.id}
+                className={`${message.role === "user" ? "flex justify-end" : "flex justify-start"} items-end gap-2 ${message.restored ? "" : message.role === "user" ? "ai-in-user" : "ai-in"}`}
+              >
+                {message.role === "assistant" ? (
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-primary">
+                    <Sparkles className="size-3.5" />
+                  </span>
                 ) : null}
-                {message.confirm ? (
-                  <div className="mb-2 rounded-2xl border border-border bg-card p-4 text-sm">
-                    <p className="flex items-center gap-2 font-medium">
-                      <ToolGlyph name={message.confirm.tool} className="size-4 text-primary" />
-                      {toolLabels[message.confirm.tool] ?? message.confirm.tool}
-                    </p>
-                    <dl className="mt-3 space-y-1.5 text-muted-foreground">
-                      {Object.entries(message.confirm.args).map(([key, value]) => (
-                        <div key={key} className="flex gap-2">
-                          <dt className="capitalize">{key.replaceAll(/([A-Z])/g, " $1")}</dt>
-                          <dd className="text-foreground">{String(value)}</dd>
-                        </div>
+                <div className={message.role === "user" ? "max-w-[85%] rounded-3xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground" : "max-w-[85%]"}>
+                  {message.role === "assistant" && message.tools.length > 0 ? (
+                    <p className="mb-2 flex flex-wrap gap-1.5">
+                      {message.tools.map((tool) => (
+                        <span key={tool} className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
+                          <ToolGlyph name={tool} className="size-3" />
+                          {toolLabels[tool] ?? tool.replaceAll("_", " ")}
+                        </span>
                       ))}
-                    </dl>
-                    {message.confirm.decided ? (
-                      <p className="mt-3 text-xs font-medium text-primary">{message.confirm.decided === "saved" ? "Confirmed" : "Left unsaved"}</p>
-                    ) : (
-                      <div className="mt-4 flex gap-2">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => {
-                            const id = message.confirm!.id;
-                            setMessages((current) =>
-                              current.map((item) =>
-                                item.confirm?.id === id ? { ...item, confirm: { ...item.confirm!, decided: "saved" } } : item,
-                              ),
-                            );
-                            void send("Save this record", { id, confirmed: true });
-                          }}
-                          className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-40"
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => {
-                            const id = message.confirm!.id;
-                            setMessages((current) =>
-                              current.map((item) =>
-                                item.confirm?.id === id ? { ...item, confirm: { ...item.confirm!, decided: "cancelled" } } : item,
-                              ),
-                            );
-                            void send("Don't save this", { id, confirmed: false });
-                          }}
-                          className="h-10 rounded-full border border-border px-4 text-sm font-medium disabled:opacity-40"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-                {message.role === "assistant" && (message.text || message.pending) ? (
-                  <div className="rounded-3xl rounded-bl-md border border-border bg-card px-4 py-3 text-sm leading-6">
+                    </p>
+                  ) : null}
+                  {cards.map((card) => (
+                    <div key={card.id} className="mb-2 rounded-2xl border border-border bg-card p-4 text-sm">
+                      <p className="flex items-center gap-2 font-medium">
+                        <ToolGlyph name={card.tool} className="size-4 text-primary" />
+                        {toolLabels[card.tool] ?? card.tool}
+                      </p>
+                      <dl className="mt-3 space-y-1.5 text-muted-foreground">
+                        {Object.entries(card.args).map(([key, value]) => (
+                          <div key={key} className="flex gap-2">
+                            <dt className="capitalize">{key.replaceAll(/([A-Z])/g, " $1")}</dt>
+                            <dd className="text-foreground">{String(value)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                      {card.decided ? (
+                        <p className="mt-3 text-xs font-medium text-primary">{card.decided === "saved" ? "Confirmed" : "Left unsaved"}</p>
+                      ) : (
+                        <div className="mt-4 flex gap-2">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void send("Save this record", { id: card.id, confirmed: true })}
+                            className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-40"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void send("Don't save this", { id: card.id, confirmed: false })}
+                            className="h-10 rounded-full border border-border px-4 text-sm font-medium disabled:opacity-40"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {message.role === "assistant" && (message.text || message.pending) ? (
+                    <div className="rounded-3xl rounded-bl-md border border-border bg-card px-4 py-3 text-sm leading-6">
                       {message.text ? (
                         <AssistantMessage text={message.text} />
                       ) : (
@@ -538,18 +640,19 @@ export function AiChat({ farmName, configured }: { farmName: string; configured:
                           </span>
                         </span>
                       )}
-                  </div>
-                ) : message.role === "user" ? (
-                  <p className="whitespace-pre-wrap">{message.text}</p>
+                    </div>
+                  ) : message.role === "user" ? (
+                    <p className="whitespace-pre-wrap">{message.text}</p>
+                  ) : null}
+                </div>
+                {message.role === "user" ? (
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+                    <User className="size-3.5" />
+                  </span>
                 ) : null}
-              </div>
-              {message.role === "user" ? (
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
-                  <User className="size-3.5" />
-                </span>
-              ) : null}
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </div>
       {composer}

@@ -5,7 +5,7 @@ import { config } from "dotenv";
 config({ path: ".env" });
 
 async function main() {
-  const url = process.env.DATABASE_URL ?? "";
+  const url = process.env.DATABASE_URL ?? "pglite:.data/pglite";
   if (url.startsWith("pglite:")) {
     mkdirSync(path.dirname(url.slice("pglite:".length)), { recursive: true });
   }

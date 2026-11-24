@@ -16,20 +16,27 @@ export async function saveMatingCheck(formData: FormData) {
   const raw = String(formData.get("bull") ?? "").trim();
   const bull = raw.split("::")[0]?.trim() ?? "";
   const batch = raw.split("::")[1]?.trim() || null;
-  const herd = await db.select().from(animals).where(eq(animals.farmId, farm.farmId));
-  const bullRows = await db.select().from(bulls).where(eq(bulls.farmId, farm.farmId));
-  const femaleRow = herd.find((row) => row.code === female);
-  if (!femaleRow || !bull) redirect("/genetics?error=animal");
+  const [herd, bullRows] = await Promise.all([
+    db.select().from(animals).where(eq(animals.farmId, farm.farmId)),
+    db.select().from(bulls).where(eq(bulls.farmId, farm.farmId)),
+  ]);
+  const femaleRow = herd.find((row) => row.code === female && row.sex === "female");
+  const sireExists =
+    bullRows.some((row) => row.code === bull) ||
+    herd.some((row) => row.code === bull && row.sex === "male");
+  if (!femaleRow || !bull || !sireExists) redirect("/genetics?error=animal");
+
   const byId = new Map(herd.map((row) => [row.id, row]));
   const links: PedigreeLink[] = [
     ...herd.map((row) => ({
       code: row.code,
       sireCode: row.geneticSireCode,
       damCode: row.geneticDamId ? (byId.get(row.geneticDamId)?.code ?? null) : null,
+      sex: row.sex,
     })),
-    ...bullRows.map((row) => ({ code: row.code, sireCode: row.sireCode, damCode: row.damCode })),
+    ...bullRows.map((row) => ({ code: row.code, sireCode: row.sireCode, damCode: row.damCode, sex: "male" })),
   ];
-  const flags = matingFlags(female, bull, links);
+  const flags = matingFlags(female, bull, links, farm.matingGenerationWindow);
   await writeAudit(db, {
     farmId: farm.farmId,
     actorId: farm.userId,
@@ -37,7 +44,7 @@ export async function saveMatingCheck(formData: FormData) {
     entity: "mating_check",
     entityId: femaleRow.id,
     summary: `Mating check ${female} × ${bull}${batch ? ` · batch ${batch}` : ""}`,
-    after: { female, bull, batch, flags },
+    after: { female, bull, batch, window: farm.matingGenerationWindow, flags },
   });
   redirect(`/genetics?female=${encodeURIComponent(female)}&bull=${encodeURIComponent(raw)}&saved=1`);
 }
@@ -47,13 +54,16 @@ export async function voidMatingNote(formData: FormData) {
   const id = String(formData.get("id") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
   const returnTo = String(formData.get("returnTo") ?? "");
-  const back = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/genetics";
+  const back = returnTo.startsWith("/") && !returnTo.startsWith("//") && !returnTo.startsWith("/\\") ? returnTo : "/genetics";
   const [note] = await db
     .select()
     .from(auditLogs)
     .where(and(eq(auditLogs.id, id), eq(auditLogs.farmId, farm.farmId), eq(auditLogs.entity, "mating_check"), eq(auditLogs.action, "create")))
     .limit(1);
-  if (!note || !reason || !canVoidMatingNote(farm.roles, note.actorId, farm.userId)) redirect(back);
+  if (!note || !reason || !canVoidMatingNote(farm.roles, note.actorId, farm.userId)) {
+    const sep = back.includes("?") ? "&" : "?";
+    redirect(`${back}${sep}error=role`);
+  }
   await writeAudit(db, {
     farmId: farm.farmId,
     actorId: farm.userId,

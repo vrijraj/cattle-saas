@@ -37,6 +37,21 @@ describe("mating flags", () => {
     expect(flags.some((flag) => flag.flag === "Son")).toBe(false);
   });
 
+  it("flags a grandmother mated to her grandson", () => {
+    const flags = matingFlags("MIL-GIR-001", "MIL-GIR-006", links);
+    expect(flags.some((flag) => flag.flag === "Grandparent" && flag.code === "MIL-GIR-001")).toBe(true);
+  });
+
+  it("flags full siblings and half siblings", () => {
+    const siblings = [
+      { code: "COW-A", sireCode: "BULL-1", damCode: "DAM-1", sex: "female" },
+      { code: "BULL-FULL", sireCode: "BULL-1", damCode: "DAM-1", sex: "male" },
+      { code: "BULL-HALF", sireCode: "BULL-1", damCode: "DAM-2", sex: "male" },
+    ];
+    expect(matingFlags("COW-A", "BULL-FULL", siblings).some((flag) => flag.flag === "Full sibling")).toBe(true);
+    expect(matingFlags("COW-A", "BULL-HALF", siblings).some((flag) => flag.flag === "Half sibling")).toBe(true);
+  });
+
   it("flags a shared ancestor who is not the proposed bull", () => {
     const shared = [
       { code: "DAM", sireCode: "SHARED", damCode: null },

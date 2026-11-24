@@ -49,13 +49,14 @@ export default async function ReportsPage({
   const baseFacts = reportFacts(current?.id ?? "cattle", body);
   const milkTotalLitres =
     current?.id === "milk" ? body.reduce((sum, row) => sum + (Number((row[5] ?? "").replaceAll(",", "")) || 0), 0) : 0;
+  const milkPrice = farm.milkPricePerLitre ? Number(farm.milkPricePerLitre) : null;
   const facts =
-    current?.id === "milk"
+    current?.id === "milk" && milkPrice
       ? [
           ...baseFacts,
           {
             label: "Value",
-            value: `₹${Math.round(milkTotalLitres * Number(farm.milkPricePerLitre ?? 60)).toLocaleString("en-IN")}`,
+            value: `₹${Math.round(milkTotalLitres * milkPrice).toLocaleString("en-IN")}`,
           },
         ]
       : baseFacts;
@@ -138,7 +139,7 @@ export default async function ReportsPage({
                   </Link>
                 </div>
               ) : null}
-              <form className="flex flex-wrap items-end gap-2" method="get">
+              <form key={`${current.id}:${window.from ?? ""}:${window.to ?? ""}:${query.presence ?? ""}:${query.sex ?? ""}:${query.breed ?? ""}`} className="flex flex-wrap items-end gap-2" method="get">
                 <input name="tab" type="hidden" value={current.id} />
                 {dated.has(current.id) ? (
                   <>
@@ -201,7 +202,7 @@ export default async function ReportsPage({
               <tr key={`${row[0]}-${index}`}>
                 {row.map((cell, cellIndex) => (
                   <Td key={`${cellIndex}`} className="whitespace-nowrap">
-                    <ReportCell value={cell} genetics={genetics} semen={semen} />
+                    <ReportCell value={cell} genetics={genetics} semen={semen} prefix={farm.animalPrefix} />
                   </Td>
                 ))}
               </tr>
@@ -274,13 +275,13 @@ function FilterSelect({ name, label, value, options }: { name: string; label: st
   );
 }
 
-function ReportCell({ value, genetics, semen }: { value: string; genetics: boolean; semen: boolean }) {
+function ReportCell({ value, genetics, semen, prefix }: { value: string; genetics: boolean; semen: boolean; prefix: string }) {
   if (!value) return <>—</>;
   const parts = value.split(/(\s·\s|\s+)/);
   return (
     <>
       {parts.map((part, index) => {
-        const href = codeHref(part, genetics, semen);
+        const href = codeHref(part, genetics, semen, prefix);
         return href ? (
           <Link key={`${part}-${index}`} href={href} className="hover:underline">
             {part}
@@ -293,15 +294,17 @@ function ReportCell({ value, genetics, semen }: { value: string; genetics: boole
   );
 }
 
-function codeHref(value: string, genetics: boolean, semen: boolean) {
+function codeHref(value: string, genetics: boolean, semen: boolean, prefix: string) {
   if (!/^[A-Z]{2,6}(?:-[A-Z0-9]+)+$/.test(value)) return null;
   if (value.startsWith("STR-")) return `/scan?code=${encodeURIComponent(value)}`;
   if (value.startsWith("BULL-")) {
     if (genetics) return `/genetics?tab=bulls&sire=${encodeURIComponent(value)}`;
-    if (semen) return `/semen?q=${encodeURIComponent(value)}`;
+    if (semen) return `/semen?tab=bulls&q=${encodeURIComponent(value)}`;
     return null;
   }
-  if (value.startsWith("MIL-") || value.startsWith("NAV-")) return `/animals/${value}`;
+  if (value.startsWith(`${prefix}-`) || value.startsWith("MIL-") || value.startsWith("NAV-")) {
+    return `/animals/${encodeURIComponent(value)}`;
+  }
   return null;
 }
 
@@ -319,14 +322,15 @@ function fileHref(kind: string, format: string, scope: { from?: string; to?: str
 
 function DownloadLink({ href, label, primary = false }: { href: string; label: string; primary?: boolean }) {
   return (
-    <Link
+    <a
       href={href}
+      download
       className={`inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-medium ${
         primary ? "bg-primary text-primary-foreground" : "border border-border bg-background"
       }`}
     >
       <Download className="size-4" />
       {label}
-    </Link>
+    </a>
   );
 }

@@ -3,11 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { animals, auditLogs, embryos, embryoTransfers } from "@/db/schema";
-import { discardEmbryo, recordFlush, saveEmbryo, transferEmbryo } from "@/app/(farm)/herd/actions";
+import { discardEmbryo, recordFlush, saveEmbryo, transferEmbryo, updateTransferResult } from "@/app/(farm)/herd/actions";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { embryoStatusLabel, embryoStorageLabel } from "@/lib/embryo-stock";
 import { requireFarm } from "@/lib/farm-context";
-import { canUseGenetics, canViewGenetics } from "@/lib/permissions";
+import { canRecordPdOrCalving, canUseGenetics, canViewGenetics } from "@/lib/permissions";
 import { FormSelect } from "@/components/form-select";
 import { EmbryoSearch } from "@/components/embryo-search";
 import { PanelTabs } from "@/components/panel-tabs";
@@ -72,6 +72,7 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
       .orderBy(animals.code),
   ]);
   const canEdit = canUseGenetics(farm.roles);
+  const canUpdateResult = canEdit || canRecordPdOrCalving(farm.roles);
   const tab = pickTab(query.tab, tabs, "collections");
   const byId = new Map(herd.map((animal) => [animal.id, animal]));
   const females = herd.filter((animal) => animal.sex === "female" && animal.presence === "on_farm");
@@ -107,7 +108,7 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
     <div className="space-y-5">
       <Summary
         title="Embryos"
-        description={term ? "Showing embryos, collections, and transfers that match this search." : "Collections, embryos in storage, and transfers to recipients. A transfer keeps the embryo out of stock."}
+        description={term ? "Showing embryos, collections, and transfers that match this search." : "Collections, embryos in storage, and transfers to recipients. A transfer updates the recipient's breeding status and schedules follow-up."}
         facts={[
           { label: "In stock", value: String(inStock.length) },
           { label: "Transferred", value: String(rows.filter((embryo) => embryo.status === "transferred").length) },
@@ -126,262 +127,295 @@ export default async function EmbryosPage({ searchParams }: { searchParams: Prom
         ]}
         panels={{
           collections: (
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {canEdit ? (
-            <RecordDialog title="Record collection" button="Record collection">
-              <form action={recordFlush} className="grid gap-3">
-                <input type="hidden" name="returnTab" value="collections" />
-                <label className="grid gap-1 text-sm">
-                  Donor female
-                  <FormSelect name="donorId" required defaultValue="" options={[{ value: "", label: "Donor" }, ...femaleOptions.slice(1)]} />
-                </label>
-                <label className="grid gap-1 text-sm">
-                  Sire code
-                  <input name="sireCode" placeholder="Sire code" className={inputClass} />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1 text-sm">
-                    Flush date
-                    <input name="flushedOn" type="date" max={today} defaultValue={today} className={inputClass} />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    Oocytes collected
-                    <input name="oocytes" type="number" min={0} max={200} step={1} required inputMode="numeric" placeholder="Oocytes collected" className={inputClass} />
-                  </label>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1 text-sm">
-                    Embryos produced
-                    <input name="produced" type="number" min={0} max={20} step={1} required inputMode="numeric" placeholder="Embryos produced" className={inputClass} />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    Grade
-                    <input name="grade" maxLength={40} placeholder="Grade" className={inputClass} />
-                  </label>
-                </div>
-                <label className="grid gap-1 text-sm">
-                  Storage tank or location
-                  <input name="location" placeholder="Tank or location" className={inputClass} />
-                </label>
-                <div className="flex justify-end">
-                  <Submit>Save collection</Submit>
-                </div>
-              </form>
-            </RecordDialog>
-          ) : null}
-        </div>
-        <Table headers={["Date", "Donor", "Oocytes", "Embryos", "Sire"]}>
-          {visibleCollections.length === 0 ? <EmptyRow cols={5}>{term ? "No collection matches this search." : "No collection recorded."}</EmptyRow> : null}
-          {visibleCollections.map((row) => {
-            const donor = byId.get(row.entityId);
-            const facts = flushFacts(row.afterState);
-            return (
-              <tr key={row.id}>
-                <Td>{facts?.flushedOn ? formatDisplayDate(facts.flushedOn) : formatDisplayDate(row.createdAt.toISOString().slice(0, 10))}</Td>
-                <Td className="font-medium">
-                  {donor ? (
-                    <Link href={`/animals/${donor.code}`} className="hover:underline">
-                      {donor.name ?? donor.code} · {donor.code}
-                    </Link>
-                  ) : (
-                    row.summary
-                  )}
-                </Td>
-                <Td>{facts?.oocytes ?? "—"}</Td>
-                <Td>{facts?.produced ?? "—"}</Td>
-                <Td>{facts?.sireCode ?? "—"}</Td>
-              </tr>
-            );
-          })}
-        </Table>
-      </section>
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {canEdit ? (
+                  <RecordDialog title="Record collection" button="Record collection">
+                    <form action={recordFlush} className="grid gap-3">
+                      <input type="hidden" name="returnTab" value="collections" />
+                      <label className="grid gap-1 text-sm">
+                        Donor female
+                        <FormSelect name="donorId" required defaultValue="" options={[{ value: "", label: "Donor" }, ...femaleOptions.slice(1)]} />
+                      </label>
+                      <label className="grid gap-1 text-sm">
+                        Sire code
+                        <input name="sireCode" placeholder="Sire code" className={inputClass} />
+                      </label>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="grid gap-1 text-sm">
+                          Flush date
+                          <input name="flushedOn" type="date" max={today} defaultValue={today} className={inputClass} />
+                        </label>
+                        <label className="grid gap-1 text-sm">
+                          Oocytes collected
+                          <input name="oocytes" type="number" min={0} max={200} step={1} required inputMode="numeric" placeholder="Oocytes collected" className={inputClass} />
+                        </label>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="grid gap-1 text-sm">
+                          Embryos produced
+                          <input name="produced" type="number" min={0} max={20} step={1} required inputMode="numeric" placeholder="Embryos produced" className={inputClass} />
+                        </label>
+                        <label className="grid gap-1 text-sm">
+                          Grade
+                          <input name="grade" maxLength={40} placeholder="Grade" className={inputClass} />
+                        </label>
+                      </div>
+                      <label className="grid gap-1 text-sm">
+                        Storage tank or location
+                        <input name="location" placeholder="Tank or location" className={inputClass} />
+                      </label>
+                      <div className="flex justify-end">
+                        <Submit>Save collection</Submit>
+                      </div>
+                    </form>
+                  </RecordDialog>
+                ) : null}
+              </div>
+              <Table headers={["Date", "Donor", "Oocytes", "Embryos", "Sire"]}>
+                {visibleCollections.length === 0 ? <EmptyRow cols={5}>{term ? "No collection matches this search." : "No collection recorded."}</EmptyRow> : null}
+                {visibleCollections.map((row) => {
+                  const donor = byId.get(row.entityId);
+                  const facts = flushFacts(row.afterState);
+                  return (
+                    <tr key={row.id}>
+                      <Td>{facts?.flushedOn ? formatDisplayDate(facts.flushedOn) : formatDisplayDate(farmToday(farm.timezone, row.createdAt))}</Td>
+                      <Td className="font-medium">
+                        {donor ? (
+                          <Link href={`/animals/${donor.code}`} className="hover:underline">
+                            {donor.name ?? donor.code} · {donor.code}
+                          </Link>
+                        ) : (
+                          row.summary
+                        )}
+                      </Td>
+                      <Td>{facts?.oocytes ?? "—"}</Td>
+                      <Td>{facts?.produced ?? "—"}</Td>
+                      <Td>{facts?.sireCode ?? "—"}</Td>
+                    </tr>
+                  );
+                })}
+              </Table>
+            </section>
           ),
           inventory: (
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {canEdit ? (
-            <div className="flex flex-wrap gap-2">
-              <RecordDialog title="Add embryo" button="Add embryo">
-                <form action={saveEmbryo} className="grid gap-3">
-                  <input type="hidden" name="returnTab" value="inventory" />
-                  <label className="grid gap-1 text-sm">
-                    Embryo code
-                    <input name="code" required placeholder="EMB-2026-0001" className={inputClass} />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    Donor female
-                    <FormSelect name="donorId" defaultValue="" options={femaleOptions} />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    Sire code
-                    <input name="sireCode" placeholder="Sire code" className={inputClass} />
-                  </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-1 text-sm">
-                      Grade
-                      <input name="grade" placeholder="Grade" className={inputClass} />
-                    </label>
-                    <label className="grid gap-1 text-sm">
-                      Storage type
-                      <FormSelect
-                        name="storage"
-                        defaultValue="fresh"
-                        options={[
-                          { value: "fresh", label: "Fresh" },
-                          { value: "frozen", label: "Frozen" },
-                        ]}
-                      />
-                    </label>
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {canEdit ? (
+                  <div className="flex flex-wrap gap-2">
+                    <RecordDialog title="Add embryo" button="Add embryo">
+                      <form action={saveEmbryo} className="grid gap-3">
+                        <input type="hidden" name="returnTab" value="inventory" />
+                        <label className="grid gap-1 text-sm">
+                          Embryo code
+                          <input name="code" required placeholder="EMB-2026-0001" className={inputClass} />
+                        </label>
+                        <label className="grid gap-1 text-sm">
+                          Donor female
+                          <FormSelect name="donorId" defaultValue="" options={femaleOptions} />
+                        </label>
+                        <label className="grid gap-1 text-sm">
+                          Sire code
+                          <input name="sireCode" placeholder="Sire code" className={inputClass} />
+                        </label>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="grid gap-1 text-sm">
+                            Grade
+                            <input name="grade" placeholder="Grade" className={inputClass} />
+                          </label>
+                          <label className="grid gap-1 text-sm">
+                            Storage type
+                            <FormSelect
+                              name="storage"
+                              defaultValue="fresh"
+                              options={[
+                                { value: "fresh", label: "Fresh" },
+                                { value: "frozen", label: "Frozen" },
+                              ]}
+                            />
+                          </label>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="grid gap-1 text-sm">
+                            Frozen date
+                            <input name="frozenOn" type="date" max={today} className={inputClass} />
+                          </label>
+                          <label className="grid gap-1 text-sm">
+                            Tank or location
+                            <input name="location" placeholder="Tank or location" className={inputClass} />
+                          </label>
+                        </div>
+                        <div className="flex justify-end">
+                          <Submit>Save embryo</Submit>
+                        </div>
+                      </form>
+                    </RecordDialog>
+                    <RecordDialog title="Discard an embryo" button="Discard">
+                      <form action={discardEmbryo} className="grid gap-3">
+                        <input type="hidden" name="returnTab" value="inventory" />
+                        <label className="grid gap-1 text-sm">
+                          Embryo in stock
+                          <FormSelect
+                            name="code"
+                            required
+                            defaultValue=""
+                            options={[{ value: "", label: "In stock" }, ...inStock.map((embryo) => ({ value: embryo.code, label: embryo.code }))]}
+                          />
+                        </label>
+                        <label className="grid gap-1 text-sm">
+                          Reason for discard
+                          <input name="reason" required placeholder="Reason" className={inputClass} />
+                        </label>
+                        <div className="flex justify-end">
+                          <Submit>Discard embryo</Submit>
+                        </div>
+                      </form>
+                    </RecordDialog>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-1 text-sm">
-                      Frozen date
-                      <input name="frozenOn" type="date" className={inputClass} />
-                    </label>
-                    <label className="grid gap-1 text-sm">
-                      Tank or location
-                      <input name="location" placeholder="Tank or location" className={inputClass} />
-                    </label>
-                  </div>
-                  <div className="flex justify-end">
-                    <Submit>Save embryo</Submit>
-                  </div>
-                </form>
-              </RecordDialog>
-              <RecordDialog title="Discard an embryo" button="Discard">
-                <form action={discardEmbryo} className="grid gap-3">
-                  <input type="hidden" name="returnTab" value="inventory" />
-                  <label className="grid gap-1 text-sm">
-                    Embryo in stock
-                    <FormSelect
-                      name="code"
-                      required
-                      defaultValue=""
-                      options={[{ value: "", label: "In stock" }, ...inStock.map((embryo) => ({ value: embryo.code, label: embryo.code }))]}
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    Reason for discard
-                    <input name="reason" required placeholder="Reason" className={inputClass} />
-                  </label>
-                  <div className="flex justify-end">
-                    <Submit>Discard embryo</Submit>
-                  </div>
-                </form>
-              </RecordDialog>
-            </div>
-          ) : null}
-        </div>
-        <Table headers={["Code", "Donor", "Sire", "Grade", "Storage", "Frozen", "Location", "Status"]}>
-          {visibleEmbryos.length === 0 ? <EmptyRow cols={8}>{term ? "No embryo matches this search." : "No embryos recorded."}</EmptyRow> : null}
-          {visibleEmbryos.map((embryo) => {
-            const donor = embryo.donorId ? byId.get(embryo.donorId) : undefined;
-            return (
-              <tr key={embryo.id}>
-                <Td className="font-medium">{embryo.code}</Td>
-                <Td>
-                  {donor ? (
-                    <Link href={`/animals/${donor.code}`} className="hover:underline">
-                      {donor.name ?? donor.code} · {donor.code}
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </Td>
-                <Td>
-                  {embryo.sireCode ? (
-                    <Link href={`/genetics?tab=bulls&sire=${encodeURIComponent(embryo.sireCode)}`} className="hover:underline">
-                      {embryo.sireCode}
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </Td>
-                <Td>{embryo.grade ?? "—"}</Td>
-                <Td>{embryoStorageLabel(embryo.storage)}</Td>
-                <Td>{embryo.frozenOn ? formatDisplayDate(embryo.frozenOn) : "—"}</Td>
-                <Td>{embryo.location ?? "—"}</Td>
-                <Td>
-                  <Pill tone={embryo.status === "in_stock" ? "good" : embryo.status === "discarded" ? "warn" : "neutral"}>{embryoStatusLabel(embryo.status)}</Pill>
-                </Td>
-              </tr>
-            );
-          })}
-        </Table>
-      </section>
+                ) : null}
+              </div>
+              <Table headers={["Code", "Donor", "Sire", "Grade", "Storage", "Frozen", "Location", "Status"]}>
+                {visibleEmbryos.length === 0 ? <EmptyRow cols={8}>{term ? "No embryo matches this search." : "No embryos recorded."}</EmptyRow> : null}
+                {visibleEmbryos.map((embryo) => {
+                  const donor = embryo.donorId ? byId.get(embryo.donorId) : undefined;
+                  return (
+                    <tr key={embryo.id}>
+                      <Td className="font-medium">{embryo.code}</Td>
+                      <Td>
+                        {donor ? (
+                          <Link href={`/animals/${donor.code}`} className="hover:underline">
+                            {donor.name ?? donor.code} · {donor.code}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </Td>
+                      <Td>
+                        {embryo.sireCode ? (
+                          <Link href={`/genetics?tab=bulls&sire=${encodeURIComponent(embryo.sireCode)}`} className="hover:underline">
+                            {embryo.sireCode}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </Td>
+                      <Td>{embryo.grade ?? "—"}</Td>
+                      <Td>{embryoStorageLabel(embryo.storage)}</Td>
+                      <Td>{embryo.frozenOn ? formatDisplayDate(embryo.frozenOn) : "—"}</Td>
+                      <Td>{embryo.location ?? "—"}</Td>
+                      <Td>
+                        <Pill tone={embryo.status === "in_stock" ? "good" : embryo.status === "discarded" ? "warn" : "neutral"}>{embryoStatusLabel(embryo.status)}</Pill>
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </Table>
+            </section>
           ),
           transfers: (
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {canEdit ? (
-            <RecordDialog title="Record transfer" button="Record transfer">
-              <form action={transferEmbryo} className="grid gap-3">
-                <input type="hidden" name="returnTab" value="transfers" />
-                <label className="grid gap-1 text-sm">
-                  Embryo
-                  <FormSelect
-                    name="embryoId"
-                    required
-                    defaultValue=""
-                    options={[{ value: "", label: "Embryo" }, ...inStock.map((embryo) => ({ value: embryo.id, label: embryo.code }))]}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm">
-                  Recipient female
-                  <FormSelect name="recipientId" required defaultValue="" options={[{ value: "", label: "Recipient" }, ...femaleOptions.slice(1)]} />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1 text-sm">
-                    Transfer date
-                    <input name="transferredOn" type="date" defaultValue={today} className={inputClass} />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    Pregnancy result
-                    <FormSelect
-                      name="pregnancyResult"
-                      defaultValue=""
-                      options={[
-                        { value: "", label: "Pregnancy result" },
-                        { value: "pregnant", label: "Pregnant" },
-                        { value: "not_pregnant", label: "Not pregnant" },
-                        { value: "doubtful", label: "Doubtful" },
-                      ]}
-                    />
-                  </label>
-                </div>
-                <p className="text-xs text-muted-foreground">The result is stored on this transfer. The recipient&apos;s breeding record stays as it is until a pregnancy check or calving is recorded there.</p>
-                <div className="flex justify-end">
-                  <Submit>Record transfer</Submit>
-                </div>
-              </form>
-            </RecordDialog>
-          ) : null}
-        </div>
-        <Table headers={["Date", "Embryo", "Recipient", "Result"]}>
-          {visibleTransfers.length === 0 ? <EmptyRow cols={4}>{term ? "No transfer matches this search." : "No transfers yet."}</EmptyRow> : null}
-          {visibleTransfers.map((transfer) => {
-            const embryo = embryoById.get(transfer.embryoId);
-            const recipient = byId.get(transfer.recipientId);
-            return (
-              <tr key={transfer.id}>
-                <Td>{formatDisplayDate(transfer.transferredOn)}</Td>
-                <Td className="font-medium">{embryo?.code ?? "—"}</Td>
-                <Td>
-                  {recipient ? (
-                    <Link href={`/animals/${recipient.code}?tab=breeding`} className="hover:underline">
-                      {recipient.name ?? recipient.code} · {recipient.code}
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </Td>
-                <Td>{transfer.pregnancyResult ? (results[transfer.pregnancyResult] ?? transfer.pregnancyResult) : "—"}</Td>
-              </tr>
-            );
-          })}
-        </Table>
-      </section>
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {canEdit ? (
+                  <RecordDialog title="Record transfer" button="Record transfer">
+                    <form action={transferEmbryo} className="grid gap-3">
+                      <input type="hidden" name="returnTab" value="transfers" />
+                      <label className="grid gap-1 text-sm">
+                        Embryo
+                        <FormSelect
+                          name="embryoId"
+                          required
+                          defaultValue=""
+                          options={[{ value: "", label: "Embryo" }, ...inStock.map((embryo) => ({ value: embryo.id, label: embryo.code }))]}
+                        />
+                      </label>
+                      <label className="grid gap-1 text-sm">
+                        Recipient female
+                        <FormSelect name="recipientId" required defaultValue="" options={[{ value: "", label: "Recipient" }, ...femaleOptions.slice(1)]} />
+                      </label>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="grid gap-1 text-sm">
+                          Transfer date
+                          <input name="transferredOn" type="date" max={today} defaultValue={today} className={inputClass} />
+                        </label>
+                        <label className="grid gap-1 text-sm">
+                          Pregnancy result
+                          <FormSelect
+                            name="pregnancyResult"
+                            defaultValue=""
+                            options={[
+                              { value: "", label: "Pending PD" },
+                              { value: "pregnant", label: "Pregnant" },
+                              { value: "not_pregnant", label: "Not pregnant" },
+                              { value: "doubtful", label: "Doubtful" },
+                            ]}
+                          />
+                        </label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Recording a transfer marks the recipient bred (or pregnant if already confirmed) and schedules the follow-up alert.</p>
+                      <div className="flex justify-end">
+                        <Submit>Record transfer</Submit>
+                      </div>
+                    </form>
+                  </RecordDialog>
+                ) : null}
+              </div>
+              <Table headers={["Date", "Embryo", "Recipient", "Result", ""]}>
+                {visibleTransfers.length === 0 ? <EmptyRow cols={5}>{term ? "No transfer matches this search." : "No transfers yet."}</EmptyRow> : null}
+                {visibleTransfers.map((transfer) => {
+                  const embryo = embryoById.get(transfer.embryoId);
+                  const recipient = byId.get(transfer.recipientId);
+                  return (
+                    <tr key={transfer.id}>
+                      <Td>{formatDisplayDate(transfer.transferredOn)}</Td>
+                      <Td className="font-medium">{embryo?.code ?? "—"}</Td>
+                      <Td>
+                        {recipient ? (
+                          <Link href={`/animals/${recipient.code}?tab=breeding`} className="hover:underline">
+                            {recipient.name ?? recipient.code} · {recipient.code}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </Td>
+                      <Td>
+                        {transfer.pregnancyResult ? (
+                          <Pill tone={transfer.pregnancyResult === "pregnant" ? "good" : transfer.pregnancyResult === "doubtful" ? "warn" : "neutral"}>
+                            {results[transfer.pregnancyResult] ?? transfer.pregnancyResult}
+                          </Pill>
+                        ) : (
+                          <span className="text-muted-foreground">Pending</span>
+                        )}
+                      </Td>
+                      <Td className="text-right">
+                        {canUpdateResult ? (
+                          <RecordDialog title={`Transfer result · ${embryo?.code ?? ""}`} button="Update result" quiet>
+                            <form action={updateTransferResult} className="space-y-3">
+                              <input type="hidden" name="transferId" value={transfer.id} />
+                              <input type="hidden" name="returnTab" value="transfers" />
+                              <label className="grid gap-1 text-sm">
+                                Pregnancy check result
+                                <FormSelect
+                                  name="pregnancyResult"
+                                  defaultValue={transfer.pregnancyResult ?? "pregnant"}
+                                  options={[
+                                    { value: "pregnant", label: "Pregnant" },
+                                    { value: "not_pregnant", label: "Not pregnant" },
+                                    { value: "doubtful", label: "Doubtful" },
+                                  ]}
+                                />
+                              </label>
+                              <div className="flex justify-end">
+                                <Submit>Save result</Submit>
+                              </div>
+                            </form>
+                          </RecordDialog>
+                        ) : null}
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </Table>
+            </section>
           ),
         }}
       />

@@ -37,6 +37,12 @@ export default async function BreedingPage({ searchParams }: { searchParams: Pro
   const register = breedingRegister(
     { herd, heats: heatRows, inseminations: aiRows, checks: checkRows, calvings: birthRows },
     farmToday(farm.timezone),
+    {
+      pdDueDaysCattle: farm.pdDueDaysCattle,
+      pdDueDaysBuffalo: farm.pdDueDaysBuffalo,
+      dryOffLeadCattle: farm.dryOffLeadCattle,
+      dryOffLeadBuffalo: farm.dryOffLeadBuffalo,
+    },
   );
   const openGenetics = canViewGenetics(farm.roles);
   const notice = query.error ? errors[query.error] : undefined;

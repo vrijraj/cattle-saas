@@ -7,63 +7,80 @@ import { alerts, animals } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { farmToday, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
-import { canReadAlert, hasRole } from "@/lib/permissions";
+import { canResolveAlert, hasRole } from "@/lib/permissions";
+import { syncMilkDrops } from "@/lib/sync-milk-drops";
 
 export async function setMilkAlert(formData: FormData) {
   const farm = await requireFarm();
-  const id = String(formData.get("id") ?? "");
-  const status = String(formData.get("status") ?? "");
+  const id = String(formData.get("id") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
   if (status !== "explained" && status !== "dismissed") redirect("/alerts");
   const [alert] = await db
     .select()
     .from(alerts)
     .where(and(eq(alerts.id, id), eq(alerts.farmId, farm.farmId)))
     .limit(1);
-  if (!alert || (alert.type !== "milk_drop" && alert.type !== "herd_milk_drop") || !canReadAlert(farm.roles, alert.type)) redirect("/alerts?error=role");
-  await db.update(alerts).set({ status }).where(eq(alerts.id, alert.id));
-  await writeAudit(db, {
-    farmId: farm.farmId,
-    actorId: farm.userId,
-    action: "update",
-    entity: "alert",
-    entityId: alert.id,
-    summary: `${status === "explained" ? "Explained" : "Dismissed"} ${alert.title}`,
-    before: { status: alert.status },
-    after: { status },
+  if (!alert || (alert.type !== "milk_drop" && alert.type !== "herd_milk_drop") || !canResolveAlert(farm.roles, alert.type)) {
+    redirect("/alerts?error=role");
+  }
+  await db.transaction(async (tx) => {
+    await tx.update(alerts).set({ status }).where(and(eq(alerts.id, alert.id), eq(alerts.farmId, farm.farmId)));
+    await writeAudit(tx, {
+      farmId: farm.farmId,
+      actorId: farm.userId,
+      action: "update",
+      entity: "alert",
+      entityId: alert.id,
+      summary: `${status === "explained" ? "Explained" : "Dismissed"} ${alert.title}`,
+      before: { status: alert.status },
+      after: { status },
+    });
   });
+  if (status === "explained" && alert.dueOn) {
+    await syncMilkDrops(farm.farmId, farmToday(farm.timezone));
+  }
   redirect("/alerts");
 }
 
 export async function dismissAlert(formData: FormData) {
   const farm = await requireFarm();
-  const id = String(formData.get("id") ?? "");
+  const id = String(formData.get("id") ?? "").trim();
+  const next = String(formData.get("status") ?? "dismissed") === "done" ? "done" : "dismissed";
   const [alert] = await db
     .select()
     .from(alerts)
     .where(and(eq(alerts.id, id), eq(alerts.farmId, farm.farmId), eq(alerts.status, "open")))
     .limit(1);
-  if (!alert || !canReadAlert(farm.roles, alert.type) || alert.type === "milk_drop" || alert.type === "herd_milk_drop") redirect("/alerts?error=role");
-  await db.update(alerts).set({ status: "dismissed" }).where(eq(alerts.id, alert.id));
-  await writeAudit(db, {
-    farmId: farm.farmId,
-    actorId: farm.userId,
-    action: "update",
-    entity: "alert",
-    entityId: alert.id,
-    summary: `Dismissed ${alert.title}`,
-    before: { status: "open" },
-    after: { status: "dismissed" },
+  if (!alert || !canResolveAlert(farm.roles, alert.type) || alert.type === "milk_drop" || alert.type === "herd_milk_drop") {
+    redirect("/alerts?error=role");
+  }
+  await db.transaction(async (tx) => {
+    await tx.update(alerts).set({ status: next }).where(and(eq(alerts.id, alert.id), eq(alerts.farmId, farm.farmId)));
+    await writeAudit(tx, {
+      farmId: farm.farmId,
+      actorId: farm.userId,
+      action: "update",
+      entity: "alert",
+      entityId: alert.id,
+      summary: `${next === "done" ? "Completed" : "Dismissed"} ${alert.title}`,
+      before: { status: "open" },
+      after: { status: next },
+    });
   });
   redirect("/alerts");
 }
 
 export async function createCustomAlert(formData: FormData) {
   const farm = await requireFarm();
-  if (!hasRole(farm.roles, ["owner", "manager", "admin", "vet", "ai_technician"])) redirect("/alerts?error=role");
+  if (!hasRole(farm.roles, ["owner", "manager", "admin", "vet", "ai_technician", "accountant"])) {
+    redirect("/alerts?error=role");
+  }
   const title = String(formData.get("title") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim() || "Scheduled farm activity.";
   const dueOn = parseFarmDate(String(formData.get("dueOn") ?? "")) ?? farmToday(farm.timezone);
   const animalIdRaw = String(formData.get("animalId") ?? "").trim();
+  const requestedType = String(formData.get("type") ?? "custom").trim();
+  const type = requestedType === "finance" && hasRole(farm.roles, ["owner", "manager", "accountant", "admin"]) ? "finance" : "custom";
   if (!title) redirect("/alerts?error=task");
 
   let animalId: string | null = null;
@@ -82,7 +99,7 @@ export async function createCustomAlert(formData: FormData) {
       .values({
         farmId: farm.farmId,
         animalId,
-        type: "custom",
+        type,
         title,
         body,
         dueOn,
@@ -94,8 +111,8 @@ export async function createCustomAlert(formData: FormData) {
       action: "create",
       entity: "alert",
       entityId: row.id,
-      summary: `Scheduled task: ${title} (${dueOn})`,
-      after: { title, body, dueOn, animalId },
+      summary: `Scheduled ${type === "finance" ? "finance " : ""}task: ${title} (${dueOn})`,
+      after: { type, title, body, dueOn, animalId },
     });
   });
 

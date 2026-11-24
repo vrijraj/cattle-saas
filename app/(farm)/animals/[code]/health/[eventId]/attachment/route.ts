@@ -1,12 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { animals, healthEvents } from "@/db/schema";
-import { requireFarm } from "@/lib/farm-context";
+import { getFarm } from "@/lib/farm-context";
 import { canSeeClinical } from "@/lib/permissions";
 import { readPrivateObject, storageConfigured } from "@/lib/storage";
 
 export async function GET(request: Request, context: { params: Promise<{ code: string; eventId: string }> }) {
-  const farm = await requireFarm();
+  const farm = await getFarm();
+  if (!farm) return new Response("Unauthorized", { status: 401 });
   if (!canSeeClinical(farm.roles)) return new Response("Forbidden", { status: 403 });
   const { code, eventId } = await context.params;
 
@@ -33,7 +34,9 @@ export async function GET(request: Request, context: { params: Promise<{ code: s
   return new Response(new Uint8Array(object.bytes), {
     headers: {
       "Content-Type": object.contentType,
-      "Cache-Control": "private, max-age=3600",
+      "Cache-Control": "private, no-cache",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
       ...(download ? { "Content-Disposition": `attachment; filename="${fileName}"` } : {}),
     },
   });

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { publicFarm, publicTitle } from "@/lib/page-title";
 import { db } from "@/db";
@@ -9,11 +9,22 @@ import { sendEnquiry } from "@/app/farms/actions";
 import { PublicFrame } from "@/components/public-frame";
 import { inputClass, Notice, PageHeader, Panel, Submit } from "@/components/workspace";
 
+const categories = [
+  { id: "", label: "All" },
+  { id: "cows", label: "Cows" },
+  { id: "heifers", label: "Heifers" },
+  { id: "calves", label: "Calves" },
+  { id: "bulls", label: "Bulls" },
+  { id: "pregnant", label: "Pregnant" },
+  { id: "semen", label: "Semen" },
+  { id: "embryos", label: "Embryos" },
+];
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const farm = await publicFarm(slug);
-  if (!farm) return publicTitle("Cattle for sale", "This farm catalogue is not available.");
-  return publicTitle(`${farm.name} cattle for sale`, `Published cattle from ${farm.name}.`);
+  if (!farm) return publicTitle("Farm catalogue", "This farm catalogue is not available.");
+  return publicTitle(`${farm.name} catalogue`, `Published cattle and genetics from ${farm.name}.`);
 }
 
 export default async function PublicFarmPage({
@@ -21,10 +32,11 @@ export default async function PublicFarmPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ sent?: string; error?: string }>;
+  searchParams: Promise<{ sent?: string; error?: string; category?: string }>;
 }) {
   const { slug } = await params;
   const query = await searchParams;
+  const category = query.category?.trim().toLowerCase() ?? "";
   const [farm] = await db.select().from(farms).where(eq(farms.slug, slug)).limit(1);
   if (!farm) notFound();
   const published = await db
@@ -32,14 +44,17 @@ export default async function PublicFarmPage({
     .from(listings)
     .leftJoin(animals, eq(animals.id, listings.animalId))
     .leftJoin(breeds, eq(breeds.id, animals.breedId))
-    .where(and(eq(listings.farmId, farm.id), eq(listings.published, "yes")));
+    .where(and(eq(listings.farmId, farm.id), eq(listings.published, "yes")))
+    .orderBy(desc(listings.createdAt));
+
+  const visible = published.filter((item) => !category || item.listing.category.toLowerCase() === category);
 
   return (
-    <PublicFrame title={farm.name} subtitle="Cattle catalogue" href={`/farms/${slug}`}>
+    <PublicFrame title={farm.name} subtitle="Cattle & genetics catalogue" href={`/farms/${slug}`}>
       <div className="space-y-5">
         <PageHeader
-          title="Animals for sale"
-          description="Published animals from this farm."
+          title="Published catalogue"
+          description="Animals, semen, and embryos published by this farm for buyer enquiries."
           action={
             <Link href={`/farms/${slug}/shop`} className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground">
               Shop
@@ -48,30 +63,55 @@ export default async function PublicFarmPage({
         />
         {query.sent ? <Notice>Your enquiry has been sent to the farm.</Notice> : null}
         {query.error ? <Notice tone="danger">Enter your name, phone number, and message before sending.</Notice> : null}
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {published.map(({ listing, animal, breed }) => (
-            <li key={listing.id}>
-              {animal ? (
-                <Link href={`/farms/${slug}/${animal.code}`} className="block rounded-2xl border border-border bg-card p-5">
-                  <span className="font-medium">{animal.name ?? animal.code}</span>
-                  <span className="mt-1 block text-sm text-muted-foreground">
-                    {animal.code} · {breed} · {listing.category}
-                    {listing.price ? ` · ₹${Number(listing.price).toLocaleString("en-IN")}` : ""}
-                  </span>
-                  {listing.publicNote ? <span className="mt-2 block text-sm">{listing.publicNote}</span> : null}
-                </Link>
-              ) : (
-                <div className="rounded-2xl border border-border bg-card p-5">
-                  <span className="font-medium capitalize">{listing.category}</span>
-                  <span className="mt-1 block text-sm text-muted-foreground">
-                    {listing.publicNote}
-                    {listing.price ? ` · ₹${Number(listing.price).toLocaleString("en-IN")}` : ""}
-                  </span>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+
+        <div className="flex flex-wrap gap-2">
+          {categories.map((item) => {
+            const active = category === item.id;
+            return (
+              <Link
+                key={item.id || "all"}
+                href={item.id ? `/farms/${slug}?category=${item.id}` : `/farms/${slug}`}
+                className={`inline-flex h-9 items-center rounded-full px-3.5 text-sm font-medium ${
+                  active ? "bg-primary text-primary-foreground" : "border border-border bg-card text-foreground hover:bg-muted"
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+
+        {visible.length === 0 ? (
+          <p className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
+            {category ? "No published listings in this category right now." : "No animals or genetics listings are published yet."}
+          </p>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {visible.map(({ listing, animal, breed }) => (
+              <li key={listing.id}>
+                {animal ? (
+                  <Link href={`/farms/${slug}/${encodeURIComponent(animal.code)}`} className="block rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/40">
+                    <span className="font-medium">{listing.showName === "yes" ? (animal.name ?? animal.code) : animal.code}</span>
+                    <span className="mt-1 block text-sm text-muted-foreground">
+                      {animal.code} · {breed} · {listing.category}
+                      {listing.price ? ` · ₹${Number(listing.price).toLocaleString("en-IN")}` : " · Price on enquiry"}
+                    </span>
+                    {listing.publicNote ? <span className="mt-2 block text-sm">{listing.publicNote}</span> : null}
+                  </Link>
+                ) : (
+                  <div className="rounded-2xl border border-border bg-card p-5">
+                    <span className="font-medium capitalize">{listing.category}</span>
+                    <span className="mt-1 block text-sm text-muted-foreground">
+                      {listing.publicNote}
+                      {listing.price ? ` · ₹${Number(listing.price).toLocaleString("en-IN")}` : " · Price on enquiry"}
+                    </span>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
         <Panel title="Enquiry" className="max-w-lg">
           <form action={sendEnquiry} className="grid gap-3">
             <input type="hidden" name="slug" value={slug} />

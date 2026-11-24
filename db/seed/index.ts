@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { config } from "dotenv";
 import { hash } from "@node-rs/argon2";
 import { eq } from "drizzle-orm";
-import { siteConfig } from "../../lib/site-config";
 import { breedCatalogue } from "./breeds";
 
 config({ path: ".env" });
@@ -56,11 +55,12 @@ async function main() {
   const [farm] = await db
     .insert(farms)
     .values({
-      name: siteConfig.name,
+      name: "Shree Gir Dairy",
       slug: "shree-gir",
       timezone: "Asia/Kolkata",
       currency: "INR",
       animalPrefix: "MIL",
+      enquiryEmail: "asha@shreegir.test",
       milkPricePerLitre: "55.00",
     })
     .returning();
@@ -103,6 +103,9 @@ async function main() {
         sex: row.sex,
         dob: row.dob,
         presence: row.presence,
+        exitOn: row.presence === "sold" ? "2026-09-01" : null,
+        exitReason: row.presence === "sold" ? "Sold to neighbouring dairy" : null,
+        exitAmount: row.presence === "sold" ? "90000.00" : null,
         lifeStage: row.lifeStage,
         reproduction: row.reproduction,
         lactation: row.lactation,
@@ -154,7 +157,7 @@ async function main() {
   await seedOperations(db, farm.id);
   const { seedLaunchGaps } = await import("./launch");
   await seedLaunchGaps(db, farm.id);
-  console.log(`Seeded ${siteConfig.name}. Sign in as asha@shreegir.test / demo-farm-2026`);
+  console.log("Seeded Shree Gir Dairy. Sign in as asha@shreegir.test / demo-farm-2026");
   const { closeDb } = await import("../close");
   await closeDb();
 }

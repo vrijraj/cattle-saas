@@ -13,8 +13,15 @@ export function PanelTabs({
   panels: Record<string, ReactNode>;
 }) {
   const first = tabs[0]?.id ?? "";
-  const [tab, setTab] = useState(tabs.some((item) => item.id === initialTab) ? initialTab : first);
+  const resolvedInitial = tabs.some((item) => item.id === initialTab) ? initialTab : first;
+  const [tab, setTab] = useState(resolvedInitial);
+  const [prevInitial, setPrevInitial] = useState(resolvedInitial);
   const [pending, startTransition] = useTransition();
+
+  if (resolvedInitial !== prevInitial) {
+    setPrevInitial(resolvedInitial);
+    setTab(resolvedInitial);
+  }
 
   function select(next: string) {
     if (next === tab) return;
@@ -23,21 +30,21 @@ export function PanelTabs({
     else params.set("tab", next);
     const value = params.toString();
     const href = value ? `${window.location.pathname}?${value}` : window.location.pathname;
-    // Update the address bar without a Next.js navigation, so the page stays mounted.
-    History.prototype.replaceState.call(window.history, window.history.state, "", href);
+    window.history.replaceState(window.history.state, "", href);
     startTransition(() => setTab(next));
   }
 
   return (
     <div className="space-y-4">
-      <nav className="flex gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-muted/75 p-1">
+      <div role="tablist" className="flex gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-muted/75 p-1">
         {tabs.map((item) => {
           const active = tab === item.id;
           return (
             <button
               key={item.id}
               type="button"
-              aria-current={active ? "page" : undefined}
+              role="tab"
+              aria-selected={active}
               onClick={() => select(item.id)}
               className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-3.5 text-sm font-medium transition ${
                 active
@@ -58,8 +65,8 @@ export function PanelTabs({
             </button>
           );
         })}
-      </nav>
-      {pending ? <PageLoader /> : panels[tab]}
+      </div>
+      <div role="tabpanel">{pending ? <PageLoader /> : panels[tab]}</div>
     </div>
   );
 }

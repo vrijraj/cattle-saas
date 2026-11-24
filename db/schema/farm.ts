@@ -1,4 +1,4 @@
-import { integer, numeric, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, numeric, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import { users } from "./auth";
 
 export const farms = pgTable("farm", {
@@ -10,8 +10,15 @@ export const farms = pgTable("farm", {
   timezone: text("timezone").notNull().default("Asia/Kolkata"),
   currency: text("currency").notNull().default("INR"),
   animalPrefix: text("animal_prefix").notNull().default("MIL"),
+  enquiryEmail: text("enquiry_email"),
   milkPricePerLitre: numeric("milk_price_per_litre", { precision: 12, scale: 2 }),
   milkDropPercent: integer("milk_drop_percent").notNull().default(30),
+  requireBothMilkSessions: boolean("require_both_milk_sessions").notNull().default(true),
+  pdDueDaysCattle: integer("pd_due_days_cattle").notNull().default(35),
+  pdDueDaysBuffalo: integer("pd_due_days_buffalo").notNull().default(40),
+  dryOffLeadCattle: integer("dry_off_lead_cattle").notNull().default(60),
+  dryOffLeadBuffalo: integer("dry_off_lead_buffalo").notNull().default(90),
+  matingGenerationWindow: integer("mating_generation_window").notNull().default(4),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
@@ -25,6 +32,7 @@ export const farmMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     roles: text("roles").array().notNull(),
+    canRecordVaccines: boolean("can_record_vaccines").notNull().default(false),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (table) => [primaryKey({ columns: [table.farmId, table.userId] })],

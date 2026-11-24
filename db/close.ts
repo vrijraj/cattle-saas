@@ -1,4 +1,4 @@
-import { getDb } from "./index";
+import { getDb, resetDb } from "./index";
 
 export async function closeDb() {
   const client = (getDb() as unknown as { $client: {
@@ -7,4 +7,5 @@ export async function closeDb() {
   } }).$client;
   if (client.close) await client.close();
   else if (client.end) await client.end({ timeout: 1 });
+  resetDb();
 }

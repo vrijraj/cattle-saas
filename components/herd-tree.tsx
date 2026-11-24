@@ -1,6 +1,12 @@
 import Link from "next/link";
 import type { HerdNode } from "@/lib/pedigree-tree";
 
+const PRESENCE_BADGE: Record<string, string> = {
+  sold: "Sold",
+  dead: "Deceased",
+  transferred: "Transferred",
+};
+
 export function HerdTree({ forest }: { forest: HerdNode[] }) {
   if (forest.length === 0) {
     return (
@@ -23,7 +29,7 @@ export function HerdTree({ forest }: { forest: HerdNode[] }) {
               {lines.length} {lines.length === 1 ? "matriarch line" : "matriarch lines"}
             </span>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Daughters sit to the right of their dam. The recorded sire appears on each card.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Offspring sit to the right of their dam. The recorded sire appears on each card.</p>
           <div className="mt-4 space-y-4">
             {lines.map((node) => (
               <div
@@ -94,7 +100,23 @@ function Branch({ node, root = false }: { node: HerdNode; root?: boolean }) {
 }
 
 function AnimalCard({ node, root = false }: { node: HerdNode; root?: boolean }) {
-  const sold = node.presence === "sold";
+  const exited = node.presence !== "on_farm";
+  const exitLabel = PRESENCE_BADGE[node.presence] ?? null;
+  const roleLabel = root
+    ? node.sex === "male"
+      ? "Foundation bull"
+      : "Foundation dam"
+    : node.sex === "male"
+      ? "Son"
+      : node.sex === "female"
+        ? "Daughter"
+        : "Offspring";
+  const badgeClass = root
+    ? "bg-primary text-primary-foreground"
+    : node.sex === "male"
+      ? "bg-sky-500/12 text-sky-800 ring-1 ring-sky-500/20"
+      : "bg-rose-500/12 text-rose-800 ring-1 ring-rose-500/20";
+
   return (
     <Link
       href={`/animals/${node.code}`}
@@ -102,17 +124,11 @@ function AnimalCard({ node, root = false }: { node: HerdNode; root?: boolean }) 
         root
           ? "border-2 border-primary bg-gradient-to-br from-secondary/90 via-white to-secondary/45 shadow-xs"
           : "border-border/90 bg-white shadow-[0_2px_6px_rgba(15,23,42,0.04)] hover:border-primary/40"
-      } ${sold ? "opacity-70" : ""}`}
+      } ${exited ? "opacity-70" : ""}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span
-          className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
-            root ? "bg-primary text-primary-foreground" : "bg-rose-500/12 text-rose-800 ring-1 ring-rose-500/20"
-          }`}
-        >
-          {root ? "Foundation dam" : "Daughter"}
-        </span>
-        {sold ? <span className="text-[10px] font-medium text-muted-foreground">Sold</span> : null}
+        <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${badgeClass}`}>{roleLabel}</span>
+        {exitLabel ? <span className="text-[10px] font-medium text-muted-foreground">{exitLabel}</span> : null}
       </div>
       <span className="mt-2 block truncate text-sm font-semibold text-foreground">{node.name ?? "Unnamed"}</span>
       <span className="block truncate font-mono text-[11px] text-muted-foreground">{node.code}</span>

@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { animals, bulls, semenBatches, straws } from "@/db/schema";
 import { farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
-import { canRecordBreeding } from "@/lib/permissions";
+import { canRecordAi, canViewSemen } from "@/lib/permissions";
 import { scanLookupError } from "@/lib/scan-lookup";
 import { FormSelect } from "@/components/form-select";
 import { CodeScanner } from "@/components/code-scanner";
@@ -13,7 +13,12 @@ import { recordAi } from "../herd/actions";
 
 function tokenFrom(value: string) {
   const match = value.match(/\/q\/([^/?#]+)/);
-  return match?.[1] ? decodeURIComponent(match[1]) : null;
+  if (!match?.[1]) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
 export const metadata = { title: "Scan a tag" };
@@ -48,35 +53,46 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
           eq(animals.farmId, farm.farmId),
           token
             ? eq(animals.qrToken, token)
-            : or(eq(animals.code, raw), eq(animals.code, upper), eq(animals.earTag, raw), eq(animals.qrToken, raw)),
+            : or(
+                eq(animals.code, raw),
+                eq(animals.code, upper),
+                eq(animals.earTag, raw),
+                eq(animals.rfid, raw),
+                eq(animals.qrToken, raw),
+              ),
         ),
       )
       .limit(1);
-    if (animal) redirect(`/animals/${animal.code}`);
+    if (animal) redirect(`/animals/${encodeURIComponent(animal.code)}`);
 
-    const [straw] = await db
-      .select({
-        code: straws.code,
-        status: straws.status,
-        tank: straws.tank,
-        canister: straws.canister,
-        goblet: straws.goblet,
-        position: straws.position,
-        bullCode: bulls.code,
-        bullName: bulls.name,
-        batchNumber: semenBatches.batchNumber,
-        semenType: semenBatches.semenType,
-      })
-      .from(straws)
-      .innerJoin(semenBatches, eq(semenBatches.id, straws.batchId))
-      .innerJoin(bulls, eq(bulls.id, semenBatches.bullId))
-      .where(and(eq(straws.farmId, farm.farmId), or(eq(straws.code, raw), eq(straws.code, upper))))
-      .limit(1);
-    if (straw) strawCard = straw;
-    else missing = true;
+    if (canViewSemen(farm.roles)) {
+      const [straw] = await db
+        .select({
+          code: straws.code,
+          status: straws.status,
+          tank: straws.tank,
+          canister: straws.canister,
+          goblet: straws.goblet,
+          position: straws.position,
+          bullCode: bulls.code,
+          bullName: bulls.name,
+          batchNumber: semenBatches.batchNumber,
+          semenType: semenBatches.semenType,
+        })
+        .from(straws)
+        .innerJoin(semenBatches, eq(semenBatches.id, straws.batchId))
+        .innerJoin(bulls, eq(bulls.id, semenBatches.bullId))
+        .where(and(eq(straws.farmId, farm.farmId), or(eq(straws.code, raw), eq(straws.code, upper))))
+        .limit(1);
+      if (straw) strawCard = straw;
+      else missing = true;
+    } else {
+      missing = true;
+    }
   }
 
-  const females = strawCard
+  const canUseInAi = Boolean(strawCard && strawCard.status === "available" && canRecordAi(farm.roles));
+  const females = canUseInAi
     ? await db
         .select({ id: animals.id, code: animals.code, name: animals.name })
         .from(animals)
@@ -86,7 +102,7 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-5">
-      <Summary title="Scan" description="Open an animal from a tag, or look up a straw and start an insemination." />
+      <Summary title="Scan" description="Open an animal from a QR tag, ear tag, or RFID — or scan a semen straw to start an insemination." />
       <CodeScanner code={raw} error={lookupError} />
       {missing ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">No animal or straw matches {raw}.</p> : null}
       {strawCard ? (
@@ -103,7 +119,7 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
               {[strawCard.tank, strawCard.canister, strawCard.goblet, strawCard.position].filter(Boolean).join(" · ") || "Location not recorded"}
             </p>
           </div>
-          {strawCard.status === "available" && canRecordBreeding(farm.roles) ? (
+          {canUseInAi ? (
             <form action={recordAi} className="grid gap-3">
               <input type="hidden" name="bullCode" value={strawCard.bullCode} />
               <input type="hidden" name="bullName" value={strawCard.bullName} />
@@ -121,7 +137,11 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
               </button>
             </form>
           ) : (
-            <p className="text-sm text-muted-foreground">This straw is {strawCard.status}, so it cannot start a new insemination.</p>
+            <p className="text-sm text-muted-foreground">
+              {strawCard.status !== "available"
+                ? `This straw is ${strawCard.status}, so it cannot start a new insemination.`
+                : "Your role cannot record inseminations."}
+            </p>
           )}
         </section>
       ) : null}

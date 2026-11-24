@@ -2,11 +2,14 @@ export type AnimalLink = {
   id: string;
   code: string;
   name: string | null;
+  sex?: string;
   geneticDamId: string | null;
   geneticSireCode: string | null;
   geneticSireName: string | null;
   presence: string;
 };
+
+export type PedigreeAnimal = AnimalLink;
 
 export type BullLink = {
   code: string;
@@ -36,6 +39,7 @@ export type AncestorChart = {
 export type HerdNode = {
   code: string;
   name: string | null;
+  sex?: string;
   sireCode: string | null;
   presence: string;
   children: HerdNode[];
@@ -123,21 +127,53 @@ export type ParentLink = {
   sireId: string | null;
 };
 
-export function parentLinkCreatesCycle(links: ParentLink[], animalId: string, parentId: string) {
-  if (!parentId || animalId === parentId) return true;
-  const byId = new Map(links.map((link) => [link.id, link]));
-  const seen = new Set<string>();
-  const stack = [parentId];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || seen.has(current)) continue;
-    if (current === animalId) return true;
-    seen.add(current);
-    const node = byId.get(current);
-    if (!node) continue;
-    if (node.damId) stack.push(node.damId);
-    if (node.sireId) stack.push(node.sireId);
+export function parentLinkCreatesCycle(links: ParentLink[], animalId: string, parentId: string): boolean;
+export function parentLinkCreatesCycle(
+  animalId: string,
+  damId: string | null,
+  sireCode: string | null,
+  herd: AnimalLink[],
+): boolean;
+export function parentLinkCreatesCycle(
+  first: ParentLink[] | string,
+  second: string | null,
+  third: string | null,
+  fourth?: AnimalLink[],
+): boolean {
+  if (Array.isArray(first)) {
+    const links = first;
+    const animalId = second ?? "";
+    const parentId = third ?? "";
+    if (!parentId || animalId === parentId) return true;
+    const byId = new Map(links.map((link) => [link.id, link]));
+    const seen = new Set<string>();
+    const stack = [parentId];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current || seen.has(current)) continue;
+      if (current === animalId) return true;
+      seen.add(current);
+      const node = byId.get(current);
+      if (!node) continue;
+      if (node.damId) stack.push(node.damId);
+      if (node.sireId) stack.push(node.sireId);
+    }
+    return false;
   }
+
+  const animalId = first;
+  const damId = second;
+  const sireCode = third;
+  const herd = fourth ?? [];
+  const byCode = new Map(herd.map((row) => [row.code.toLowerCase(), row.id]));
+  const links: ParentLink[] = herd.map((row) => ({
+    id: row.id,
+    damId: row.geneticDamId,
+    sireId: row.geneticSireCode ? (byCode.get(row.geneticSireCode.toLowerCase()) ?? `bull:${row.geneticSireCode}`) : null,
+  }));
+  const sireId = sireCode ? (byCode.get(sireCode.toLowerCase()) ?? `bull:${sireCode}`) : null;
+  if (damId && parentLinkCreatesCycle(links, animalId, damId)) return true;
+  if (sireId && parentLinkCreatesCycle(links, animalId, sireId)) return true;
   return false;
 }
 
@@ -159,6 +195,7 @@ export function herdForest(herd: AnimalLink[]): HerdNode[] {
     const node: HerdNode = {
       code: animal.code,
       name: animal.name,
+      sex: animal.sex,
       sireCode: animal.geneticSireCode,
       presence: animal.presence,
       children: [],

@@ -3,16 +3,15 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { db } from "@/db";
 import { animals, bulls } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { requireFarm } from "@/lib/farm-context";
+import { getFarm } from "@/lib/farm-context";
 import { ancestorChart, type AnimalLink, type BullLink } from "@/lib/pedigree-tree";
-
-function latin(value: string) {
-  return value.replace(/[^\x20-\x7E]/g, "?");
-}
+import { canExportPedigree } from "@/lib/permissions";
+import { pdfSafeText } from "@/lib/report-files";
 
 export async function GET(_request: Request, context: { params: Promise<{ code: string }> }) {
-  const farm = await requireFarm();
-  if (farm.roles.length === 1 && farm.roles[0] === "worker") return new Response("Forbidden", { status: 403 });
+  const farm = await getFarm();
+  if (!farm) return new Response("Unauthorized", { status: 401 });
+  if (!canExportPedigree(farm.roles)) return new Response("Forbidden", { status: 403 });
   const { code } = await context.params;
   const herd = await db.select().from(animals).where(eq(animals.farmId, farm.farmId));
   const animal = herd.find((row) => row.code === code);
@@ -38,10 +37,8 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const page = pdf.addPage([595, 842]);
   const ink = rgb(0.11, 0.14, 0.19);
-  page.drawText("Pedigree", { x: 48, y: 790, size: 18, font: bold, color: ink });
-  page.drawText(latin(`${animal.name ?? animal.code} · ${animal.code}`), { x: 48, y: 764, size: 12, font, color: ink });
+  const muted = rgb(0.45, 0.49, 0.55);
 
   const blocks: { label: string; node: { code: string | null; name: string | null } }[] = [
     { label: "Animal", node: chart.self },
@@ -49,16 +46,27 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
     ...chart.grandparents.map((node, index) => ({ label: `Grandparent ${index + 1}`, node })),
     ...chart.greatGrandparents.map((node, index) => ({ label: `Great-grandparent ${index + 1}`, node })),
     ...chart.generations.slice(3).flatMap((nodes, index) =>
-      nodes.filter((node) => node.code && !node.repeat).map((node, nodeIndex) => ({ label: `${index + 4}th generation ${nodeIndex + 1}`, node })),
+      nodes.filter((node) => node.code && !node.repeat).map((node, nodeIndex) => ({ label: `Gen ${index + 4} #${nodeIndex + 1}`, node })),
     ),
   ];
-  blocks.forEach((block, index) => {
-    const y = 730 - index * 22;
-    if (y < 48) return;
-    const text = block.node.code ? latin(`${block.node.name ? `${block.node.name} · ` : ""}${block.node.code}`) : "Unknown";
-    page.drawText(latin(block.label), { x: 48, y, size: 9, font: bold, color: ink });
-    page.drawText(text, { x: 180, y, size: 11, font, color: ink });
-  });
+
+  const rowsPerPage = 31;
+  const totalPages = Math.max(1, Math.ceil(blocks.length / rowsPerPage));
+  for (let pageIdx = 0; pageIdx < totalPages; pageIdx += 1) {
+    const page = pdf.addPage([595, 842]);
+    page.drawText("Pedigree", { x: 48, y: 790, size: 18, font: bold, color: ink });
+    page.drawText(pdfSafeText(`${animal.name ?? animal.code} · ${animal.code}`), { x: 48, y: 764, size: 12, font, color: ink });
+    if (totalPages > 1) {
+      page.drawText(`Page ${pageIdx + 1} of ${totalPages}`, { x: 490, y: 794, size: 9, font, color: muted });
+    }
+    const slice = blocks.slice(pageIdx * rowsPerPage, (pageIdx + 1) * rowsPerPage);
+    slice.forEach((block, index) => {
+      const y = 730 - index * 22;
+      const text = block.node.code ? pdfSafeText(`${block.node.name ? `${block.node.name} · ` : ""}${block.node.code}`) : "Unknown";
+      page.drawText(pdfSafeText(block.label), { x: 48, y, size: 9, font: bold, color: ink });
+      page.drawText(text, { x: 180, y, size: 11, font, color: ink });
+    });
+  }
 
   await writeAudit(db, {
     farmId: farm.farmId,
@@ -71,10 +79,12 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
   });
 
   const body = await pdf.save();
+  const safeCode = animal.code.replace(/[^a-zA-Z0-9._-]/g, "_");
   return new Response(new Uint8Array(body), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${animal.code}-pedigree.pdf"`,
+      "Content-Disposition": `attachment; filename="${safeCode}-pedigree.pdf"`,
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

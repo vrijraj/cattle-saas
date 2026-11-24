@@ -15,7 +15,7 @@ export const metadata = { title: "Audit log" };
 export default async function AuditPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; action?: string; entity?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ q?: string; action?: string; entity?: string; from?: string; to?: string; page?: string }>;
 }) {
   const farm = await requireFarm();
   if (!canViewAudit(farm.roles)) redirect("/dashboard");
@@ -24,6 +24,9 @@ export default async function AuditPage({
   const window = auditWindow(query.from, query.to);
   const action = query.action && ["create", "update", "void", "export"].includes(query.action) ? query.action : "";
   const entity = query.entity?.trim() ?? "";
+  const requestedPage = Number(query.page ?? "1");
+  const page = Number.isInteger(requestedPage) && requestedPage >= 1 ? requestedPage : 1;
+
   const filters = [eq(auditLogs.farmId, farm.farmId)];
   if (action) filters.push(eq(auditLogs.action, action));
   if (entity) filters.push(eq(auditLogs.entity, entity));
@@ -44,6 +47,7 @@ export default async function AuditPage({
         action: auditLogs.action,
         entity: auditLogs.entity,
         summary: auditLogs.summary,
+        beforeState: auditLogs.beforeState,
         afterState: auditLogs.afterState,
         createdAt: auditLogs.createdAt,
         actor: users.name,
@@ -52,9 +56,11 @@ export default async function AuditPage({
       .leftJoin(users, eq(users.id, auditLogs.actorId))
       .where(where)
       .orderBy(desc(auditLogs.createdAt))
-      .limit(pageSize),
+      .limit(pageSize)
+      .offset((page - 1) * pageSize),
   ]);
   const total = counted[0]?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const filtered = Boolean(term || action || entity || window.from || window.to);
   const when = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -66,6 +72,18 @@ export default async function AuditPage({
     timeZone: farm.timezone,
   });
 
+  function pageHref(nextPage: number) {
+    const params = new URLSearchParams();
+    if (term) params.set("q", term);
+    if (action) params.set("action", action);
+    if (entity) params.set("entity", entity);
+    if (window.from) params.set("from", window.from);
+    if (window.to) params.set("to", window.to);
+    if (nextPage > 1) params.set("page", String(nextPage));
+    const qs = params.toString();
+    return qs ? `/audit?${qs}` : "/audit";
+  }
+
   return (
     <div className="space-y-5">
       <Summary
@@ -74,6 +92,7 @@ export default async function AuditPage({
         facts={[
           { label: "Shown", value: String(rows.length) },
           { label: "Matching", value: String(total) },
+          { label: "Page", value: `${page} / ${totalPages}` },
         ]}
         action={
           filtered ? (
@@ -86,7 +105,7 @@ export default async function AuditPage({
       <form className="flex flex-wrap items-end gap-2" method="get">
         <label className="text-sm">
           <span className="mb-1 block text-muted-foreground">Search</span>
-          <input className="h-10 rounded-lg border border-border bg-background px-3" name="q" defaultValue={term} placeholder="Animal, person, or detail" />
+          <input key={term} className="h-10 rounded-lg border border-border bg-background px-3" name="q" defaultValue={term} placeholder="Animal, person, or detail" />
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-muted-foreground">Action</span>
@@ -127,7 +146,7 @@ export default async function AuditPage({
         ) : null}
         {rows.map((row) => {
           const href = auditRecordHref(row.entity, row.afterState);
-          const change = auditChange(row.afterState);
+          const change = auditChange(row.afterState, row.beforeState);
           return (
             <tr key={row.id}>
               <Td className="whitespace-nowrap">{when.format(row.createdAt)}</Td>
@@ -143,35 +162,65 @@ export default async function AuditPage({
                 )}
               </Td>
               <Td>
-                <Detail text={row.summary} />
+                <Detail text={row.summary} animalPrefix={farm.animalPrefix} />
               </Td>
               <Td className="text-muted-foreground">{change || "—"}</Td>
             </tr>
           );
         })}
       </Table>
-      {total > rows.length ? (
-        <p className="text-sm text-muted-foreground">
-          Showing the latest {rows.length} of {total}. Narrow the dates to see older rows.
-        </p>
+      {totalPages > 1 ? (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <p className="text-muted-foreground">
+            Page {page} of {totalPages} ({total} matching entries)
+          </p>
+          <div className="flex items-center gap-2">
+            {page > 1 ? (
+              <Link href={pageHref(page - 1)} className="inline-flex h-9 items-center rounded-full border border-border px-4 font-medium hover:bg-muted">
+                ← Previous
+              </Link>
+            ) : null}
+            {page < totalPages ? (
+              <Link href={pageHref(page + 1)} className="inline-flex h-9 items-center rounded-full border border-border px-4 font-medium hover:bg-muted">
+                Next →
+              </Link>
+            ) : null}
+          </div>
+        </div>
       ) : null}
     </div>
   );
 }
 
-function Detail({ text }: { text: string }) {
+function Detail({ text, animalPrefix }: { text: string; animalPrefix: string }) {
   const parts = text.split(/(\s·\s|\s+)/);
+  const prefix = `${animalPrefix.toUpperCase()}-`;
   return (
     <>
-      {parts.map((part, index) =>
-        /^[A-Z]{2,6}(?:-[A-Z0-9]+)+$/.test(part) ? (
-          <Link key={`${part}-${index}`} href={part.startsWith("BULL-") ? `/genetics?tab=bulls&sire=${encodeURIComponent(part)}` : part.startsWith("STR-") ? `/scan?code=${encodeURIComponent(part)}` : `/animals/${part}`} className="hover:underline">
-            {part}
-          </Link>
-        ) : (
-          <span key={`${part}-${index}`}>{part}</span>
-        ),
-      )}
+      {parts.map((part, index) => {
+        if (/^BULL-[A-Z0-9-]+$/.test(part)) {
+          return (
+            <Link key={`${part}-${index}`} href={`/genetics?tab=bulls&sire=${encodeURIComponent(part)}`} className="text-primary hover:underline">
+              {part}
+            </Link>
+          );
+        }
+        if (/^STR-[A-Z0-9-]+$/.test(part)) {
+          return (
+            <Link key={`${part}-${index}`} href={`/scan?code=${encodeURIComponent(part)}`} className="text-primary hover:underline">
+              {part}
+            </Link>
+          );
+        }
+        if (part.startsWith(prefix) && /^[A-Z0-9]+(?:-[A-Z0-9]+)+$/.test(part)) {
+          return (
+            <Link key={`${part}-${index}`} href={`/animals/${encodeURIComponent(part)}`} className="text-primary hover:underline">
+              {part}
+            </Link>
+          );
+        }
+        return <span key={`${part}-${index}`}>{part}</span>;
+      })}
     </>
   );
 }

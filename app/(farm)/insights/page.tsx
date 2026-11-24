@@ -10,7 +10,7 @@ import { canSeeClinical, canViewFinance, canViewGenetics, canViewHeatWindow } fr
 import { FormSelect } from "@/components/form-select";
 import { Notice, Pill, Submit, Summary } from "@/components/workspace";
 
-const closeFlags = new Set(["Parent", "Grandparent", "Son", "Daughter"]);
+const closeFlags = new Set(["Parent", "Grandparent", "Son", "Daughter", "Full sibling", "Half sibling"]);
 
 export const metadata = { title: "Insights" };
 
@@ -46,11 +46,16 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
     ],
     today,
   ).filter((window) => window.state !== "past");
+  const onFarmIds = new Set(onFarm.map((animal) => animal.id));
   const signals = diseaseSignals(
-    health.filter((row) => !row.voidedAt && onFarm.some((animal) => animal.id === row.animalId)).map((row) => ({ animalId: row.animalId, problem: row.problem, eventOn: row.eventOn })),
+    health.filter((row) => !row.voidedAt && onFarmIds.has(row.animalId)).map((row) => ({ animalId: row.animalId, problem: row.problem, eventOn: row.eventOn })),
     today,
   );
-  const changes = weightChanges(weightRows.map((row) => ({ animalId: row.animalId, weighedOn: row.weighedOn, kilograms: Number(row.kilograms) })));
+  const changes = weightChanges(
+    weightRows
+      .filter((row) => !row.voidedAt && onFarmIds.has(row.animalId))
+      .map((row) => ({ animalId: row.animalId, weighedOn: row.weighedOn, kilograms: Number(row.kilograms) })),
+  );
   const litres = milk.filter((row) => !row.voidedAt).reduce((sum, row) => sum + Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0), 0);
   const medicine = health.filter((row) => !row.voidedAt).reduce((sum, row) => sum + Number(row.cost ?? 0), 0);
   const value = showValue ? valueInsight({ litres, price: farmRow?.milkPricePerLitre ? Number(farmRow.milkPricePerLitre) : null, medicine }) : null;
@@ -67,7 +72,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   ];
   const suggestions = female
     ? bullRows
-        .map((bull) => ({ bull, flags: matingFlags(female.code, bull.code, links) }))
+        .map((bull) => ({ bull, flags: matingFlags(female.code, bull.code, links, farm.matingGenerationWindow) }))
         .filter((row) => row.flags.every((flag) => !closeFlags.has(flag.flag)))
         .sort((left, right) => left.bull.code.localeCompare(right.bull.code))
     : [];
@@ -215,7 +220,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
         <article className="space-y-3 rounded-2xl border border-border bg-card p-5">
           <h2 className="font-semibold">Mating suggestions</h2>
           <p className="text-sm text-muted-foreground">
-            Bulls without a parent, grandparent, son, or daughter flag against {female ? `${female.name ?? female.code} · ${female.code}` : "a female"}. Depth is 4 generations. This is relationship information, not a mating recommendation from a genetic evaluation.
+            Bulls without a close relationship flag (parent, grandparent, sibling, or offspring) against {female ? `${female.name ?? female.code} · ${female.code}` : "a female"}. Depth is {farm.matingGenerationWindow} generations. This is relationship information, not a mating recommendation from a genetic evaluation.
           </p>
           {females.length > 0 ? (
             <form method="get" className="grid gap-3 sm:grid-cols-[minmax(0,18rem)_auto] sm:items-center">

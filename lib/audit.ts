@@ -8,7 +8,7 @@ export async function writeAudit(
   tx: AuditWriter,
   entry: {
     farmId: string;
-    actorId: string;
+    actorId: string | null;
     action: "create" | "update" | "void" | "export";
     entity: string;
     entityId: string;

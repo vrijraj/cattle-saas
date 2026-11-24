@@ -148,7 +148,7 @@ export default async function SemenPage({
           {batchRows.map(({ batch, bull, counts }) => (
             <tr key={batch.id}>
               <Td className="font-medium">
-                <Link href={`/semen?q=${encodeURIComponent(batch.batchNumber)}`} className="hover:underline">
+                <Link href={`/semen?tab=straws&q=${encodeURIComponent(batch.batchNumber)}`} className="hover:underline">
                   {batch.batchNumber}
                 </Link>
                 <p className="text-xs text-muted-foreground">
@@ -377,6 +377,7 @@ export default async function SemenPage({
             <tr key={bull.id}>
               <Td>
                 {bull.photoKey ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={`/animals/${encodeURIComponent(bull.code)}/photo`}
                     alt={bull.name}

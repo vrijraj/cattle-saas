@@ -6,13 +6,12 @@ import { requireFarm } from "@/lib/farm-context";
 import { farmToday } from "@/lib/dates";
 import { isUnderOneYear } from "@/lib/herd-stats";
 import { HerdTree } from "@/components/herd-tree";
-import { HerdSearch } from "@/components/herd-search";
-import { lifeStageLabel, presenceLabel } from "@/lib/labels";
-import { canManageTeam, canViewAudit, canViewFinance, canViewGenetics, canViewHealth, canViewReports, canViewSemen, canWriteAnimals } from "@/lib/permissions";
+import { lactationLabel, lifeStageLabel, presenceLabel, sexLabel } from "@/lib/labels";
+import { canWriteAnimals } from "@/lib/permissions";
 import { matchesHerdQuery } from "@/lib/herd-query";
 import { herdForest } from "@/lib/pedigree-tree";
 import { HerdTabs } from "@/components/herd-tabs";
-import { pickTab, Pill, Summary } from "@/components/workspace";
+import { inputClass, pickTab, Pill, Summary } from "@/components/workspace";
 
 const views = [
   { id: "all", label: "All" },
@@ -29,48 +28,75 @@ export const metadata = { title: "Cattle" };
 export default async function AnimalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; view?: string; tab?: string }>;
+  searchParams: Promise<{ q?: string; view?: string; tab?: string; breed?: string; sex?: string; shed?: string; lactation?: string }>;
 }) {
   const farm = await requireFarm();
   const query = await searchParams;
   const today = farmToday(farm.timezone);
-  const term = (query.q ?? "").trim().toLowerCase();
+  const rawTerm = (query.q ?? "").trim();
+  const term = rawTerm.toLowerCase();
   const view = views.some((item) => item.id === query.view) ? (query.view as ViewId) : "all";
   const tab = pickTab(query.tab, [{ id: "herd" }, { id: "tree" }], "herd");
+  const breedFilter = query.breed?.trim() ?? "";
+  const sexFilter = query.sex && ["female", "male", "unknown"].includes(query.sex) ? query.sex : "";
+  const shedFilter = query.shed?.trim() ?? "";
+  const lactationFilter = query.lactation && ["lactating", "dry", "pre_lactation", "not_applicable"].includes(query.lactation) ? query.lactation : "";
 
-  const rows = await db
-    .select({
-      id: animals.id,
-      code: animals.code,
-      name: animals.name,
-      dob: animals.dob,
-      presence: animals.presence,
-      lifeStage: animals.lifeStage,
-      reproduction: animals.reproduction,
-      lactation: animals.lactation,
-      earTag: animals.earTag,
-      geneticDamId: animals.geneticDamId,
-      geneticSireCode: animals.geneticSireCode,
-      geneticSireName: animals.geneticSireName,
-      breedName: breeds.name,
-      locationName: locations.name,
-    })
-    .from(animals)
-    .innerJoin(breeds, eq(breeds.id, animals.breedId))
-    .leftJoin(locations, eq(locations.id, animals.locationId))
-    .where(eq(animals.farmId, farm.farmId))
-    .orderBy(animals.code);
+  const [rows, breedList, shedList] = await Promise.all([
+    db
+      .select({
+        id: animals.id,
+        code: animals.code,
+        name: animals.name,
+        sex: animals.sex,
+        dob: animals.dob,
+        presence: animals.presence,
+        lifeStage: animals.lifeStage,
+        reproduction: animals.reproduction,
+        lactation: animals.lactation,
+        earTag: animals.earTag,
+        rfid: animals.rfid,
+        breedId: animals.breedId,
+        locationId: animals.locationId,
+        geneticDamId: animals.geneticDamId,
+        geneticSireCode: animals.geneticSireCode,
+        geneticSireName: animals.geneticSireName,
+        breedName: breeds.name,
+        locationName: locations.name,
+      })
+      .from(animals)
+      .innerJoin(breeds, eq(breeds.id, animals.breedId))
+      .leftJoin(locations, eq(locations.id, animals.locationId))
+      .where(eq(animals.farmId, farm.farmId))
+      .orderBy(animals.code),
+    db.select({ id: breeds.id, name: breeds.name }).from(breeds).where(eq(breeds.farmId, farm.farmId)).orderBy(breeds.name),
+    db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.farmId, farm.farmId)).orderBy(locations.name),
+  ]);
 
   const damIds = new Set(rows.map((row) => row.geneticDamId).filter((id): id is string => Boolean(id)));
-  const searched = term ? rows.filter((row) => matchesHerdQuery(row, term)) : rows;
+  const searched = rows.filter((row) => {
+    if (term && !matchesHerdQuery(row, term)) return false;
+    if (breedFilter && row.breedId !== breedFilter) return false;
+    if (sexFilter && row.sex !== sexFilter) return false;
+    if (shedFilter === "unassigned" && row.locationId !== null) return false;
+    if (shedFilter && shedFilter !== "unassigned" && row.locationId !== shedFilter) return false;
+    if (lactationFilter && row.lactation !== lactationFilter) return false;
+    return true;
+  });
+
+  function isPregnantOnFarm(row: (typeof rows)[number]) {
+    return row.presence === "on_farm" && row.reproduction === "pregnant";
+  }
+
+  function isCalfOnFarm(row: (typeof rows)[number]) {
+    return row.presence === "on_farm" && row.dob !== null && isUnderOneYear(row.dob, today) && !damIds.has(row.id);
+  }
 
   function matches(row: (typeof rows)[number]) {
     if (view === "active") return row.presence === "on_farm";
-    if (view === "pregnant") return row.reproduction === "pregnant";
+    if (view === "pregnant") return isPregnantOnFarm(row);
     if (view === "sold") return row.presence === "sold";
-    if (view === "calves") {
-      return row.presence === "on_farm" && row.dob !== null && isUnderOneYear(row.dob, today) && !damIds.has(row.id);
-    }
+    if (view === "calves") return isCalfOnFarm(row);
     return true;
   }
 
@@ -78,20 +104,25 @@ export default async function AnimalsPage({
   const counts = {
     all: searched.length,
     active: searched.filter((row) => row.presence === "on_farm").length,
-    pregnant: searched.filter((row) => row.reproduction === "pregnant").length,
-    calves: searched.filter((row) => row.presence === "on_farm" && row.dob !== null && isUnderOneYear(row.dob, today) && !damIds.has(row.id)).length,
+    pregnant: searched.filter(isPregnantOnFarm).length,
+    calves: searched.filter(isCalfOnFarm).length,
     sold: searched.filter((row) => row.presence === "sold").length,
   };
   const herdCounts = {
     active: rows.filter((row) => row.presence === "on_farm").length,
-    pregnant: rows.filter((row) => row.reproduction === "pregnant").length,
-    calves: rows.filter((row) => row.presence === "on_farm" && row.dob !== null && isUnderOneYear(row.dob, today) && !damIds.has(row.id)).length,
+    pregnant: rows.filter(isPregnantOnFarm).length,
+    calves: rows.filter(isCalfOnFarm).length,
     sold: rows.filter((row) => row.presence === "sold").length,
   };
+  const hasFilters = Boolean(term || breedFilter || sexFilter || shedFilter || lactationFilter || view !== "all");
 
   function href(nextView: ViewId = view) {
     const params = new URLSearchParams();
-    if (term) params.set("q", term);
+    if (rawTerm) params.set("q", rawTerm);
+    if (breedFilter) params.set("breed", breedFilter);
+    if (sexFilter) params.set("sex", sexFilter);
+    if (shedFilter) params.set("shed", shedFilter);
+    if (lactationFilter) params.set("lactation", lactationFilter);
     if (nextView !== "all") params.set("view", nextView);
     const value = params.toString();
     return value ? `/animals?${value}` : "/animals";
@@ -101,7 +132,11 @@ export default async function AnimalsPage({
     <div className="space-y-5">
       <Summary
         title="Cattle"
-        description={term ? `${visible.length} ${visible.length === 1 ? "animal matches" : "animals match"} “${query.q?.trim()}”.` : "Open a row to see that animal's profile."}
+        description={
+          rawTerm
+            ? `${visible.length} ${visible.length === 1 ? "animal matches" : "animals match"} “${rawTerm}”.`
+            : "Open a row to see that animal's profile."
+        }
         facts={[
           { label: "On farm", value: String(herdCounts.active) },
           { label: "Pregnant", value: String(herdCounts.pregnant) },
@@ -110,7 +145,10 @@ export default async function AnimalsPage({
         ]}
         action={
           canWriteAnimals(farm.roles) ? (
-            <Link href="/animals/new" className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90">
+            <Link
+              href="/animals/new"
+              className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90"
+            >
               + Add cattle
             </Link>
           ) : null
@@ -118,155 +156,209 @@ export default async function AnimalsPage({
       />
       <HerdTabs
         initialTab={tab}
-        tree={<HerdTree forest={herdForest(rows)} />}
+        tree={<HerdTree forest={herdForest(visible)} />}
         herd={
-        <>
-        <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/85 bg-card shadow-[0_1px_3px_rgba(15,35,24,0.04)]">
-          <div className="flex flex-col gap-3 border-b border-border/75 p-4 lg:flex-row lg:items-center lg:justify-between">
-            <HerdSearch
-              variant="field"
-              farmId={farm.farmId}
-              showTeam={canManageTeam(farm.roles)}
-              showAudit={canViewAudit(farm.roles)}
-              showFinance={canViewFinance(farm.roles)}
-              showReports={canViewReports(farm.roles)}
-              showGenetics={canViewGenetics(farm.roles)}
-              showHealth={canViewHealth(farm.roles)}
-              showSemen={canViewSemen(farm.roles)}
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {views.map((item) => {
-                const active = view === item.id;
+          <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/85 bg-card shadow-[0_1px_3px_rgba(15,35,24,0.04)]">
+            <div className="space-y-3 border-b border-border/75 p-4">
+              <form method="get" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,0.85fr))_auto]">
+                {view !== "all" ? <input type="hidden" name="view" value={view} /> : null}
+                <input
+                  key={rawTerm}
+                  name="q"
+                  defaultValue={rawTerm}
+                  placeholder="Search code, name, ear tag, RFID, sire…"
+                  className={inputClass}
+                />
+                <select name="breed" defaultValue={breedFilter} className={inputClass} aria-label="Filter by breed">
+                  <option value="">All breeds</option>
+                  {breedList.map((breed) => (
+                    <option key={breed.id} value={breed.id}>
+                      {breed.name}
+                    </option>
+                  ))}
+                </select>
+                <select name="sex" defaultValue={sexFilter} className={inputClass} aria-label="Filter by sex">
+                  <option value="">All sexes</option>
+                  {Object.entries(sexLabel).map(([val, label]) => (
+                    <option key={val} value={val}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <select name="shed" defaultValue={shedFilter} className={inputClass} aria-label="Filter by shed">
+                  <option value="">All sheds</option>
+                  <option value="unassigned">Unassigned</option>
+                  {shedList.map((shed) => (
+                    <option key={shed.id} value={shed.id}>
+                      {shed.name}
+                    </option>
+                  ))}
+                </select>
+                <select name="lactation" defaultValue={lactationFilter} className={inputClass} aria-label="Filter by lactation">
+                  <option value="">All lactation</option>
+                  {Object.entries(lactationLabel).map(([val, label]) => (
+                    <option key={val} value={val}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-2">
+                  <button type="submit" className="inline-flex h-11 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground">
+                    Filter
+                  </button>
+                  {hasFilters ? (
+                    <Link href="/animals" className="inline-flex h-11 items-center rounded-xl border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted">
+                      Clear
+                    </Link>
+                  ) : null}
+                </div>
+              </form>
+              <div className="flex flex-wrap gap-1.5">
+                {views.map((item) => {
+                  const active = view === item.id;
+                  return (
+                    <Link
+                      key={item.id}
+                      href={href(item.id)}
+                      className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors ${
+                        active ? "bg-secondary text-primary ring-1 ring-primary/20" : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {item.label}
+                      <span className="tabular-nums opacity-80">{counts[item.id]}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            <ul className="divide-y divide-border/70 md:hidden">
+              {visible.length === 0 ? <li className="px-4 py-8 text-center text-sm text-muted-foreground">No cattle match this filter.</li> : null}
+              {visible.map((animal) => {
+                const pills = rowStatuses(animal);
                 return (
-                  <Link
-                    key={item.id}
-                    href={href(item.id)}
-                    className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors ${
-                      active ? "bg-secondary text-primary ring-1 ring-primary/20" : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    {item.label}
-                    <span className="tabular-nums opacity-80">{counts[item.id]}</span>
-                  </Link>
+                  <li key={animal.id}>
+                    <Link href={`/animals/${animal.code}`} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40">
+                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-sm font-semibold text-primary ring-1 ring-primary/15">
+                        {(animal.name ?? animal.code).slice(0, 1)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                          {animal.code} · {animal.breedName} · {ageLabel(animal.dob, today)}
+                        </span>
+                        <span className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                          {pills.map((pill) => (
+                            <Pill key={pill.label} tone={pill.tone}>
+                              {pill.label}
+                            </Pill>
+                          ))}
+                          <span className="truncate text-xs text-muted-foreground">{animal.locationName ?? "Unassigned"}</span>
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
                 );
               })}
-            </div>
-          </div>
+            </ul>
 
-          <ul className="divide-y divide-border/70 md:hidden">
-            {visible.length === 0 ? <li className="px-4 py-8 text-center text-sm text-muted-foreground">No cattle match this filter.</li> : null}
-            {visible.map((animal) => {
-              const status = rowStatus(animal);
-              return (
-                <li key={animal.id}>
-                  <Link href={`/animals/${animal.code}`} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/40">
-                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-sm font-semibold text-primary ring-1 ring-primary/15">
-                      {(animal.name ?? animal.code).slice(0, 1)}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
-                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                        {animal.code} · {animal.breedName} · {ageLabel(animal.dob, today)}
-                      </span>
-                      <span className="mt-1.5 flex min-w-0 items-center gap-2">
-                        <Pill tone={status.tone}>{status.label}</Pill>
-                        <span className="truncate text-xs text-muted-foreground">{animal.locationName ?? "Unassigned"}</span>
-                      </span>
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="border-b border-border/80 bg-muted/60 text-xs font-semibold text-muted-foreground">
-                <tr>
-                  {["Animal", "Breed", "Age", "Status", "Location"].map((header) => (
-                    <th key={header} className="px-4 py-3 font-semibold tracking-tight">
-                      {header}
-                    </th>
-                  ))}
-                  <th className="px-4 py-3 text-right font-semibold tracking-tight">
-                    <span className="sr-only">Profile</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/70">
-                {visible.length === 0 ? (
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead className="border-b border-border/80 bg-muted/60 text-xs font-semibold text-muted-foreground">
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      No cattle match this filter.
-                    </td>
+                    {["Animal", "Breed", "Age", "Status", "Location"].map((header) => (
+                      <th key={header} className="px-4 py-3 font-semibold tracking-tight">
+                        {header}
+                      </th>
+                    ))}
+                    <th className="px-4 py-3 text-right font-semibold tracking-tight">
+                      <span className="sr-only">Profile</span>
+                    </th>
                   </tr>
-                ) : (
-                  visible.map((animal) => {
-                    const status = rowStatus(animal);
-                    const rowHref = `/animals/${animal.code}`;
-                    const cell = "block px-4 py-3";
-                    return (
-                      <tr key={animal.id} className="transition-colors hover:bg-muted/40">
-                        <td className="p-0">
-                          <Link href={rowHref} className={cell}>
-                            <span className="font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
-                            <span className="mt-0.5 block text-xs text-muted-foreground">{animal.code}</span>
-                          </Link>
-                        </td>
-                        <td className="p-0">
-                          <Link href={rowHref} className={cell}>
-                            {animal.breedName}
-                          </Link>
-                        </td>
-                        <td className="p-0">
-                          <Link href={rowHref} className={cell}>
-                            {ageLabel(animal.dob, today)}
-                          </Link>
-                        </td>
-                        <td className="p-0">
-                          <Link href={rowHref} className={cell}>
-                            <Pill tone={status.tone}>{status.label}</Pill>
-                          </Link>
-                        </td>
-                        <td className="p-0">
-                          <Link href={rowHref} className={cell}>
-                            {animal.locationName ?? "Unassigned"}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          <Link
-                            href={`/animals/${animal.code}`}
-                            className="inline-flex h-8 items-center rounded-full border border-primary/20 bg-secondary/80 px-3 text-xs font-semibold text-primary transition-colors hover:bg-secondary"
-                          >
-                            Open profile →
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        </>
+                </thead>
+                <tbody className="divide-y divide-border/70">
+                  {visible.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        No cattle match this filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    visible.map((animal) => {
+                      const pills = rowStatuses(animal);
+                      const rowHref = `/animals/${animal.code}`;
+                      const cell = "block px-4 py-3";
+                      return (
+                        <tr key={animal.id} className="transition-colors hover:bg-muted/40">
+                          <td className="p-0">
+                            <Link href={rowHref} className={cell}>
+                              <span className="font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                {animal.code}
+                                {animal.earTag ? ` · Tag ${animal.earTag}` : ""}
+                              </span>
+                            </Link>
+                          </td>
+                          <td className="p-0">
+                            <Link href={rowHref} className={cell}>
+                              {animal.breedName}
+                            </Link>
+                          </td>
+                          <td className="p-0">
+                            <Link href={rowHref} className={cell}>
+                              {ageLabel(animal.dob, today)}
+                            </Link>
+                          </td>
+                          <td className="p-0">
+                            <Link href={rowHref} className="flex flex-wrap items-center gap-1.5 px-4 py-3">
+                              {pills.map((pill) => (
+                                <Pill key={pill.label} tone={pill.tone}>
+                                  {pill.label}
+                                </Pill>
+                              ))}
+                            </Link>
+                          </td>
+                          <td className="p-0">
+                            <Link href={rowHref} className={cell}>
+                              {animal.locationName ?? "Unassigned"}
+                            </Link>
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <Link
+                              href={`/animals/${animal.code}`}
+                              className="inline-flex h-8 items-center rounded-full border border-primary/20 bg-secondary/80 px-3 text-xs font-semibold text-primary transition-colors hover:bg-secondary"
+                            >
+                              Open profile →
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
         }
       />
     </div>
   );
 }
 
-function rowStatus(animal: {
+function rowStatuses(animal: {
   presence: "on_farm" | "sold" | "dead" | "transferred";
   reproduction: "not_applicable" | "open" | "bred" | "pregnant" | "fresh";
   lactation: "not_applicable" | "pre_lactation" | "lactating" | "dry";
   lifeStage: "calf" | "heifer" | "cow" | "bull" | "steer";
 }) {
-  if (animal.presence !== "on_farm") return { label: presenceLabel[animal.presence], tone: "neutral" as const };
-  if (animal.reproduction === "pregnant") return { label: "Pregnant", tone: "warn" as const };
-  if (animal.lactation === "lactating") return { label: "In milk", tone: "good" as const };
-  if (animal.lactation === "dry") return { label: "Dry", tone: "neutral" as const };
-  return { label: lifeStageLabel[animal.lifeStage], tone: "neutral" as const };
+  if (animal.presence !== "on_farm") return [{ label: presenceLabel[animal.presence], tone: "neutral" as const }];
+  const pills: { label: string; tone: "neutral" | "good" | "warn" }[] = [];
+  if (animal.lactation === "lactating") pills.push({ label: "In milk", tone: "good" });
+  else if (animal.lactation === "dry") pills.push({ label: "Dry", tone: "neutral" });
+  if (animal.reproduction === "pregnant") pills.push({ label: "Pregnant", tone: "warn" });
+  else if (animal.reproduction === "bred") pills.push({ label: "Bred", tone: "neutral" });
+  if (pills.length === 0) pills.push({ label: lifeStageLabel[animal.lifeStage], tone: "neutral" });
+  return pills;
 }
 
 function ageLabel(dob: string | null, today: string) {

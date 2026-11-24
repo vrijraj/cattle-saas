@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { updateAnimalPedigree, updateGenerationParents } from "@/app/(farm)/animals/actions";
 import { FormSelect } from "@/components/form-select";
@@ -15,6 +14,7 @@ export function PedigreeBoard({
   chart,
   offspring,
   editable,
+  canExportPdf = true,
   animalName,
   animalCode,
   sireOptions,
@@ -31,6 +31,7 @@ export function PedigreeBoard({
   chart: AncestorChart;
   offspring: { code: string; name: string | null }[];
   editable: boolean;
+  canExportPdf?: boolean;
   animalName: string;
   animalCode: string;
   sireOptions: Choice[];
@@ -56,12 +57,15 @@ export function PedigreeBoard({
         onEdit={editable ? setEdit : undefined}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/animals/${animalCode}/pedigree`}
-              className="inline-flex h-8.5 items-center rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
-            >
-              Export PDF
-            </Link>
+            {canExportPdf ? (
+              <a
+                href={`/animals/${encodeURIComponent(animalCode)}/pedigree`}
+                download={`${animalCode}-pedigree.pdf`}
+                className="inline-flex h-8.5 items-center rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
+              >
+                Export PDF
+              </a>
+            ) : null}
             {editable ? (
               <button
                 type="button"

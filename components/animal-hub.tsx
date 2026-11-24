@@ -26,7 +26,22 @@ import {
   vaccinations,
   weights,
 } from "@/db/schema";
-import { recordAi, recordAnimalMilk, recordCalving, recordDeworming, recordDryOff, recordHealth, recordHeat, recordPd, recordVaccine, recordWeight, saveFeed, saveListing } from "@/app/(farm)/herd/actions";
+import {
+  recordAi,
+  recordAnimalMilk,
+  recordCalving,
+  recordDeworming,
+  recordDryOff,
+  recordHealth,
+  recordHeat,
+  recordPd,
+  recordVaccine,
+  recordWeight,
+  saveFeed,
+  saveListing,
+  toggleListing,
+  updateHealthOutcome,
+} from "@/app/(farm)/herd/actions";
 import { voidMatingNote } from "@/app/(farm)/genetics/actions";
 import { clearIsolation, moveAnimal, setIsolation } from "@/app/(farm)/locations/actions";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
@@ -38,9 +53,9 @@ import { WeightChart } from "@/components/weight-chart";
 import { RecordDialog } from "@/components/record-dialog";
 import { VoidRecord } from "@/components/void-record";
 import { FormSelect } from "@/components/form-select";
-import { EmptyRow, inputClass, Panel, Pill, Submit, Table, Td } from "@/components/workspace";
+import { EmptyRow, inputClass, Notice, Panel, Pill, Submit, Table, Td } from "@/components/workspace";
 import { lifeStageLabel, sexLabel } from "@/lib/labels";
-import { canVoidMatingNote } from "@/lib/permissions";
+import { canVoidMatingNote, canVoidRecord } from "@/lib/permissions";
 import { ancestorChart, type AncestorChart } from "@/lib/pedigree-tree";
 
 type AnimalRow = typeof animals.$inferSelect;
@@ -56,28 +71,53 @@ export const profileTabs = [
 
 export type ProfileTab = (typeof profileTabs)[number]["id"];
 
+const OUTCOME_OPTIONS = [
+  { value: "ongoing", label: "Ongoing" },
+  { value: "resolved", label: "Resolved" },
+  { value: "referred", label: "Referred" },
+  { value: "culled", label: "Culled" },
+  { value: "died", label: "Died" },
+  { value: "unknown", label: "Unknown" },
+];
+
+const EASE_OPTIONS = [
+  { value: "normal", label: "Normal / unassisted" },
+  { value: "assisted", label: "Assisted" },
+  { value: "difficult", label: "Difficult (dystocia)" },
+];
+
 export async function AnimalHub({
   animal,
+  farmSlug,
   breedName,
   locationName,
-  damLabel,
-  sireLabel,
   tab,
   breedingError,
   pedigreeEdit,
-  canBreed,
+  canHeat,
+  canAi,
+  canPdCalving,
   canHealth,
+  canVaccine,
   canMilk = false,
+  canWeight = false,
   canFeed = false,
+  canMove = false,
+  canIsolate = false,
   canList,
   canEdit,
   canViewGenetics,
+  canViewHealth,
+  canViewFinance,
+  canViewPurchasePrice,
   canSeeClinical,
+  canExportPdf,
   roles,
   userId,
   timezone,
 }: {
   animal: AnimalRow;
+  farmSlug: string;
   breedName: string;
   locationName: string | null;
   damLabel: string;
@@ -85,39 +125,65 @@ export async function AnimalHub({
   tab: ProfileTab;
   breedingError?: string;
   pedigreeEdit?: string;
-  canBreed: boolean;
+  canHeat: boolean;
+  canAi: boolean;
+  canPdCalving: boolean;
   canHealth: boolean;
+  canVaccine: boolean;
   canMilk?: boolean;
+  canWeight?: boolean;
   canFeed?: boolean;
+  canMove?: boolean;
+  canIsolate?: boolean;
   canList: boolean;
   canEdit: boolean;
   canViewGenetics: boolean;
+  canViewHealth: boolean;
+  canViewFinance: boolean;
+  canViewPurchasePrice: boolean;
   canSeeClinical: boolean;
+  canExportPdf: boolean;
   roles: string[];
   userId: string;
   timezone: string;
 }) {
-  const herd = await db.select().from(animals).where(eq(animals.farmId, animal.farmId));
-  const bullRows = await db.select().from(bulls).where(eq(bulls.farmId, animal.farmId));
-  const offspring = herd.filter((row) => row.geneticDamId === animal.id || row.geneticSireCode === animal.code);
-  const chart = ancestorChart(animal, herd, bullRows);
-  const heatRows = await db.select().from(heats).where(eq(heats.animalId, animal.id));
-  const aiRows = await db.select().from(inseminations).where(eq(inseminations.animalId, animal.id));
-  const pdRows = await db.select().from(pregnancyChecks).where(eq(pregnancyChecks.animalId, animal.id));
-  const calvingRows = await db.select().from(calvings).where(eq(calvings.damId, animal.id));
-  const dryRows = await db.select().from(dryOffs).where(eq(dryOffs.animalId, animal.id));
-  const moveRows = await db.select().from(locationMoves).where(eq(locationMoves.animalId, animal.id));
-  const shedRows = await db.select().from(locations).where(eq(locations.farmId, animal.farmId));
-  const healthRows = await db.select().from(healthEvents).where(eq(healthEvents.animalId, animal.id));
-  const vaccineRows = await db.select().from(vaccinations).where(eq(vaccinations.animalId, animal.id));
-  const dewormRows = await db.select().from(dewormings).where(eq(dewormings.animalId, animal.id));
-  const weightRows = await db.select().from(weights).where(and(eq(weights.animalId, animal.id)));
-  const milkRows = await db
-    .select()
-    .from(milkYields)
-    .where(eq(milkYields.animalId, animal.id))
-    .orderBy(desc(milkYields.recordedOn));
-  const [feedItemRows, feedMoveRows, animalAudits, donorEmbryos, recipientTransfers, animalFinances] = await Promise.all([
+  const today = farmToday(timezone);
+  const [
+    herd,
+    bullRows,
+    heatRows,
+    aiRows,
+    pdRows,
+    calvingRows,
+    dryRows,
+    moveRows,
+    shedRows,
+    healthRows,
+    vaccineRows,
+    dewormRows,
+    weightRows,
+    milkRows,
+    feedItemRows,
+    feedMoveRows,
+    animalAudits,
+    donorEmbryos,
+    recipientTransfers,
+    animalFinances,
+  ] = await Promise.all([
+    db.select().from(animals).where(eq(animals.farmId, animal.farmId)),
+    db.select().from(bulls).where(eq(bulls.farmId, animal.farmId)),
+    db.select().from(heats).where(eq(heats.animalId, animal.id)),
+    db.select().from(inseminations).where(eq(inseminations.animalId, animal.id)),
+    db.select().from(pregnancyChecks).where(eq(pregnancyChecks.animalId, animal.id)),
+    db.select().from(calvings).where(eq(calvings.damId, animal.id)),
+    db.select().from(dryOffs).where(eq(dryOffs.animalId, animal.id)),
+    db.select().from(locationMoves).where(eq(locationMoves.animalId, animal.id)),
+    db.select().from(locations).where(eq(locations.farmId, animal.farmId)),
+    db.select().from(healthEvents).where(eq(healthEvents.animalId, animal.id)),
+    db.select().from(vaccinations).where(eq(vaccinations.animalId, animal.id)),
+    db.select().from(dewormings).where(eq(dewormings.animalId, animal.id)),
+    db.select().from(weights).where(eq(weights.animalId, animal.id)),
+    db.select().from(milkYields).where(eq(milkYields.animalId, animal.id)).orderBy(desc(milkYields.recordedOn)),
     db.select().from(feedItems).where(eq(feedItems.farmId, animal.farmId)),
     db.select().from(feedMovements).where(eq(feedMovements.farmId, animal.farmId)),
     db
@@ -127,30 +193,52 @@ export async function AnimalHub({
       .orderBy(desc(auditLogs.createdAt)),
     db.select().from(embryos).where(eq(embryos.donorId, animal.id)),
     db.select().from(embryoTransfers).where(eq(embryoTransfers.recipientId, animal.id)),
-    db.select().from(financeEntries).where(eq(financeEntries.animalId, animal.id)),
+    canViewFinance ? db.select().from(financeEntries).where(eq(financeEntries.animalId, animal.id)) : Promise.resolve([]),
   ]);
+
+  const offspring = herd.filter((row) => row.geneticDamId === animal.id || row.geneticSireCode === animal.code);
+  const chart = ancestorChart(animal, herd, bullRows);
   const feedNameById = new Map(feedItemRows.map((item) => [item.id, item]));
   const shedName = new Map(shedRows.map((row) => [row.id, row.name]));
   const animalFeedRows = feedMoveRows.filter(
-    (move) => move.note === `${animal.name ?? animal.code} · ${animal.code}` || move.note?.endsWith(`· ${animal.code}`),
+    (move) => !move.voidedAt && (move.note === `${animal.name ?? animal.code} · ${animal.code}` || move.note?.endsWith(`· ${animal.code}`)),
   );
-  const canWeight = canMilk || canEdit;
-  const recordable = canBreed && animal.sex !== "male";
+  const isFemale = animal.sex !== "male";
+  const allowHeat = canHeat && isFemale && animal.presence === "on_farm";
+  const allowAi = canAi && isFemale && animal.presence === "on_farm";
+  const allowPdCalving = canPdCalving && isFemale && animal.presence === "on_farm";
+
+  const activeAisSorted = [...aiRows]
+    .filter((row) => !row.voidedAt)
+    .sort((a, b) => b.performedOn.localeCompare(a.performedOn) || b.createdAt.getTime() - a.createdAt.getTime());
+  const confirmedPregnantPd = [...pdRows]
+    .filter((row) => !row.voidedAt && row.result === "pregnant" && row.inseminationId)
+    .sort((a, b) => b.checkedOn.localeCompare(a.checkedOn))[0];
+  const defaultCalvingAiId =
+    confirmedPregnantPd?.inseminationId && activeAisSorted.some((row) => row.id === confirmedPregnantPd.inseminationId)
+      ? confirmedPregnantPd.inseminationId
+      : (activeAisSorted[0]?.id ?? "");
+
   const resetDates = [
     ...calvingRows.filter((row) => !row.voidedAt).map((row) => row.calvedOn),
     ...pdRows.filter((row) => !row.voidedAt && row.result === "not_pregnant").map((row) => row.checkedOn),
   ].sort();
   const latestReset = resetDates.at(-1) ?? "";
-  const nextAttempt = aiRows.filter((row) => !row.voidedAt && (!latestReset || row.performedOn > latestReset)).length + 1;
+  const nextAttempt = activeAisSorted.filter((row) => !latestReset || row.performedOn > latestReset).length + 1;
+
+  const activeWeights = weightRows.filter((row) => !row.voidedAt);
+  const activeWithdrawals = healthRows
+    .filter((row) => !row.voidedAt && row.withdrawalUntil && row.withdrawalUntil >= today)
+    .sort((a, b) => (b.withdrawalUntil ?? "").localeCompare(a.withdrawalUntil ?? ""));
 
   const timeline = [
     ...heatRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.observedOn, label: `Heat · ${row.signs}${row.note ? ` (${row.note})` : ""}`, group: "breeding" })),
-    ...aiRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.performedOn, label: `AI #${row.attemptNumber} · ${row.bullCode}${row.strawCode ? ` · ${row.strawCode}` : ""}`, group: "breeding" })),
+    ...activeAisSorted.map((row) => ({ when: row.performedOn, label: `AI #${row.attemptNumber} · ${row.bullCode}${row.strawCode ? ` · ${row.strawCode}` : ""}`, group: "breeding" })),
     ...pdRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.checkedOn, label: `Pregnancy check · ${row.result.replaceAll("_", " ")}${row.method ? ` (${row.method})` : ""}`, group: "breeding" })),
     ...calvingRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.calvedOn, label: `Calving · ${row.outcome}${row.ease ? ` · ${row.ease}` : ""}`, group: "breeding" })),
     ...dryRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.driedOn, label: `Dry-off${row.note ? ` · ${row.note}` : ""}`, group: "breeding" })),
     ...donorEmbryos.map((row) => ({
-      when: row.frozenOn ?? row.createdAt.toISOString().slice(0, 10),
+      when: row.frozenOn ?? farmToday(timezone, row.createdAt),
       label: `Embryo donor · ${row.code}${row.sireCode ? ` × ${row.sireCode}` : ""}`,
       group: "breeding",
     })),
@@ -168,21 +256,27 @@ export async function AnimalHub({
             group: "health",
           }))
       : []),
-    ...vaccineRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.givenOn, label: `Vaccine · ${row.vaccine}`, group: "health" })),
-    ...dewormRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.givenOn, label: `Deworming · ${row.product}`, group: "health" })),
-    ...weightRows.map((row) => ({ when: row.weighedOn, label: `Weight · ${row.kilograms} kg`, group: "overview" })),
+    ...(canViewHealth || canVaccine
+      ? [
+          ...vaccineRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.givenOn, label: `Vaccine · ${row.vaccine}`, group: "health" })),
+          ...dewormRows.filter((row) => !row.voidedAt).map((row) => ({ when: row.givenOn, label: `Deworming · ${row.product}`, group: "health" })),
+        ]
+      : []),
+    ...activeWeights.map((row) => ({ when: row.weighedOn, label: `Weight · ${row.kilograms} kg`, group: "overview" })),
     ...moveRows.map((row) => ({
       when: row.movedOn,
       label: `Moved to ${row.locationId ? (shedName.get(row.locationId) ?? "Shed") : "Unassigned"}${row.note ? ` · ${row.note}` : ""}`,
       group: "overview",
     })),
-    ...animalFinances
-      .filter((row) => !row.voidedAt)
-      .map((row) => ({
-        when: row.entryOn,
-        label: `Finance (${row.kind}) · ${row.category} · ₹${Number(row.amount).toLocaleString("en-IN")}`,
-        group: "overview",
-      })),
+    ...(canViewFinance
+      ? animalFinances
+          .filter((row) => !row.voidedAt)
+          .map((row) => ({
+            when: row.entryOn,
+            label: `Finance (${row.kind}) · ${row.category} · ₹${Number(row.amount).toLocaleString("en-IN")}`,
+            group: "overview",
+          }))
+      : []),
     ...animalFeedRows.map((row) => {
       const item = feedNameById.get(row.itemId);
       return {
@@ -200,78 +294,86 @@ export async function AnimalHub({
         group: "milk",
       })),
     ...animalAudits.map((row) => ({
-      when: row.createdAt.toISOString().slice(0, 10),
+      when: farmToday(timezone, row.createdAt),
       label: row.summary,
       group: "status",
     })),
   ].sort((a, b) => b.when.localeCompare(a.when));
 
+  function bullLabel(row: { bullCode: string; bullName: string | null }) {
+    return row.bullName && row.bullName !== row.bullCode ? `${row.bullName} · ${row.bullCode}` : row.bullCode;
+  }
+
   const quickBar =
-    recordable || canHealth || (canMilk && animal.sex !== "male") || canWeight || canFeed ? (
+    allowHeat || allowAi || allowPdCalving || canVaccine || (canHealth && canSeeClinical) || (canMilk && isFemale) || canWeight || canFeed ? (
       <section className="flex flex-wrap items-center gap-2 rounded-2xl border border-primary/20 bg-gradient-to-r from-secondary/50 via-card to-card p-3 shadow-[0_1px_3px_rgba(15,35,24,0.04)] sm:px-4">
         <span className="mr-1.5 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
           <span className="size-1.5 rounded-full bg-primary" />
           Quick entry
         </span>
-        {recordable ? (
+        {allowHeat ? (
+          <RecordDialog title="Record heat" button="+ Heat" quiet>
+            <form action={recordHeat} className="space-y-3">
+              <input type="hidden" name="animalId" value={animal.id} />
+              <Field label="Observed date">
+                <input name="observedOn" type="date" defaultValue={today} max={today} className={inputClass} />
+              </Field>
+              <Field label="Observed signs">
+                <input name="signs" placeholder="Standing, mucus discharge, mounting" className={inputClass} />
+              </Field>
+              <Field label="Observations & follow-up">
+                <input name="note" placeholder="Notes or follow-up plan" className={inputClass} />
+              </Field>
+              <div className="flex justify-end pt-1">
+                <Submit>Save heat</Submit>
+              </div>
+            </form>
+          </RecordDialog>
+        ) : null}
+        {allowAi ? (
+          <RecordDialog title="Record insemination (AI)" button="+ AI" quiet>
+            <form action={recordAi} className="space-y-3">
+              <input type="hidden" name="animalId" value={animal.id} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="AI date">
+                  <input name="performedOn" type="date" defaultValue={today} max={today} className={inputClass} />
+                </Field>
+                <Field label="Technician">
+                  <input name="technician" className={inputClass} />
+                </Field>
+                <Field label="Bull code">
+                  <input name="bullCode" placeholder="BULL-GIR-014" required className={inputClass} />
+                </Field>
+                <Field label="Bull name">
+                  <input name="bullName" className={inputClass} />
+                </Field>
+                <Field label="Batch number">
+                  <input name="batchNumber" className={inputClass} />
+                </Field>
+                <Field label="Straw code">
+                  <input name="strawCode" className={inputClass} />
+                </Field>
+                <Field label="Attempt number">
+                  <input name="attempt" type="number" min={1} defaultValue={nextAttempt} className={inputClass} />
+                </Field>
+                <Field label="Notes">
+                  <input name="note" className={inputClass} />
+                </Field>
+              </div>
+              <div className="flex justify-end pt-1">
+                <Submit>Save insemination</Submit>
+              </div>
+            </form>
+          </RecordDialog>
+        ) : null}
+        {allowPdCalving ? (
           <>
-            <RecordDialog title="Record heat" button="+ Heat" quiet>
-              <form action={recordHeat} className="space-y-3">
-                <input type="hidden" name="animalId" value={animal.id} />
-                <Field label="Observed date">
-                  <input name="observedOn" type="date" className={inputClass} />
-                </Field>
-                <Field label="Observed signs">
-                  <input name="signs" placeholder="Standing, mucus discharge, mounting" className={inputClass} />
-                </Field>
-                <Field label="Observations & follow-up">
-                  <input name="note" placeholder="Notes or follow-up plan" className={inputClass} />
-                </Field>
-                <div className="flex justify-end pt-1">
-                  <Submit>Save heat</Submit>
-                </div>
-              </form>
-            </RecordDialog>
-            <RecordDialog title="Record insemination (AI)" button="+ AI" quiet>
-              <form action={recordAi} className="space-y-3">
-                <input type="hidden" name="animalId" value={animal.id} />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="AI date">
-                    <input name="performedOn" type="date" className={inputClass} />
-                  </Field>
-                  <Field label="Technician">
-                    <input name="technician" className={inputClass} />
-                  </Field>
-                  <Field label="Bull code">
-                    <input name="bullCode" placeholder="BULL-GIR-014" required className={inputClass} />
-                  </Field>
-                  <Field label="Bull name">
-                    <input name="bullName" className={inputClass} />
-                  </Field>
-                  <Field label="Batch number">
-                    <input name="batchNumber" className={inputClass} />
-                  </Field>
-                  <Field label="Straw code">
-                    <input name="strawCode" className={inputClass} />
-                  </Field>
-                  <Field label="Attempt number">
-                    <input name="attempt" type="number" min={1} defaultValue={nextAttempt} className={inputClass} />
-                  </Field>
-                  <Field label="Notes">
-                    <input name="note" className={inputClass} />
-                  </Field>
-                </div>
-                <div className="flex justify-end pt-1">
-                  <Submit>Save insemination</Submit>
-                </div>
-              </form>
-            </RecordDialog>
             <RecordDialog title="Record pregnancy check (PD)" button="+ PD" quiet>
               <form action={recordPd} className="space-y-3">
                 <input type="hidden" name="animalId" value={animal.id} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Checked date">
-                    <input name="checkedOn" type="date" className={inputClass} />
+                    <input name="checkedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                   </Field>
                   <Field label="Result">
                     <FormSelect
@@ -288,10 +390,10 @@ export async function AnimalHub({
                 <Field label="Insemination">
                   <FormSelect
                     name="inseminationId"
-                    defaultValue={aiRows[0]?.id ?? ""}
+                    defaultValue={activeAisSorted[0]?.id ?? ""}
                     options={[
                       { value: "", label: "Select the insemination" },
-                      ...aiRows.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${row.bullCode}` })),
+                      ...activeAisSorted.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${bullLabel(row)}` })),
                     ]}
                   />
                 </Field>
@@ -306,20 +408,20 @@ export async function AnimalHub({
             <RecordDialog title="Record calving" button="+ Calving" quiet>
               <form action={recordCalving} className="space-y-3">
                 <input type="hidden" name="animalId" value={animal.id} />
-                <Field label="Insemination">
+                <Field label="Conception insemination">
                   <FormSelect
                     name="inseminationId"
                     required
-                    defaultValue={aiRows[0]?.id ?? ""}
+                    defaultValue={defaultCalvingAiId}
                     options={[
                       { value: "", label: "Select the insemination" },
-                      ...aiRows.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${row.bullCode}` })),
+                      ...activeAisSorted.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${bullLabel(row)}` })),
                     ]}
                   />
                 </Field>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Calved date">
-                    <input name="calvedOn" type="date" className={inputClass} />
+                    <input name="calvedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                   </Field>
                   <Field label="Outcome">
                     <FormSelect
@@ -345,20 +447,20 @@ export async function AnimalHub({
                     <input name="calfName" className={inputClass} />
                   </Field>
                   <Field label="Calving ease">
-                    <FormSelect
-                      name="ease"
-                      defaultValue="unassisted"
-                      options={[
-                        { value: "unassisted", label: "Unassisted" },
-                        { value: "assisted", label: "Assisted" },
-                        { value: "difficult", label: "Difficult / veterinary" },
-                      ]}
-                    />
+                    <FormSelect name="ease" defaultValue="normal" options={EASE_OPTIONS} />
                   </Field>
                   <Field label="Observations">
                     <input name="note" placeholder="Colostrum given, placenta expelled" className={inputClass} />
                   </Field>
                 </div>
+                <label className="flex items-center gap-2 text-xs text-foreground">
+                  <input name="startLactation" type="checkbox" defaultChecked />
+                  Start new lactation (set cow to Lactating)
+                </label>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input name="recordDeadCalf" type="checkbox" />
+                  If dead calf, also create a deceased calf record for lineage tracking
+                </label>
                 <div className="flex justify-end pt-1">
                   <Submit>Save calving</Submit>
                 </div>
@@ -366,101 +468,103 @@ export async function AnimalHub({
             </RecordDialog>
           </>
         ) : null}
-        {canHealth ? (
-          <>
-            <RecordDialog title="Record vaccine" button="+ Vaccine" quiet>
-              <form action={recordVaccine} className="space-y-3">
-                <input type="hidden" name="animalId" value={animal.id} />
-                <Field label="Vaccine">
-                  <input name="vaccine" required className={inputClass} />
+        {canVaccine ? (
+          <RecordDialog title="Record vaccine" button="+ Vaccine" quiet>
+            <form action={recordVaccine} className="space-y-3">
+              <input type="hidden" name="animalId" value={animal.id} />
+              <Field label="Vaccine">
+                <input name="vaccine" required className={inputClass} />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Given date">
+                  <input name="givenOn" type="date" defaultValue={today} max={today} className={inputClass} />
                 </Field>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Given date">
-                    <input name="givenOn" type="date" className={inputClass} />
-                  </Field>
-                  <Field label="Batch">
-                    <input name="batch" className={inputClass} />
-                  </Field>
-                </div>
-                <Field label="Next due">
-                  <input name="nextDueOn" type="date" className={inputClass} />
+                <Field label="Batch">
+                  <input name="batch" className={inputClass} />
                 </Field>
-                <div className="flex justify-end pt-1">
-                  <Submit>Save vaccine</Submit>
-                </div>
-              </form>
-            </RecordDialog>
-            {canSeeClinical ? (
-              <RecordDialog title="Record treatment" button="+ Treatment" quiet>
-                <form action={recordHealth} className="space-y-3">
-                  <input type="hidden" name="animalId" value={animal.id} />
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Problem / Disease">
-                      <input name="problem" required placeholder="Mastitis, fever, lameness" className={inputClass} />
-                    </Field>
-                    <Field label="Date">
-                      <input name="eventOn" type="date" className={inputClass} />
-                    </Field>
-                    <Field label="Clinical signs">
-                      <input name="signs" placeholder="Swelling, reduced appetite" className={inputClass} />
-                    </Field>
-                    <Field label="Diagnosis">
-                      <input name="diagnosis" className={inputClass} />
-                    </Field>
-                    <Field label="Medicine">
-                      <input name="medicine" className={inputClass} />
-                    </Field>
-                    <Field label="Dose">
-                      <input name="dose" placeholder="15 ml" className={inputClass} />
-                    </Field>
-                    <Field label="Route">
-                      <input name="route" placeholder="IM / IV / Oral / Intramammary" className={inputClass} />
-                    </Field>
-                    <Field label="Duration">
-                      <input name="duration" placeholder="5 days" className={inputClass} />
-                    </Field>
-                    <Field label="Veterinarian">
-                      <input name="veterinarian" className={inputClass} />
-                    </Field>
-                    <Field label="Follow-up date">
-                      <input name="followUpOn" type="date" className={inputClass} />
-                    </Field>
-                    <Field label="Outcome">
-                      <FormSelect
-                        name="outcome"
-                        defaultValue="ongoing"
-                        options={[
-                          { value: "ongoing", label: "Ongoing" },
-                          { value: "resolved", label: "Resolved" },
-                          { value: "referred", label: "Referred" },
-                          { value: "died", label: "Died" },
-                        ]}
-                      />
-                    </Field>
-                    <Field label="Treatment & visit notes">
-                      <input name="treatment" className={inputClass} />
-                    </Field>
-                    <Field label="Treatment cost (₹)">
-                      <input name="cost" type="number" min={0} max={10000000} step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass} />
-                    </Field>
-                  </div>
-                  <Field label="Prescription, document, or photo">
-                    <input name="attachment" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className={`${inputClass} h-auto py-2`} />
-                  </Field>
-                  <div className="flex justify-end pt-1">
-                    <Submit>Save treatment</Submit>
-                  </div>
-                </form>
-              </RecordDialog>
-            ) : null}
-          </>
+              </div>
+              <Field label="Next due">
+                <input name="nextDueOn" type="date" className={inputClass} />
+              </Field>
+              <div className="flex justify-end pt-1">
+                <Submit>Save vaccine</Submit>
+              </div>
+            </form>
+          </RecordDialog>
         ) : null}
-        {canMilk && animal.sex !== "male" ? (
+        {canHealth && canSeeClinical ? (
+          <RecordDialog title="Record treatment" button="+ Treatment" quiet>
+            <form action={recordHealth} className="space-y-3">
+              <input type="hidden" name="animalId" value={animal.id} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Problem / Disease">
+                  <input name="problem" required placeholder="Mastitis, fever, lameness" className={inputClass} />
+                </Field>
+                <Field label="Date">
+                  <input name="eventOn" type="date" defaultValue={today} max={today} className={inputClass} />
+                </Field>
+                <Field label="Clinical signs">
+                  <input name="signs" placeholder="Swelling, reduced appetite" className={inputClass} />
+                </Field>
+                <Field label="Diagnosis">
+                  <input name="diagnosis" className={inputClass} />
+                </Field>
+                <Field label="Medicine">
+                  <input name="medicine" className={inputClass} />
+                </Field>
+                <Field label="Dose">
+                  <input name="dose" placeholder="15 ml" className={inputClass} />
+                </Field>
+                <Field label="Route">
+                  <input name="route" placeholder="IM / IV / Oral / Intramammary" className={inputClass} />
+                </Field>
+                <Field label="Duration">
+                  <input name="duration" placeholder="5 days" className={inputClass} />
+                </Field>
+                <Field label="Veterinarian">
+                  <input name="veterinarian" className={inputClass} />
+                </Field>
+                <Field label="Follow-up date">
+                  <input name="followUpOn" type="date" className={inputClass} />
+                </Field>
+                <Field label="Outcome">
+                  <FormSelect name="outcome" defaultValue="ongoing" options={OUTCOME_OPTIONS} />
+                </Field>
+                <Field label="Milk withdrawal (days)">
+                  <input name="withdrawalDays" type="number" min={0} max={90} step={1} placeholder="0" className={inputClass} />
+                </Field>
+                <Field label="Treatment & visit notes">
+                  <input name="treatment" className={inputClass} />
+                </Field>
+                <Field label="Treatment cost (₹)">
+                  <input name="cost" type="number" min={0} max={10000000} step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass} />
+                </Field>
+              </div>
+              <fieldset className="space-y-1.5">
+                <legend className="text-xs font-medium text-muted-foreground">Affected quarters (mastitis / udder)</legend>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  {["LF", "RF", "LH", "RH"].map((q) => (
+                    <label key={q} className="inline-flex items-center gap-1.5">
+                      <input type="checkbox" name="quarters" value={q} /> {q}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <Field label="Prescription, document, or photo (up to 10 MB)">
+                <input name="attachment" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className={`${inputClass} h-auto py-2`} />
+              </Field>
+              <div className="flex justify-end pt-1">
+                <Submit>Save treatment</Submit>
+              </div>
+            </form>
+          </RecordDialog>
+        ) : null}
+        {canMilk && isFemale ? (
           <RecordDialog title="Record milk production" button="+ Milk" quiet>
             <form action={recordAnimalMilk} className="space-y-3">
               <input type="hidden" name="animalId" value={animal.id} />
               <Field label="Date">
-                <input name="recordedOn" type="date" className={inputClass} />
+                <input name="recordedOn" type="date" defaultValue={today} max={today} className={inputClass} />
               </Field>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Morning (L)">
@@ -485,7 +589,7 @@ export async function AnimalHub({
                   <input name="kilograms" type="number" min={1} max={1200} step="0.1" required inputMode="decimal" className={inputClass} />
                 </Field>
                 <Field label="Date">
-                  <input name="weighedOn" type="date" className={inputClass} />
+                  <input name="weighedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                 </Field>
               </div>
               <Field label="Note">
@@ -537,7 +641,7 @@ export async function AnimalHub({
                   <input name="quantity" type="number" min={0.1} max={1000000} step="0.1" required inputMode="decimal" className={inputClass} />
                 </Field>
                 <Field label="Date">
-                  <input name="movedOn" type="date" className={inputClass} />
+                  <input name="movedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                 </Field>
               </div>
               <div className="flex justify-end pt-1">
@@ -576,7 +680,10 @@ export async function AnimalHub({
       "Leave unchanged",
     );
     const generationEdit = pedigreeEdit && pedigreeEdit !== "self" ? targets.find((item) => item.value.split("\t")[0] === pedigreeEdit) : undefined;
-    const damChoices = [{ value: "", label: "Not linked" }, ...dams.map((row) => ({ value: row.id, label: row.name && row.name !== row.code ? `${row.name} · ${row.code}` : row.code }))];
+    const damChoices = [
+      { value: "", label: "Not linked" },
+      ...dams.map((row) => ({ value: row.id, label: row.name && row.name !== row.code ? `${row.name} · ${row.code}` : row.code })),
+    ];
     return (
       <div className="space-y-4">
         {quickBar}
@@ -584,6 +691,7 @@ export async function AnimalHub({
           chart={chart}
           offspring={offspring.map((row) => ({ code: row.code, name: row.name }))}
           editable={canEdit}
+          canExportPdf={canExportPdf}
           animalName={animal.name ?? animal.code}
           animalCode={animal.code}
           sireOptions={sireOptions}
@@ -603,10 +711,11 @@ export async function AnimalHub({
 
   if (tab === "breeding") {
     const breedingNotice = breedingMessages[breedingError ?? ""];
-    const heats = [...heatRows].sort((a, b) => b.observedOn.localeCompare(a.observedOn));
+    const heatsList = [...heatRows].sort((a, b) => b.observedOn.localeCompare(a.observedOn));
     const ais = [...aiRows].sort((a, b) => b.performedOn.localeCompare(a.performedOn));
     const checks = [...pdRows].sort((a, b) => b.checkedOn.localeCompare(a.checkedOn));
     const births = [...calvingRows].sort((a, b) => b.calvedOn.localeCompare(a.calvedOn));
+    const dries = [...dryRows].sort((a, b) => b.driedOn.localeCompare(a.driedOn));
     const aiById = new Map(aiRows.map((row) => [row.id, row]));
     const herdById = new Map(herd.map((row) => [row.id, row]));
     const matingNotes = await db
@@ -624,11 +733,6 @@ export async function AnimalHub({
         .filter(Boolean),
     );
     const savedChecks = matingNotes.filter((note) => note.action === "create" && !voidedNotes.has(note.id));
-
-    function bullLabel(row: { bullCode: string; bullName: string | null }) {
-      return row.bullName && row.bullName !== row.bullCode ? `${row.bullName} · ${row.bullCode}` : row.bullCode;
-    }
-
     const breedingTimeline = timeline.filter((event) => event.group === "breeding");
 
     return (
@@ -650,7 +754,7 @@ export async function AnimalHub({
             const href = after?.female && bullValue ? `/genetics?female=${encodeURIComponent(after.female)}&bull=${encodeURIComponent(bullValue)}` : "";
             return (
               <div key={note.id} className="rounded-xl bg-muted px-3 py-3 text-sm">
-                <span className="text-muted-foreground">{formatDisplayDate(note.createdAt.toISOString().slice(0, 10))}</span>
+                <span className="text-muted-foreground">{formatDisplayDate(farmToday(timezone, note.createdAt))}</span>
                 {canViewGenetics && href ? (
                   <Link href={href} className="mt-1 block font-medium text-primary">
                     {note.summary}
@@ -672,15 +776,16 @@ export async function AnimalHub({
             );
           })}
         </section>
+
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Heat</h2>
-            {recordable ? (
+            {allowHeat ? (
               <RecordDialog title="Record heat" button="Record heat">
                 <form action={recordHeat} className="space-y-3">
                   <input type="hidden" name="animalId" value={animal.id} />
                   <Field label="Observed">
-                    <input name="observedOn" type="date" className={inputClass} />
+                    <input name="observedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                   </Field>
                   <Field label="Signs">
                     <input name="signs" placeholder="Standing, discharge" className={inputClass} />
@@ -695,13 +800,22 @@ export async function AnimalHub({
               </RecordDialog>
             ) : null}
           </div>
-          <Table headers={["Observed", "Signs", "Observations / Follow-up"]}>
-            {heats.length === 0 ? <EmptyRow cols={3}>No heat recorded.</EmptyRow> : null}
-            {heats.map((row) => (
-              <tr key={row.id}>
+          <Table headers={["Observed", "Signs", "Observations / Follow-up", ""]}>
+            {heatsList.length === 0 ? <EmptyRow cols={4}>No heat recorded.</EmptyRow> : null}
+            {heatsList.map((row) => (
+              <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
                 <Td>{formatDisplayDate(row.observedOn)}</Td>
                 <Td>{row.signs}</Td>
                 <Td>{row.note ?? "—"}</Td>
+                <Td className="text-right">
+                  {row.voidedAt ? (
+                    <span className="text-xs no-underline">Voided</span>
+                  ) : canVoidRecord(roles, "heat", row.createdBy, userId, row.createdAt) ? (
+                    <VoidRecord entity="heat" id={row.id} returnTo={`/animals/${animal.code}?tab=breeding`} />
+                  ) : (
+                    "—"
+                  )}
+                </Td>
               </tr>
             ))}
           </Table>
@@ -710,13 +824,18 @@ export async function AnimalHub({
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Inseminations</h2>
-            {recordable ? (
-              <RecordDialog title="Record insemination" button="Record insemination" notice={breedingError === "bull" || breedingError === "straw" ? breedingNotice : undefined} open={breedingError === "bull" || breedingError === "straw"}>
+            {allowAi ? (
+              <RecordDialog
+                title="Record insemination"
+                button="Record insemination"
+                notice={breedingError === "bull" || breedingError === "straw" ? breedingNotice : undefined}
+                open={breedingError === "bull" || breedingError === "straw"}
+              >
                 <form action={recordAi} className="space-y-3">
                   <input type="hidden" name="animalId" value={animal.id} />
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Date">
-                      <input name="performedOn" type="date" className={inputClass} />
+                      <input name="performedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                     </Field>
                     <Field label="Technician">
                       <input name="technician" className={inputClass} />
@@ -750,7 +869,7 @@ export async function AnimalHub({
           <Table headers={["Date", "Attempt", "Bull", "Batch", "Straw", "Technician", "Notes", ""]}>
             {ais.length === 0 ? <EmptyRow cols={8}>No insemination recorded.</EmptyRow> : null}
             {ais.map((row) => (
-              <tr key={row.id} className={row.voidedAt ? "text-muted-foreground" : ""}>
+              <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
                 <Td>{formatDisplayDate(row.performedOn)}</Td>
                 <Td>#{row.attemptNumber}</Td>
                 <Td className="font-medium">{bullLabel(row)}</Td>
@@ -758,10 +877,10 @@ export async function AnimalHub({
                 <Td>{row.strawCode ?? "—"}</Td>
                 <Td>{row.technicianName}</Td>
                 <Td>{row.note ?? "—"}</Td>
-                <Td>
+                <Td className="text-right">
                   {row.voidedAt ? (
-                    "Voided"
-                  ) : recordable ? (
+                    <span className="text-xs no-underline">Voided</span>
+                  ) : canVoidRecord(roles, "insemination", row.createdBy, userId, row.createdAt) ? (
                     <VoidRecord entity="insemination" id={row.id} returnTo={`/animals/${animal.code}?tab=breeding`} restoreStraw={Boolean(row.strawCode)} />
                   ) : (
                     "—"
@@ -775,13 +894,13 @@ export async function AnimalHub({
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Pregnancy checks</h2>
-            {recordable ? (
+            {allowPdCalving ? (
               <RecordDialog title="Record pregnancy check" button="Record pregnancy check">
                 <form action={recordPd} className="space-y-3">
                   <input type="hidden" name="animalId" value={animal.id} />
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Checked">
-                      <input name="checkedOn" type="date" className={inputClass} />
+                      <input name="checkedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                     </Field>
                     <Field label="Result">
                       <FormSelect
@@ -801,10 +920,10 @@ export async function AnimalHub({
                   <Field label="Insemination">
                     <FormSelect
                       name="inseminationId"
-                      defaultValue=""
+                      defaultValue={activeAisSorted[0]?.id ?? ""}
                       options={[
                         { value: "", label: "Select the insemination" },
-                        ...ais.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${bullLabel(row)}` })),
+                        ...activeAisSorted.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${bullLabel(row)}` })),
                       ]}
                     />
                   </Field>
@@ -815,16 +934,25 @@ export async function AnimalHub({
               </RecordDialog>
             ) : null}
           </div>
-          <Table headers={["Checked", "Result", "Method / Follow-up", "Insemination"]}>
-            {checks.length === 0 ? <EmptyRow cols={4}>No pregnancy check recorded.</EmptyRow> : null}
+          <Table headers={["Checked", "Result", "Method / Follow-up", "Insemination", ""]}>
+            {checks.length === 0 ? <EmptyRow cols={5}>No pregnancy check recorded.</EmptyRow> : null}
             {checks.map((row) => {
               const ai = row.inseminationId ? aiById.get(row.inseminationId) : undefined;
               return (
-                <tr key={row.id}>
+                <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
                   <Td>{formatDisplayDate(row.checkedOn)}</Td>
                   <Td className="font-medium">{pregnancyResult(row.result)}</Td>
                   <Td>{row.method ?? "—"}</Td>
                   <Td>{ai ? `${formatDisplayDate(ai.performedOn)} · ${bullLabel(ai)}` : "—"}</Td>
+                  <Td className="text-right">
+                    {row.voidedAt ? (
+                      <span className="text-xs no-underline">Voided</span>
+                    ) : canVoidRecord(roles, "pregnancy_check", row.createdBy, userId, row.createdAt) ? (
+                      <VoidRecord entity="pregnancy_check" id={row.id} returnTo={`/animals/${animal.code}?tab=breeding`} />
+                    ) : (
+                      "—"
+                    )}
+                  </Td>
                 </tr>
               );
             })}
@@ -834,24 +962,24 @@ export async function AnimalHub({
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Calvings</h2>
-            {recordable ? (
+            {allowPdCalving ? (
               <RecordDialog title="Record calving" button="Record calving" notice={breedingError === "conception" ? breedingNotice : undefined} open={breedingError === "conception"}>
                 <form action={recordCalving} className="space-y-3">
                   <input type="hidden" name="animalId" value={animal.id} />
-                  <Field label="Insemination">
+                  <Field label="Conception insemination">
                     <FormSelect
                       name="inseminationId"
                       required
-                      defaultValue=""
+                      defaultValue={defaultCalvingAiId}
                       options={[
                         { value: "", label: "Select the insemination" },
-                        ...ais.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${bullLabel(row)}` })),
+                        ...activeAisSorted.map((row) => ({ value: row.id, label: `${formatDisplayDate(row.performedOn)} · ${bullLabel(row)}` })),
                       ]}
                     />
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Calved">
-                      <input name="calvedOn" type="date" className={inputClass} />
+                      <input name="calvedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                     </Field>
                     <Field label="Outcome">
                       <FormSelect
@@ -877,20 +1005,20 @@ export async function AnimalHub({
                       <input name="calfName" className={inputClass} />
                     </Field>
                     <Field label="Calving ease">
-                      <FormSelect
-                        name="ease"
-                        defaultValue="normal"
-                        options={[
-                          { value: "normal", label: "Normal / unassisted" },
-                          { value: "assisted", label: "Assisted" },
-                          { value: "difficult", label: "Difficult (dystocia)" },
-                        ]}
-                      />
+                      <FormSelect name="ease" defaultValue="normal" options={EASE_OPTIONS} />
                     </Field>
                     <Field label="Observations">
                       <input name="note" placeholder="Birth weight, placenta, observations" className={inputClass} />
                     </Field>
                   </div>
+                  <label className="flex items-center gap-2 text-xs text-foreground">
+                    <input name="startLactation" type="checkbox" defaultChecked />
+                    Start new lactation (set cow to Lactating)
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input name="recordDeadCalf" type="checkbox" />
+                    If dead calf, also create a deceased calf record for lineage tracking
+                  </label>
                   <div className="flex justify-end pt-1">
                     <Submit>Save calving</Submit>
                   </div>
@@ -898,19 +1026,36 @@ export async function AnimalHub({
               </RecordDialog>
             ) : null}
           </div>
-          <Table headers={["Calved", "Outcome", "Ease", "Calf", "Insemination", "Observations"]}>
-            {births.length === 0 ? <EmptyRow cols={6}>No calving recorded.</EmptyRow> : null}
+          <Table headers={["Calved", "Outcome", "Ease", "Calf", "Insemination", "Observations", ""]}>
+            {births.length === 0 ? <EmptyRow cols={7}>No calving recorded.</EmptyRow> : null}
             {births.map((row) => {
               const calf = row.calfId ? herdById.get(row.calfId) : undefined;
               const ai = row.inseminationId ? aiById.get(row.inseminationId) : undefined;
               return (
-                <tr key={row.id}>
+                <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
                   <Td>{formatDisplayDate(row.calvedOn)}</Td>
                   <Td className="font-medium">{row.outcome === "live" ? "Live calf" : "Dead calf"}</Td>
                   <Td className="capitalize">{row.ease ?? "normal"}</Td>
-                  <Td>{calf ? (calf.name && calf.name !== calf.code ? `${calf.name} · ${calf.code}` : calf.code) : "—"}</Td>
+                  <Td>
+                    {calf ? (
+                      <Link href={`/animals/${encodeURIComponent(calf.code)}`} className="text-primary hover:underline">
+                        {calf.name && calf.name !== calf.code ? `${calf.name} · ${calf.code}` : calf.code}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </Td>
                   <Td>{ai ? `${formatDisplayDate(ai.performedOn)} · ${bullLabel(ai)}` : "—"}</Td>
                   <Td>{row.note ?? "—"}</Td>
+                  <Td className="text-right">
+                    {row.voidedAt ? (
+                      <span className="text-xs no-underline">Voided</span>
+                    ) : canVoidRecord(roles, "calving", row.createdBy, userId, row.createdAt) ? (
+                      <VoidRecord entity="calving" id={row.id} returnTo={`/animals/${animal.code}?tab=breeding`} />
+                    ) : (
+                      "—"
+                    )}
+                  </Td>
                 </tr>
               );
             })}
@@ -920,12 +1065,12 @@ export async function AnimalHub({
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Dry-off</h2>
-            {recordable && animal.lactation === "lactating" ? (
+            {allowPdCalving && animal.lactation === "lactating" ? (
               <RecordDialog title="Record dry-off" button="Record dry-off">
                 <form action={recordDryOff} className="space-y-3">
                   <input type="hidden" name="animalId" value={animal.id} />
                   <Field label="Dried off">
-                    <input name="driedOn" type="date" className={inputClass} />
+                    <input name="driedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                   </Field>
                   <Field label="Note">
                     <input name="note" className={inputClass} />
@@ -937,17 +1082,23 @@ export async function AnimalHub({
               </RecordDialog>
             ) : null}
           </div>
-          <Table headers={["Date", "Note"]}>
-            {dryRows.filter((row) => !row.voidedAt).length === 0 ? <EmptyRow cols={2}>No dry-off recorded.</EmptyRow> : null}
-            {dryRows
-              .filter((row) => !row.voidedAt)
-              .sort((a, b) => b.driedOn.localeCompare(a.driedOn))
-              .map((row) => (
-                <tr key={row.id}>
-                  <Td>{formatDisplayDate(row.driedOn)}</Td>
-                  <Td>{row.note ?? "—"}</Td>
-                </tr>
-              ))}
+          <Table headers={["Date", "Note", ""]}>
+            {dries.length === 0 ? <EmptyRow cols={3}>No dry-off recorded.</EmptyRow> : null}
+            {dries.map((row) => (
+              <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
+                <Td>{formatDisplayDate(row.driedOn)}</Td>
+                <Td>{row.note ?? "—"}</Td>
+                <Td className="text-right">
+                  {row.voidedAt ? (
+                    <span className="text-xs no-underline">Voided</span>
+                  ) : canVoidRecord(roles, "dry_off", row.createdBy, userId, row.createdAt) ? (
+                    <VoidRecord entity="dry_off" id={row.id} returnTo={`/animals/${animal.code}?tab=breeding`} />
+                  ) : (
+                    "—"
+                  )}
+                </Td>
+              </tr>
+            ))}
           </Table>
         </section>
 
@@ -957,7 +1108,7 @@ export async function AnimalHub({
   }
 
   if (tab === "health") {
-    const treatments = canSeeClinical ? [...healthRows].filter((row) => !row.voidedAt).sort((a, b) => b.eventOn.localeCompare(a.eventOn)) : [];
+    const treatments = canSeeClinical ? [...healthRows].sort((a, b) => b.eventOn.localeCompare(a.eventOn)) : [];
     const doses = [...vaccineRows].sort((a, b) => b.givenOn.localeCompare(a.givenOn));
     const worms = [...dewormRows].sort((a, b) => b.givenOn.localeCompare(a.givenOn));
     const healthTimeline = timeline.filter((event) => event.group === "health");
@@ -965,6 +1116,11 @@ export async function AnimalHub({
     return (
       <div className="space-y-8">
         {quickBar}
+        {activeWithdrawals.length > 0 ? (
+          <Notice tone="danger">
+            Active milk withdrawal through {formatDisplayDate(activeWithdrawals[0].withdrawalUntil!)} ({activeWithdrawals[0].medicine || activeWithdrawals[0].problem}).
+          </Notice>
+        ) : null}
         {canSeeClinical ? (
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -975,7 +1131,7 @@ export async function AnimalHub({
                     <input type="hidden" name="animalId" value={animal.id} />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Field label="Date">
-                        <input name="eventOn" type="date" className={inputClass} />
+                        <input name="eventOn" type="date" defaultValue={today} max={today} className={inputClass} />
                       </Field>
                       <Field label="Problem / disease">
                         <input name="problem" required placeholder="Mastitis, fever, lameness" className={inputClass} />
@@ -1008,13 +1164,26 @@ export async function AnimalHub({
                         <input name="followUpOn" type="date" className={inputClass} />
                       </Field>
                       <Field label="Outcome">
-                        <input name="outcome" placeholder="Recovering / Resolved / Ongoing" className={inputClass} />
+                        <FormSelect name="outcome" defaultValue="ongoing" options={OUTCOME_OPTIONS} />
+                      </Field>
+                      <Field label="Milk withdrawal (days)">
+                        <input name="withdrawalDays" type="number" min={0} max={90} step={1} placeholder="0" className={inputClass} />
                       </Field>
                       <Field label="Treatment cost (₹)">
                         <input name="cost" type="number" min={0} max={10000000} step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass} />
                       </Field>
                     </div>
-                    <Field label="Prescription, document, or photo">
+                    <fieldset className="space-y-1.5">
+                      <legend className="text-xs font-medium text-muted-foreground">Affected quarters (optional)</legend>
+                      <div className="flex flex-wrap gap-3 text-xs">
+                        {["LF", "RF", "LH", "RH"].map((q) => (
+                          <label key={q} className="inline-flex items-center gap-1.5">
+                            <input type="checkbox" name="quarters" value={q} /> {q}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <Field label="Prescription, document, or photo (up to 10 MB)">
                       <input
                         name="attachment"
                         type="file"
@@ -1032,23 +1201,27 @@ export async function AnimalHub({
             <Table headers={["Date", "Problem & Diagnosis", "Medicine & Regimen", "Vet & Outcome", "Follow up", "Attachment", ""]}>
               {treatments.length === 0 ? <EmptyRow cols={7}>No treatment recorded.</EmptyRow> : null}
               {treatments.map((row) => (
-                <tr key={row.id} className={row.voidedAt ? "text-muted-foreground" : ""}>
+                <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
                   <Td>{formatDisplayDate(row.eventOn)}</Td>
                   <Td>
                     <div className="font-medium">{row.problem}</div>
                     {row.diagnosis ? <div className="text-xs text-muted-foreground">Dx: {row.diagnosis}</div> : null}
                     {row.signs ? <div className="text-xs text-muted-foreground">Signs: {row.signs}</div> : null}
+                    {row.quarters ? <div className="text-xs text-muted-foreground">Quarters: {row.quarters}</div> : null}
                   </Td>
                   <Td>
                     <div>{row.medicine ?? "—"}</div>
                     {row.dose || row.route || row.duration ? (
                       <div className="text-xs text-muted-foreground">{[row.dose, row.route, row.duration].filter(Boolean).join(" · ")}</div>
                     ) : null}
+                    {row.withdrawalUntil ? (
+                      <div className="text-xs font-medium text-danger">Withdrawal until {formatDisplayDate(row.withdrawalUntil)}</div>
+                    ) : null}
                     {row.treatment ? <div className="text-xs text-muted-foreground">{row.treatment}</div> : null}
                   </Td>
                   <Td>
                     <div>{row.veterinarian ?? "—"}</div>
-                    {row.outcome ? <div className="text-xs text-muted-foreground">{row.outcome}</div> : null}
+                    <div className="text-xs text-muted-foreground">{healthOutcome(row.outcome)}</div>
                     {row.cost ? <div className="text-xs font-medium text-foreground">₹{Number(row.cost).toLocaleString("en-IN")}</div> : null}
                   </Td>
                   <Td>{row.followUpOn ? formatDisplayDate(row.followUpOn) : "—"}</Td>
@@ -1066,13 +1239,29 @@ export async function AnimalHub({
                       "—"
                     )}
                   </Td>
-                  <Td>
+                  <Td className="text-right">
                     {row.voidedAt ? (
-                      "Voided"
-                    ) : canHealth ? (
-                      <VoidRecord entity="health" id={row.id} returnTo={`/animals/${animal.code}?tab=health`} />
+                      <span className="text-xs no-underline">Voided</span>
                     ) : (
-                      "—"
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {canHealth ? (
+                          <RecordDialog title={`Update outcome · ${row.problem}`} button="Outcome" quiet>
+                            <form action={updateHealthOutcome} className="space-y-3">
+                              <input type="hidden" name="id" value={row.id} />
+                              <input type="hidden" name="returnTo" value={`/animals/${animal.code}?tab=health`} />
+                              <Field label="Outcome">
+                                <FormSelect name="outcome" defaultValue={row.outcome} options={OUTCOME_OPTIONS} />
+                              </Field>
+                              <div className="flex justify-end">
+                                <Submit>Save outcome</Submit>
+                              </div>
+                            </form>
+                          </RecordDialog>
+                        ) : null}
+                        {canVoidRecord(roles, "health", row.createdBy, userId, row.createdAt) ? (
+                          <VoidRecord entity="health" id={row.id} returnTo={`/animals/${animal.code}?tab=health`} />
+                        ) : null}
+                      </div>
                     )}
                   </Td>
                 </tr>
@@ -1084,7 +1273,7 @@ export async function AnimalHub({
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Vaccines</h2>
-            {canHealth ? (
+            {canVaccine ? (
               <RecordDialog title="Record vaccine" button="Record vaccine">
                 <form action={recordVaccine} className="space-y-3">
                   <input type="hidden" name="animalId" value={animal.id} />
@@ -1093,7 +1282,7 @@ export async function AnimalHub({
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Given">
-                      <input name="givenOn" type="date" className={inputClass} />
+                      <input name="givenOn" type="date" defaultValue={today} max={today} className={inputClass} />
                     </Field>
                     <Field label="Batch">
                       <input name="batch" className={inputClass} />
@@ -1109,14 +1298,23 @@ export async function AnimalHub({
               </RecordDialog>
             ) : null}
           </div>
-          <Table headers={["Given", "Vaccine", "Batch", "Next due"]}>
-            {doses.length === 0 ? <EmptyRow cols={4}>No vaccine recorded.</EmptyRow> : null}
+          <Table headers={["Given", "Vaccine", "Batch", "Next due", ""]}>
+            {doses.length === 0 ? <EmptyRow cols={5}>No vaccine recorded.</EmptyRow> : null}
             {doses.map((row) => (
-              <tr key={row.id}>
+              <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
                 <Td>{formatDisplayDate(row.givenOn)}</Td>
                 <Td className="font-medium">{row.vaccine}</Td>
                 <Td>{row.batch ?? "—"}</Td>
                 <Td>{row.nextDueOn ? formatDisplayDate(row.nextDueOn) : "—"}</Td>
+                <Td className="text-right">
+                  {row.voidedAt ? (
+                    <span className="text-xs no-underline">Voided</span>
+                  ) : canVoidRecord(roles, "vaccine", row.createdBy, userId, row.createdAt) ? (
+                    <VoidRecord entity="vaccine" id={row.id} returnTo={`/animals/${animal.code}?tab=health`} />
+                  ) : (
+                    "—"
+                  )}
+                </Td>
               </tr>
             ))}
           </Table>
@@ -1125,7 +1323,7 @@ export async function AnimalHub({
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">Deworming</h2>
-            {canHealth ? (
+            {canVaccine ? (
               <RecordDialog title="Record deworming" button="Record deworming">
                 <form action={recordDeworming} className="space-y-3">
                   <input type="hidden" name="animalId" value={animal.id} />
@@ -1134,7 +1332,7 @@ export async function AnimalHub({
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Given">
-                      <input name="givenOn" type="date" className={inputClass} />
+                      <input name="givenOn" type="date" defaultValue={today} max={today} className={inputClass} />
                     </Field>
                     <Field label="Next due">
                       <input name="nextDueOn" type="date" className={inputClass} />
@@ -1147,13 +1345,22 @@ export async function AnimalHub({
               </RecordDialog>
             ) : null}
           </div>
-          <Table headers={["Given", "Product", "Next due"]}>
-            {worms.length === 0 ? <EmptyRow cols={3}>No deworming recorded.</EmptyRow> : null}
+          <Table headers={["Given", "Product", "Next due", ""]}>
+            {worms.length === 0 ? <EmptyRow cols={4}>No deworming recorded.</EmptyRow> : null}
             {worms.map((row) => (
-              <tr key={row.id}>
+              <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
                 <Td>{formatDisplayDate(row.givenOn)}</Td>
                 <Td className="font-medium">{row.product}</Td>
                 <Td>{row.nextDueOn ? formatDisplayDate(row.nextDueOn) : "—"}</Td>
+                <Td className="text-right">
+                  {row.voidedAt ? (
+                    <span className="text-xs no-underline">Voided</span>
+                  ) : canVoidRecord(roles, "deworming", row.createdBy, userId, row.createdAt) ? (
+                    <VoidRecord entity="deworming" id={row.id} returnTo={`/animals/${animal.code}?tab=health`} />
+                  ) : (
+                    "—"
+                  )}
+                </Td>
               </tr>
             ))}
           </Table>
@@ -1167,7 +1374,7 @@ export async function AnimalHub({
   if (tab === "milk") {
     const recorded = milkRows.filter((row) => !row.voidedAt);
     const lactationStart = calvingRows
-      .filter((row) => !row.voidedAt)
+      .filter((row) => !row.voidedAt && row.outcome === "live")
       .map((row) => row.calvedOn)
       .sort()
       .at(-1);
@@ -1183,20 +1390,27 @@ export async function AnimalHub({
       driedOn: dryRows.filter((row) => !row.voidedAt).map((row) => row.driedOn),
       yields: recorded,
       state: animal.lactation,
-      today: farmToday(timezone),
+      presence: animal.presence,
+      exitOn: animal.exitOn,
+      today,
     });
     return (
       <div className="space-y-6">
         {quickBar}
+        {activeWithdrawals.length > 0 ? (
+          <Notice tone="danger">
+            Milk withdrawal active through {formatDisplayDate(activeWithdrawals[0].withdrawalUntil!)} ({activeWithdrawals[0].medicine || activeWithdrawals[0].problem}) — discard milk from bulk supply.
+          </Notice>
+        ) : null}
         <section className="rounded-2xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-semibold">This lactation</h2>
-            {canMilk && animal.sex !== "male" ? (
+            {canMilk && isFemale ? (
               <RecordDialog title="Record milk yield" button="Record milk">
                 <form action={recordAnimalMilk} className="space-y-3">
                   <input type="hidden" name="animalId" value={animal.id} />
                   <Field label="Date">
-                    <input name="recordedOn" type="date" className={inputClass} />
+                    <input name="recordedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Morning (L)">
@@ -1224,12 +1438,14 @@ export async function AnimalHub({
               <tr key={cycle.number}>
                 <Td className="font-medium">Lactation {cycle.number}</Td>
                 <Td>{formatDisplayDate(cycle.calvedOn)}</Td>
-                <Td>{cycle.active ? "Active" : cycle.endedOn ? `Dried ${formatDisplayDate(cycle.endedOn)}` : "Completed"}</Td>
+                <Td>{cycle.active ? "Active" : cycle.endedOn ? `Ended ${formatDisplayDate(cycle.endedOn)}` : "Completed"}</Td>
                 <Td>{cycle.daysInMilk === null ? "—" : `${cycle.daysInMilk} d`}</Td>
                 <Td>{cycle.recordedDays}</Td>
-                <Td className="font-medium">{cycle.totalLitres.toFixed(1)} L</Td>
-                <Td>{cycle.peakLitres.toFixed(1)} L</Td>
-                <Td>{cycle.averageLitres.toFixed(1)} L</Td>
+                <Td className="font-medium tabular-nums">{cycle.totalLitres.toFixed(1)} L</Td>
+                <Td className="tabular-nums">
+                  {cycle.peakLitres.toFixed(1)} L{cycle.peakOn ? ` (${formatDisplayDate(cycle.peakOn)})` : ""}
+                </Td>
+                <Td className="tabular-nums">{cycle.averageLitres.toFixed(1)} L</Td>
               </tr>
             ))}
           </Table>
@@ -1237,22 +1453,25 @@ export async function AnimalHub({
 
         <section className="space-y-3">
           <h2 className="text-base font-semibold">Daily milk log</h2>
-          <Table headers={["Date", "Morning", "Evening", "Total"]}>
-            {recorded.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-sm text-muted-foreground">
-                  No milk recorded for this animal.
-                </td>
-              </tr>
-            ) : null}
-            {recorded.map((row) => {
+          <Table headers={["Date", "Morning", "Evening", "Total", ""]}>
+            {milkRows.length === 0 ? <EmptyRow cols={5}>No milk recorded for this animal.</EmptyRow> : null}
+            {milkRows.map((row) => {
               const total = Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0);
               return (
-                <tr key={row.id}>
+                <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
                   <Td>{formatDisplayDate(row.recordedOn)}</Td>
-                  <Td>{row.morningLitres ?? "—"}</Td>
-                  <Td>{row.eveningLitres ?? "—"}</Td>
-                  <Td className="font-medium">{total.toFixed(1)} L</Td>
+                  <Td className="tabular-nums">{row.morningLitres ?? "—"}</Td>
+                  <Td className="tabular-nums">{row.eveningLitres ?? "—"}</Td>
+                  <Td className="font-medium tabular-nums">{total.toFixed(1)} L</Td>
+                  <Td className="text-right">
+                    {row.voidedAt ? (
+                      <span className="text-xs no-underline">Voided</span>
+                    ) : canVoidRecord(roles, "milk", row.createdBy, userId, row.createdAt) ? (
+                      <VoidRecord entity="milk" id={row.id} returnTo={`/animals/${animal.code}?tab=milk`} />
+                    ) : (
+                      "—"
+                    )}
+                  </Td>
                 </tr>
               );
             })}
@@ -1263,47 +1482,130 @@ export async function AnimalHub({
   }
 
   if (tab === "listing" && canList) {
-    const listingRows = await db.select().from(listings).where(and(eq(listings.animalId, animal.id), eq(listings.farmId, animal.farmId)));
+    const listingRows = await db
+      .select()
+      .from(listings)
+      .where(and(eq(listings.animalId, animal.id), eq(listings.farmId, animal.farmId)))
+      .orderBy(desc(listings.createdAt));
+    const current = listingRows[0];
     return (
-      <section className="space-y-3">
+      <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Public listings</h2>
-          <RecordDialog title="Add listing" button="Add listing">
-            <form action={saveListing} className="space-y-3">
-              <input type="hidden" name="animalId" value={animal.id} />
-              <Field label="Category">
-                <input name="category" required maxLength={60} defaultValue={animal.sex === "male" ? "bulls" : "cows"} className={inputClass} />
-              </Field>
-              <Field label="Price, INR">
-                <input name="price" type="number" min={0} max={100000000} step="0.01" inputMode="decimal" placeholder="0.00" className={inputClass} />
-              </Field>
-              <label className="flex items-center gap-2 text-sm">
-                <input name="published" type="checkbox" /> Publish on the catalogue
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input name="showPedigree" type="checkbox" /> Show sire and dam
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input name="showPregnancy" type="checkbox" /> Show pregnancy status
-              </label>
-              <Field label="Public note">
-                <input name="publicNote" className={inputClass} />
-              </Field>
-              <p className="text-xs text-muted-foreground">Breed {breedName}. Purchase price and clinical notes stay private.</p>
-              <div className="flex justify-end pt-1">
-                <Submit>Save listing</Submit>
-              </div>
-            </form>
-          </RecordDialog>
+          <div>
+            <h2 className="text-base font-semibold">Public catalogue listing</h2>
+            <p className="text-xs text-muted-foreground">Only allow-listed fields below appear on the public page. Purchase price and clinical notes always stay private.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {current?.published === "yes" ? (
+              <Link
+                href={`/farms/${encodeURIComponent(farmSlug)}/${encodeURIComponent(animal.code)}`}
+                className="inline-flex h-9 items-center rounded-full border border-border bg-white px-3.5 text-xs font-medium text-foreground hover:bg-muted"
+              >
+                Preview public page →
+              </Link>
+            ) : null}
+            <RecordDialog title={current ? "Edit public listing" : "Create public listing"} button={current ? "Edit listing" : "Create listing"}>
+              <form action={saveListing} className="space-y-3">
+                <input type="hidden" name="animalId" value={animal.id} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Category">
+                    <FormSelect
+                      name="category"
+                      defaultValue={current?.category ?? (animal.sex === "male" ? "bulls" : animal.lifeStage === "heifer" ? "heifers" : animal.lifeStage === "calf" ? "calves" : "cows")}
+                      options={[
+                        { value: "cows", label: "Cows" },
+                        { value: "heifers", label: "Heifers" },
+                        { value: "bulls", label: "Bulls" },
+                        { value: "calves", label: "Calves" },
+                      ]}
+                    />
+                  </Field>
+                  <Field label="Asking price (INR, optional)">
+                    <input
+                      name="price"
+                      type="number"
+                      min={0}
+                      max={100000000}
+                      step="0.01"
+                      inputMode="decimal"
+                      defaultValue={current?.price ?? ""}
+                      placeholder="Leave blank for enquiry only"
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+                <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input name="published" type="checkbox" defaultChecked={current?.published === "yes"} /> Publish on public catalogue
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input name="showName" type="checkbox" defaultChecked={current ? current.showName === "yes" : true} /> Show animal name
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input name="showPedigree" type="checkbox" defaultChecked={current?.showPedigree === "yes"} /> Show pedigree
+                  </label>
+                  <Field label="Pedigree depth (generations shown if enabled)">
+                    <FormSelect
+                      name="pedigreeDepth"
+                      defaultValue={String(current?.pedigreeDepth ?? 2)}
+                      options={[
+                        { value: "1", label: "1 generation (Sire & Dam)" },
+                        { value: "2", label: "2 generations (up to Grandparents)" },
+                        { value: "3", label: "3 generations (up to Great-grandparents)" },
+                      ]}
+                    />
+                  </Field>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input name="showMilk" type="checkbox" defaultChecked={current?.showMilk === "yes"} /> Show lactation milk summary
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input name="showPregnancy" type="checkbox" defaultChecked={current?.showPregnancy === "yes"} /> Show pregnancy status
+                  </label>
+                </div>
+                <Field label="Public health summary (optional, written for buyers)">
+                  <input name="publicHealthNote" defaultValue={current?.publicHealthNote ?? ""} placeholder="e.g. Vaccinated for FMD & HS" className={inputClass} />
+                </Field>
+                <Field label="Public description / note">
+                  <input name="publicNote" defaultValue={current?.publicNote ?? ""} placeholder="Temperament, milk yield highlights, show history" className={inputClass} />
+                </Field>
+                <p className="text-xs text-muted-foreground">Breed {breedName}. Purchase price, medical history, and internal notes are never exposed.</p>
+                <div className="flex justify-end pt-1">
+                  <Submit>Save listing</Submit>
+                </div>
+              </form>
+            </RecordDialog>
+          </div>
         </div>
-        <Table headers={["Category", "Price", "Catalogue", "Note"]}>
-          {listingRows.length === 0 ? <EmptyRow cols={4}>No listing yet.</EmptyRow> : null}
+        <Table headers={["Category", "Price", "Catalogue", "Shared fields", "Note", ""]}>
+          {listingRows.length === 0 ? <EmptyRow cols={6}>No listing yet.</EmptyRow> : null}
           {listingRows.map((row) => (
             <tr key={row.id}>
               <Td className="font-medium capitalize">{row.category}</Td>
-              <Td>{row.price ? `₹${Number(row.price).toLocaleString("en-IN")}` : "—"}</Td>
-              <Td>{row.published === "yes" ? "Published" : "Draft"}</Td>
+              <Td className="tabular-nums">{row.price ? `₹${Number(row.price).toLocaleString("en-IN")}` : "Enquiry"}</Td>
+              <Td>
+                <Pill tone={row.published === "yes" ? "good" : "neutral"}>{row.published === "yes" ? "Published" : "Draft"}</Pill>
+              </Td>
+              <Td className="text-xs text-muted-foreground">
+                {[
+                  row.showName === "yes" ? "Name" : null,
+                  row.showPedigree === "yes" ? `Pedigree (${row.pedigreeDepth}g)` : null,
+                  row.showMilk === "yes" ? "Milk" : null,
+                  row.showPregnancy === "yes" ? "Pregnancy" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Basic only"}
+              </Td>
               <Td>{row.publicNote ?? "—"}</Td>
+              <Td className="text-right">
+                <form action={toggleListing}>
+                  <input type="hidden" name="id" value={row.id} />
+                  <input type="hidden" name="published" value={row.published === "yes" ? "no" : "yes"} />
+                  <input type="hidden" name="returnTo" value={`/animals/${animal.code}?tab=listing`} />
+                  <button type="submit" className="text-xs font-semibold text-primary hover:underline">
+                    {row.published === "yes" ? "Unpublish" : "Publish"}
+                  </button>
+                </form>
+              </Td>
             </tr>
           ))}
         </Table>
@@ -1311,8 +1613,11 @@ export async function AnimalHub({
     );
   }
 
-  const today = farmToday(timezone);
-  const breedRows = await db.select({ id: breeds.id, name: breeds.name }).from(breeds).where(eq(breeds.farmId, animal.farmId));
+  const breedRows = await db
+    .select({ id: breeds.id, name: breeds.name, active: breeds.active })
+    .from(breeds)
+    .where(eq(breeds.farmId, animal.farmId));
+  const selectableBreeds = breedRows.filter((breed) => breed.active || breed.id === animal.breedId);
   const detailError = detailMessages[breedingError ?? ""];
   const dams = herd
     .filter((row) => row.id !== animal.id && (row.sex === "female" || row.id === animal.geneticDamId))
@@ -1321,40 +1626,49 @@ export async function AnimalHub({
     calvedOn: calvingRows.filter((row) => !row.voidedAt).map((row) => row.calvedOn),
     driedOn: dryRows.filter((row) => !row.voidedAt).map((row) => row.driedOn).sort().at(-1) ?? null,
     state: animal.lactation,
+    presence: animal.presence,
+    exitOn: animal.exitOn,
     today,
   });
-  const identity = [
+
+  const identity: [string, string][] = [
     ["Sex", sexLabel[animal.sex]],
     ["Life stage", lifeStageLabel[animal.lifeStage]],
     ["Breed", breedName],
     ["Ear tag", animal.earTag ?? "—"],
+    ["RFID tag", animal.rfid ?? "—"],
     ["Colour", animal.colour ?? "—"],
     ["Identifying marks", animal.marks ?? "—"],
     ["Lactation cycle", milkFacts.number > 0 ? `Lactation ${milkFacts.number}` : "No calving yet"],
     ["Days in milk", milkFacts.daysInMilk === null ? "—" : `${milkFacts.daysInMilk} days`],
     ["Purchase source", animal.purchaseSource ?? "—"],
     ["Purchase date", animal.purchaseDate ? formatDisplayDate(animal.purchaseDate) : "—"],
-    ["Purchase price", animal.purchasePrice ? `₹${Number(animal.purchasePrice).toLocaleString("en-IN")}` : "—"],
+    ...(canViewPurchasePrice ? ([["Purchase price", animal.purchasePrice ? `₹${Number(animal.purchasePrice).toLocaleString("en-IN")}` : "—"]] as [string, string][]) : []),
+    ...(animal.presence !== "on_farm"
+      ? ([
+          ["Exit date", animal.exitOn ? formatDisplayDate(animal.exitOn) : "—"],
+          ["Exit reason", animal.exitReason ?? "—"],
+          ...(canViewFinance && animal.exitAmount ? [["Sale amount", `₹${Number(animal.exitAmount).toLocaleString("en-IN")}`]] : []),
+        ] as [string, string][])
+      : []),
   ];
 
   const activeMilkRows = milkRows.filter((row) => !row.voidedAt);
   const latestMilk = activeMilkRows[0];
   const latestMilkTotal = latestMilk ? Number(latestMilk.morningLitres ?? 0) + Number(latestMilk.eveningLitres ?? 0) : null;
   const sortedWeights = [...weightRows].sort((a, b) => b.weighedOn.localeCompare(a.weighedOn));
-  const latestWeight = sortedWeights[0];
-  const activeAis = aiRows.filter((row) => !row.voidedAt);
+  const latestWeight = [...activeWeights].sort((a, b) => b.weighedOn.localeCompare(a.weighedOn))[0];
 
   return (
     <div className="space-y-4">
       {quickBar}
 
-      {/* 4-Card Live KPI Snapshot */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="flex flex-col justify-between rounded-2xl border border-border/85 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-muted-foreground">Latest milk yield</span>
-            {animal.sex !== "male" ? (
-              <Link href={`/animals/${animal.code}?tab=milk`} className="text-xs font-medium text-primary hover:underline">
+            {isFemale ? (
+              <Link href={`/animals/${encodeURIComponent(animal.code)}?tab=milk`} className="text-xs font-medium text-primary hover:underline">
                 Milk →
               </Link>
             ) : null}
@@ -1370,8 +1684,8 @@ export async function AnimalHub({
         <div className="flex flex-col justify-between rounded-2xl border border-border/85 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-muted-foreground">Lactation & cycle</span>
-            {animal.sex !== "male" ? (
-              <Link href={`/animals/${animal.code}?tab=breeding`} className="text-xs font-medium text-primary hover:underline">
+            {isFemale ? (
+              <Link href={`/animals/${encodeURIComponent(animal.code)}?tab=breeding`} className="text-xs font-medium text-primary hover:underline">
                 Breeding →
               </Link>
             ) : null}
@@ -1388,7 +1702,7 @@ export async function AnimalHub({
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-muted-foreground">Latest weight</span>
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {weightRows.length} {weightRows.length === 1 ? "entry" : "entries"}
+              {activeWeights.length} {activeWeights.length === 1 ? "entry" : "entries"}
             </span>
           </div>
           <p className="mt-2 font-display text-2xl font-semibold tracking-tight tabular-nums">
@@ -1402,7 +1716,7 @@ export async function AnimalHub({
         <div className="flex flex-col justify-between rounded-2xl border border-border/85 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-muted-foreground">Progeny & services</span>
-            <Link href={`/animals/${animal.code}?tab=parentage`} className="text-xs font-medium text-primary hover:underline">
+            <Link href={`/animals/${encodeURIComponent(animal.code)}?tab=parentage`} className="text-xs font-medium text-primary hover:underline">
               Pedigree →
             </Link>
           </div>
@@ -1410,7 +1724,7 @@ export async function AnimalHub({
             {offspring.length} {offspring.length === 1 ? "calf" : "calves"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {activeAis.length} AI {activeAis.length === 1 ? "service" : "services"} recorded
+            {activeAisSorted.length} AI {activeAisSorted.length === 1 ? "service" : "services"} recorded
           </p>
         </div>
       </div>
@@ -1432,10 +1746,10 @@ export async function AnimalHub({
                       <FormSelect name="sex" className={inputClass} defaultValue={animal.sex} options={Object.entries(sexLabel).map(([value, label]) => ({ value, label }))} />
                     </Field>
                     <Field label="Breed">
-                      <FormSelect name="breedId" className={inputClass} defaultValue={animal.breedId} options={breedRows.map((breed) => ({ value: breed.id, label: breed.name }))} />
+                      <FormSelect name="breedId" className={inputClass} defaultValue={animal.breedId} options={selectableBreeds.map((breed) => ({ value: breed.id, label: breed.name }))} />
                     </Field>
                     <Field label="Date of birth">
-                      <input name="dob" type="date" defaultValue={animal.dob ?? ""} className={inputClass} />
+                      <input name="dob" type="date" max={today} defaultValue={animal.dob ?? ""} className={inputClass} />
                     </Field>
                     <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-2">
                       <input name="dobEstimated" type="checkbox" defaultChecked={animal.dobEstimated} className="size-5" />
@@ -1443,6 +1757,9 @@ export async function AnimalHub({
                     </label>
                     <Field label="Ear tag">
                       <input name="earTag" defaultValue={animal.earTag ?? ""} className={inputClass} />
+                    </Field>
+                    <Field label="RFID tag">
+                      <input name="rfid" defaultValue={animal.rfid ?? ""} placeholder="Optional electronic tag" className={inputClass} />
                     </Field>
                     <Field label="Colour">
                       <input name="colour" defaultValue={animal.colour ?? ""} className={inputClass} />
@@ -1470,10 +1787,12 @@ export async function AnimalHub({
                     <Field label="Purchase date">
                       <input name="purchaseDate" type="date" max={today} defaultValue={animal.purchaseDate ?? ""} className={inputClass} />
                     </Field>
-                    <Field label="Purchase price (INR)">
-                      <input name="purchasePrice" type="number" min={0} max={100000000} step="0.01" inputMode="decimal" defaultValue={animal.purchasePrice ?? ""} className={inputClass} />
-                    </Field>
-                    <p className="text-xs text-muted-foreground sm:col-span-2">Lactation number and days in milk follow calving and dry-off. The shed is changed with Move.</p>
+                    {canViewPurchasePrice ? (
+                      <Field label="Purchase price (INR)">
+                        <input name="purchasePrice" type="number" min={0} max={100000000} step="0.01" inputMode="decimal" defaultValue={animal.purchasePrice ?? ""} className={inputClass} />
+                      </Field>
+                    ) : null}
+                    <p className="text-xs text-muted-foreground sm:col-span-2">Lactation number and days in milk follow calving and dry-off. The shed is changed with Move shed.</p>
                     <div className="flex justify-end sm:col-span-2">
                       <Submit>Save details</Submit>
                     </div>
@@ -1504,7 +1823,7 @@ export async function AnimalHub({
                         <input name="kilograms" type="number" min={1} max={1200} step="0.1" required inputMode="decimal" placeholder="e.g. 420" className={inputClass} />
                       </Field>
                       <Field label="Date">
-                        <input name="weighedOn" type="date" defaultValue={today} className={inputClass} />
+                        <input name="weighedOn" type="date" defaultValue={today} max={today} className={inputClass} />
                       </Field>
                     </div>
                     <Field label="Note">
@@ -1519,18 +1838,27 @@ export async function AnimalHub({
             }
           >
             <WeightChart
-              points={[...weightRows]
+              points={[...activeWeights]
                 .sort((a, b) => a.weighedOn.localeCompare(b.weighedOn))
                 .map((row) => ({ date: row.weighedOn, kg: Number(row.kilograms) }))}
             />
             {sortedWeights.length > 0 ? (
               <div className="mt-4">
-                <Table headers={["Date", "Kilograms", "Note"]}>
+                <Table headers={["Date", "Kilograms", "Note", ""]}>
                   {sortedWeights.map((row) => (
-                    <tr key={row.id}>
+                    <tr key={row.id} className={row.voidedAt ? "text-muted-foreground line-through" : ""}>
                       <Td>{formatDisplayDate(row.weighedOn)}</Td>
                       <Td className="font-medium tabular-nums">{row.kilograms} kg</Td>
                       <Td>{row.note ?? "—"}</Td>
+                      <Td className="text-right">
+                        {row.voidedAt ? (
+                          <span className="text-xs no-underline">Voided</span>
+                        ) : canVoidRecord(roles, "weight", row.createdBy, userId, row.createdAt) ? (
+                          <VoidRecord entity="weight" id={row.id} returnTo={`/animals/${animal.code}`} />
+                        ) : (
+                          "—"
+                        )}
+                      </Td>
                     </tr>
                   ))}
                 </Table>
@@ -1542,52 +1870,66 @@ export async function AnimalHub({
             title="Shed & isolation"
             description={`Currently assigned to ${locationName ?? "Unassigned"}.`}
             action={
-              canEdit ? (
+              canMove || canIsolate ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <RecordDialog title="Move shed" button="Move shed" quiet>
-                    <form action={moveAnimal} className="grid gap-3">
-                      <input type="hidden" name="animalId" value={animal.id} />
-                      <Field label="Destination shed">
-                        <FormSelect
-                          name="locationId"
-                          required
-                          placeholder="Select shed"
-                          options={shedRows.filter((row) => row.active).map((row) => ({ value: row.id, label: row.name }))}
-                        />
-                      </Field>
-                      <Field label="Reason for move">
-                        <input name="note" placeholder="e.g. Moved to calving pen" className={inputClass} />
-                      </Field>
-                      <div className="flex justify-end pt-1">
-                        <Submit>Move</Submit>
-                      </div>
-                    </form>
-                  </RecordDialog>
-                  {animal.isolationReason ? (
-                    <RecordDialog title="Clear isolation" button="Clear isolation" quiet>
-                      <form action={clearIsolation} className="grid gap-3">
+                  {canMove ? (
+                    <RecordDialog title="Move shed" button="Move shed" quiet>
+                      <form action={moveAnimal} className="grid gap-3">
                         <input type="hidden" name="animalId" value={animal.id} />
-                        <Field label="Why isolation ended">
-                          <input name="note" required placeholder="e.g. Cleared by veterinarian" className={inputClass} />
+                        <Field label="Destination shed">
+                          <FormSelect
+                            name="locationId"
+                            required
+                            placeholder="Select shed"
+                            options={shedRows.filter((row) => row.active).map((row) => ({ value: row.id, label: row.name }))}
+                          />
+                        </Field>
+                        <Field label="Move date">
+                          <input name="movedOn" type="date" defaultValue={today} max={today} className={inputClass} />
+                        </Field>
+                        <Field label="Reason for move">
+                          <input name="note" placeholder="e.g. Moved to calving pen" className={inputClass} />
                         </Field>
                         <div className="flex justify-end pt-1">
-                          <Submit>Clear isolation</Submit>
+                          <Submit>Move</Submit>
                         </div>
                       </form>
                     </RecordDialog>
-                  ) : (
-                    <RecordDialog title="Isolate animal" button="Isolate" quiet>
-                      <form action={setIsolation} className="grid gap-3">
-                        <input type="hidden" name="animalId" value={animal.id} />
-                        <Field label="Reason for isolation">
-                          <input name="reason" required placeholder="e.g. Suspected infection / quarantine" className={inputClass} />
-                        </Field>
-                        <div className="flex justify-end pt-1">
-                          <Submit>Isolate</Submit>
-                        </div>
-                      </form>
-                    </RecordDialog>
-                  )}
+                  ) : null}
+                  {canIsolate ? (
+                    animal.isolationReason ? (
+                      <RecordDialog title="Clear isolation" button="Clear isolation" quiet>
+                        <form action={clearIsolation} className="grid gap-3">
+                          <input type="hidden" name="animalId" value={animal.id} />
+                          <Field label="Why isolation ended">
+                            <input name="note" required placeholder="e.g. Cleared by veterinarian" className={inputClass} />
+                          </Field>
+                          <div className="flex justify-end pt-1">
+                            <Submit>Clear isolation</Submit>
+                          </div>
+                        </form>
+                      </RecordDialog>
+                    ) : (
+                      <RecordDialog title="Isolate animal" button="Isolate" quiet>
+                        <form action={setIsolation} className="grid gap-3">
+                          <input type="hidden" name="animalId" value={animal.id} />
+                          <Field label="Reason for isolation">
+                            <input name="reason" required placeholder="e.g. Suspected infection / quarantine" className={inputClass} />
+                          </Field>
+                          <Field label="Isolated date">
+                            <input name="isolatedOn" type="date" defaultValue={today} max={today} className={inputClass} />
+                          </Field>
+                          <label className="flex items-center gap-2 text-xs text-foreground">
+                            <input name="moveToIsolation" type="checkbox" defaultChecked />
+                            Also move animal to the Isolation shed (if active)
+                          </label>
+                          <div className="flex justify-end pt-1">
+                            <Submit>Isolate</Submit>
+                          </div>
+                        </form>
+                      </RecordDialog>
+                    )
+                  ) : null}
                 </div>
               ) : null
             }
@@ -1597,7 +1939,7 @@ export async function AnimalHub({
                 <span className="text-xs font-medium text-muted-foreground">Isolation status:</span>
                 {animal.isolationReason ? (
                   <Pill tone="warn">
-                    Isolated · {animal.isolationReason}
+                    {canSeeClinical ? `Isolated · ${animal.isolationReason}` : "Isolated"}
                     {animal.isolatedOn ? ` (since ${formatDisplayDate(animal.isolatedOn)})` : ""}
                   </Pill>
                 ) : (
@@ -1747,22 +2089,23 @@ function generationTargets(chart: AncestorChart) {
 
 const generationMessages: Record<string, string> = {
   generation: "Choose who you are adding parents for, and enter a sire or a dam.",
-  gendam: "That dam needs to be a cow already on this farm. Use her animal code.",
-  gensire: "The sire code cannot be the same animal.",
+  gendam: "That dam needs to be a cow already on this farm without creating a cycle.",
+  gensire: "The sire cannot be the same animal or create a cycle.",
 };
 
 const pedigreeMessages: Record<string, string> = {
   pedigree: "Check the sire and dam, then try again.",
   dam: "Choose a dam from this farm. She cannot be this animal or one of her descendants.",
-  sire: "The sire code cannot be this animal.",
+  sire: "The sire cannot be this animal or one of its descendants.",
 };
 
 const detailMessages: Record<string, string> = {
   details: "Check these details and try again.",
-  date: "Date of birth is not valid.",
+  date: "Date of birth or purchase date is not valid.",
   eartag: "That ear tag is already used on this farm.",
+  rfid: "That RFID tag is already used on this farm.",
   dam: "Choose a dam from this farm. She cannot be this animal or one of her descendants.",
-  sire: "The sire code cannot be this animal.",
+  sire: "The sire cannot be this animal or one of its descendants.",
 };
 
 function pregnancyResult(result: string) {

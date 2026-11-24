@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
   animals,
@@ -22,11 +22,11 @@ import {
 } from "@/db/schema";
 import { formatDisplayDate } from "@/lib/dates";
 import { embryoStatusLabel, embryoStorageLabel } from "@/lib/embryo-stock";
-import { feedCategoryLabel, feedKindLabel, feedSign } from "@/lib/feed-stock";
+import { feedCategoryLabel, feedKindLabel, feedSignedDelta } from "@/lib/feed-stock";
 import { geneticsPerformance } from "@/lib/genetics-snapshot";
 import { healthOutcome } from "@/lib/health-register";
 import { lactationLabel, lifeStageLabel, presenceLabel, reproductionLabel, sexLabel } from "@/lib/labels";
-import { canSeeClinical, canViewFinance, canViewGenetics, canViewHealth, canViewReports, canViewSemen, canViewSemenCost } from "@/lib/permissions";
+import { canExportReport, canSeeClinical, canViewPurchasePrice, canViewSemenCost } from "@/lib/permissions";
 import { semenTypeLabel, strawStatusLabel } from "@/lib/semen-stock";
 
 export type ReportScope = {
@@ -41,12 +41,7 @@ export type ReportScope = {
 const dated = new Set(["breeding", "milk", "health", "feed", "weight", "finance"]);
 
 export function canOpenReport(kind: string, roles: string[]) {
-  if (!canViewReports(roles)) return false;
-  if (kind === "health") return canViewHealth(roles);
-  if (kind === "finance") return canViewFinance(roles);
-  if (kind === "genetics" || kind === "embryos") return canViewGenetics(roles);
-  if (kind === "semen") return canViewSemen(roles);
-  return kind === "cattle" || kind === "breeding" || kind === "milk" || kind === "feed" || kind === "weight";
+  return canExportReport(roles, kind);
 }
 
 export function reportWindow(from?: string, to?: string) {
@@ -106,7 +101,7 @@ export function reportFacts(kind: string, rows: string[][]) {
     return [
       { label: "Movements", value: String(rows.length) },
       { label: "Items", value: String(unique(rows, 1)) },
-      { label: "On hand", value: oneDecimal(totalOf(rows, 4)) },
+      { label: "Net change", value: oneDecimal(totalOf(rows, 4)) },
     ];
   }
   if (kind === "semen") {
@@ -175,7 +170,7 @@ export function reportCharts(kind: string, rows: string[][]): ReportChart[] {
     charts.push(fromChart("Records by type", "bars", chartFor(kind, rows)));
     charts.push(bars("Animals", "count", ranked(rows, (row) => row[3] || row[2], () => 1)));
   } else if (kind === "feed") {
-    charts.push(fromChart("Quantity on hand", "bars", chartFor(kind, rows)));
+    charts.push(fromChart("Net quantity by item", "bars", chartFor(kind, rows)));
     charts.push(bars("Movements", "count", countEntries(rows, 3)));
   } else if (kind === "semen") {
     charts.push(fromChart("Straws by status", "bars", chartFor(kind, rows)));
@@ -184,7 +179,17 @@ export function reportCharts(kind: string, rows: string[][]): ReportChart[] {
     charts.push(fromChart("Weighings", "bars", chartFor(kind, rows)));
   } else if (kind === "finance") {
     charts.push(fromChart("Active amount", "bars", chartFor(kind, rows)));
-    charts.push(bars("Active amount by category", "finance", ranked(rows.filter((row) => row[6] !== "Voided"), (row) => row[2], (row) => numberOf(row[3]))));
+    charts.push(
+      bars(
+        "Active amount by category",
+        "finance",
+        ranked(
+          rows.filter((row) => row[6] !== "Voided"),
+          (row) => `${row[1]} · ${row[2]}`,
+          (row) => numberOf(row[3]),
+        ),
+      ),
+    );
   } else if (kind === "embryos") {
     charts.push(fromChart("Embryos by status", "bars", chartFor(kind, rows)));
     charts.push(bars("Storage", "count", countEntries(rows, 5)));
@@ -250,7 +255,7 @@ async function cattleRows(farmId: string, scope: ReportScope) {
     db.select().from(animals).where(eq(animals.farmId, farmId)),
     db.select().from(breeds).where(eq(breeds.farmId, farmId)),
     db.select().from(locations).where(eq(locations.farmId, farmId)),
-    db.select().from(weights).where(eq(weights.farmId, farmId)),
+    db.select().from(weights).where(and(eq(weights.farmId, farmId), isNull(weights.voidedAt))),
   ]);
   const breedName = new Map(breedRows.map((breed) => [breed.id, breed.name]));
   const shedName = new Map(sheds.map((shed) => [shed.id, shed.name]));
@@ -259,7 +264,7 @@ async function cattleRows(farmId: string, scope: ReportScope) {
   for (const row of [...weighed].sort((a, b) => a.weighedOn.localeCompare(b.weighedOn))) {
     latest.set(row.animalId, row);
   }
-  const showPrice = canViewFinance(scope.roles ?? []);
+  const showPrice = canViewPurchasePrice(scope.roles ?? []);
   const presence = scope.presence && scope.presence in presenceLabel ? scope.presence : "";
   const sex = scope.sex && scope.sex in sexLabel ? scope.sex : "";
   const rows = herd
@@ -284,6 +289,7 @@ async function cattleRows(farmId: string, scope: ReportScope) {
         joinName(animal.geneticSireName, animal.geneticSireCode),
         dam ? joinName(dam.name, dam.code) : "",
         animal.earTag ?? "",
+        animal.rfid ?? "",
         weight?.kilograms ?? "",
         weight ? formatDisplayDate(weight.weighedOn) : "",
       ];
@@ -291,7 +297,7 @@ async function cattleRows(farmId: string, scope: ReportScope) {
       return row;
     });
   return [
-    ["Code", "Name", "Breed", "Sex", "Date of birth", "Presence", "Stage", "Reproduction", "Lactation", "Location", "Sire", "Dam", "Ear tag", "Latest weight", "Weighed on", ...(showPrice ? ["Purchase price"] : [])],
+    ["Code", "Name", "Breed", "Sex", "Date of birth", "Presence", "Stage", "Reproduction", "Lactation", "Location", "Sire", "Dam", "Ear tag", "RFID", "Latest weight", "Weighed on", ...(showPrice ? ["Purchase price"] : [])],
     ...rows,
   ];
 }
@@ -319,7 +325,7 @@ async function breedingRows(farmId: string, window: { from?: string; to?: string
       const calf = row.calfId ? named.get(row.calfId) : undefined;
       return {
         date: row.calvedOn,
-        cells: ["Calving", formatDisplayDate(row.calvedOn), named.get(row.damId)?.code ?? "", named.get(row.damId)?.name ?? "", service ? joinName(service.bullName, service.bullCode) : "", [row.outcome === "live" ? "Live calf" : row.outcome, calf?.code].filter(Boolean).join(" · ")],
+        cells: ["Calving", formatDisplayDate(row.calvedOn), named.get(row.damId)?.code ?? "", named.get(row.damId)?.name ?? "", service ? joinName(service.bullName, service.bullCode) : "", [row.outcome === "live" ? "Live calf" : row.outcome, calf?.code, row.ease].filter(Boolean).join(" · ")],
       };
     }),
   ].sort((a, b) => b.date.localeCompare(a.date));
@@ -354,15 +360,15 @@ async function healthRows(farmId: string, window: { from?: string; to?: string }
   const lines = [
     ...events.filter((row) => !row.voidedAt && inReportRange(row.eventOn, window.from, window.to)).map((row) => ({
       date: row.eventOn,
-      cells: ["Treatment", formatDisplayDate(row.eventOn), named.get(row.animalId)?.code ?? "", named.get(row.animalId)?.name ?? "", [row.problem, row.medicine, healthOutcome(row.outcome)].filter(Boolean).join(" · ")],
+      cells: ["Treatment", formatDisplayDate(row.eventOn), named.get(row.animalId)?.code ?? "", named.get(row.animalId)?.name ?? "", [row.problem, row.medicine, healthOutcome(row.outcome), row.cost ? `₹${row.cost}` : ""].filter(Boolean).join(" · ")],
     })),
     ...doses.filter((row) => !row.voidedAt && inReportRange(row.givenOn, window.from, window.to)).map((row) => ({
       date: row.givenOn,
-      cells: ["Vaccine", formatDisplayDate(row.givenOn), named.get(row.animalId)?.code ?? "", named.get(row.animalId)?.name ?? "", row.vaccine],
+      cells: ["Vaccine", formatDisplayDate(row.givenOn), named.get(row.animalId)?.code ?? "", named.get(row.animalId)?.name ?? "", [row.vaccine, row.batch, row.nextDueOn ? `Due ${formatDisplayDate(row.nextDueOn)}` : ""].filter(Boolean).join(" · ")],
     })),
     ...worms.filter((row) => !row.voidedAt && inReportRange(row.givenOn, window.from, window.to)).map((row) => ({
       date: row.givenOn,
-      cells: ["Deworming", formatDisplayDate(row.givenOn), named.get(row.animalId)?.code ?? "", named.get(row.animalId)?.name ?? "", row.product],
+      cells: ["Deworming", formatDisplayDate(row.givenOn), named.get(row.animalId)?.code ?? "", named.get(row.animalId)?.name ?? "", [row.product, row.nextDueOn ? `Due ${formatDisplayDate(row.nextDueOn)}` : ""].filter(Boolean).join(" · ")],
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
   return [["Type", "Date", "Code", "Name", "Detail"], ...lines.map((line) => line.cells)];
@@ -371,7 +377,7 @@ async function healthRows(farmId: string, window: { from?: string; to?: string }
 async function feedRows(farmId: string, window: { from?: string; to?: string }) {
   const [items, movements] = await Promise.all([
     db.select().from(feedItems).where(eq(feedItems.farmId, farmId)),
-    db.select().from(feedMovements).where(eq(feedMovements.farmId, farmId)),
+    db.select().from(feedMovements).where(and(eq(feedMovements.farmId, farmId), isNull(feedMovements.voidedAt))),
   ]);
   const named = new Map(items.map((item) => [item.id, item]));
   const rows = movements
@@ -379,9 +385,17 @@ async function feedRows(farmId: string, window: { from?: string; to?: string }) 
     .sort((a, b) => b.movedOn.localeCompare(a.movedOn))
     .map((row) => {
       const item = named.get(row.itemId);
-      const amount = Math.abs(Number(row.quantity)).toFixed(1);
-      const sign = feedSign(row.kind);
-      return [formatDisplayDate(row.movedOn), item?.name ?? "", feedCategoryLabel[item?.category ?? ""] ?? item?.category ?? "", feedKindLabel[row.kind] ?? row.kind, `${sign < 0 ? "-" : sign > 0 ? "+" : ""}${amount}`, item?.unit ?? "", row.note ?? ""];
+      const delta = feedSignedDelta(row.kind, row.quantity);
+      const amount = Math.abs(delta).toFixed(1);
+      return [
+        formatDisplayDate(row.movedOn),
+        item?.name ?? "",
+        feedCategoryLabel[item?.category ?? ""] ?? item?.category ?? "",
+        feedKindLabel[row.kind] ?? row.kind,
+        `${delta < 0 ? "-" : delta > 0 ? "+" : ""}${amount}`,
+        item?.unit ?? "",
+        row.note ?? "",
+      ];
     });
   return [["Date", "Item", "Category", "Movement", "Quantity", "Unit", "Detail"], ...rows];
 }
@@ -417,7 +431,8 @@ async function financeRows(farmId: string, window: { from?: string; to?: string 
     .sort((a, b) => b.entryOn.localeCompare(a.entryOn))
     .map((row) => {
       const animal = row.animalId ? named.get(row.animalId) : undefined;
-      return [formatDisplayDate(row.entryOn), row.kind === "income" ? "Income" : "Expense", labelWords(row.category), Number(row.amount).toFixed(2), animal ? joinName(animal.name, animal.code) : "Whole farm", row.note?.startsWith("suggested:") ? "Confirmed from records" : row.note ?? "", row.voidedAt ? "Voided" : "Active"];
+      const noteText = row.note?.startsWith("suggested:") ? "Confirmed from records" : (row.note ?? "");
+      return [formatDisplayDate(row.entryOn), row.kind === "income" ? "Income" : "Expense", labelWords(row.category), Number(row.amount).toFixed(2), animal ? joinName(animal.name, animal.code) : "Whole farm", noteText, row.voidedAt ? "Voided" : "Active"];
     });
   return [["Date", "Type", "Category", "Amount", "Animal", "Note", "Status"], ...rows];
 }
@@ -427,7 +442,7 @@ async function weightRows(farmId: string, window: { from?: string; to?: string }
     .select({ weighedOn: weights.weighedOn, kilograms: weights.kilograms, note: weights.note, code: animals.code, name: animals.name })
     .from(weights)
     .innerJoin(animals, eq(animals.id, weights.animalId))
-    .where(eq(weights.farmId, farmId));
+    .where(and(eq(weights.farmId, farmId), isNull(weights.voidedAt)));
   const body = rows
     .filter((row) => inReportRange(row.weighedOn, window.from, window.to))
     .sort((a, b) => b.weighedOn.localeCompare(a.weighedOn))
