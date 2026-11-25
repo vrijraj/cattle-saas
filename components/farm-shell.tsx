@@ -103,9 +103,9 @@ export function FarmShell({
   };
 
   return (
-    <ScreenTransition>
-      <div className="min-h-screen bg-[#141518] text-foreground md:grid md:grid-cols-[244px_1fr] print:block print:min-h-0 print:bg-white">
-        <aside className="sticky top-0 hidden h-screen flex-col self-start overflow-hidden bg-[#141518] text-zinc-100 md:flex print:hidden">
+    <ScreenTransition className="md:h-dvh md:overflow-hidden print:overflow-visible">
+      <div className="min-h-dvh bg-[#141518] text-foreground md:grid md:h-dvh md:grid-cols-[244px_1fr] md:overflow-hidden print:block print:h-auto print:min-h-0 print:overflow-visible print:bg-white">
+        <aside className="hidden h-full flex-col overflow-hidden bg-[#141518] text-zinc-100 md:flex print:hidden">
           <div className="flex items-center justify-between gap-2 px-3.5 pt-3.5 pb-2">
             <Link href="/dashboard" className="flex min-w-0 items-center gap-2">
               <span className="grid size-6 shrink-0 place-items-center rounded-md bg-white text-[#141518]">
@@ -141,79 +141,86 @@ export function FarmShell({
           </div>
         </aside>
 
-        <div className="min-w-0 bg-[#f3f4f6] md:my-2 md:mr-2 md:flex md:min-h-[calc(100vh-1rem)] md:flex-col md:overflow-x-clip md:rounded-[24px] md:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] print:m-0 print:min-h-0 print:rounded-none print:bg-white print:shadow-none">
-          <header className="sticky top-0 z-20 flex items-center justify-between gap-2 bg-[#f3f4f6]/90 px-3 py-2.5 backdrop-blur-md sm:px-6 md:rounded-t-[24px] print:hidden">
-            <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
-              <FarmDrawer
-                farmName={farmName}
-                userName={userName}
-                role={role}
-                initials={initials}
-                locale={locale}
-                {...navFlags}
-                showAdmin={showAdmin}
-                signOut={<SignOutButton />}
-              />
-              <HerdSearch variant="header" farmId={farmId} userId={userId} {...navFlags} />
-            </div>
+        <div className="flex min-h-dvh min-w-0 flex-col bg-[#f3f4f6] md:my-2 md:mr-2 md:h-[calc(100dvh-1rem)] md:min-h-0 md:overflow-hidden md:rounded-[24px] md:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] print:m-0 print:block print:h-auto print:min-h-0 print:overflow-visible print:rounded-none print:bg-white print:shadow-none">
+          <header
+            style={{ viewTransitionName: "farm-header" }}
+            className="sticky top-0 z-20 shrink-0 border-b border-black/[0.04] bg-[#f3f4f6]/90 px-4 py-2.5 backdrop-blur-md sm:px-7 md:relative md:top-auto md:px-9 print:hidden"
+          >
+            <div className="mx-auto flex w-full max-w-[1220px] items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
+                <FarmDrawer
+                  farmName={farmName}
+                  userName={userName}
+                  role={role}
+                  initials={initials}
+                  locale={locale}
+                  {...navFlags}
+                  showAdmin={showAdmin}
+                  signOut={<SignOutButton />}
+                />
+                <HerdSearch variant="header" farmId={farmId} userId={userId} {...navFlags} />
+              </div>
 
-            <div className="ml-auto flex items-center gap-2">
-              <Link
-                href="/scan"
-                title="Scan animal QR or semen straw"
-                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-white px-3 text-xs font-medium text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
-              >
-                <ScanLine className="size-3.5 text-muted-foreground" />
-                <span className="hidden sm:inline">{t(locale, "action.scanQr")}</span>
-              </Link>
-              <Link
-                href={`/farms/${farmSlug}`}
-                title="Open public farm catalogue & shop"
-                className="hidden h-8 items-center gap-1.5 rounded-full border border-border bg-white px-3 text-xs font-medium text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary sm:inline-flex"
-              >
-                <Eye className="size-3.5 text-muted-foreground" />
-                <span>{t(locale, "action.publicPage")}</span>
-              </Link>
-              <Link
-                href="/alerts"
-                title="View alerts & scheduled reminders"
-                className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition ${
-                  openAlertCount > 0
-                    ? "border-amber-500/30 bg-amber-500/12 text-amber-900 hover:bg-amber-500/20"
-                    : "border-emerald-500/25 bg-emerald-500/12 text-emerald-800 hover:bg-emerald-500/20"
-                }`}
-              >
-                <span className={`size-2 rounded-full ${openAlertCount > 0 ? "bg-amber-600" : "bg-emerald-600"}`} />
-                <span className="tabular-nums">
-                  {openAlertCount > 0 ? `${openAlertCount} ${t(locale, "status.openAlerts")}` : t(locale, "status.allClear")}
-                </span>
-                <Bell className="ml-0.5 size-3.5" />
-              </Link>
-              <Link
-                href="/ai"
-                title="AI Assistant"
-                className="grid size-8 shrink-0 place-items-center rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-700 transition hover:bg-indigo-500/15"
-              >
-                <Sparkles className="size-3.5" />
-                <span className="sr-only">AI Assistant</span>
-              </Link>
-              <AccountMenu
-                farmName={farmName}
-                currentFarmId={farmId}
-                locale={locale}
-                farms={farms}
-                userName={userName}
-                role={role}
-                initials={initials}
-                logout={<SignOutButton menu />}
-              />
+              <div className="ml-auto flex items-center gap-2">
+                <Link
+                  href="/scan"
+                  title="Scan animal QR or semen straw"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-white px-3 text-xs font-medium text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
+                >
+                  <ScanLine className="size-3.5 text-muted-foreground" />
+                  <span className="hidden sm:inline">{t(locale, "action.scanQr")}</span>
+                </Link>
+                <Link
+                  href={`/farms/${farmSlug}`}
+                  title="Open public farm catalogue & shop"
+                  className="hidden h-8 items-center gap-1.5 rounded-full border border-border bg-white px-3 text-xs font-medium text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary sm:inline-flex"
+                >
+                  <Eye className="size-3.5 text-muted-foreground" />
+                  <span>{t(locale, "action.publicPage")}</span>
+                </Link>
+                <Link
+                  href="/alerts"
+                  title="View alerts & scheduled reminders"
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition ${
+                    openAlertCount > 0
+                      ? "border-amber-500/30 bg-amber-500/12 text-amber-900 hover:bg-amber-500/20"
+                      : "border-emerald-500/25 bg-emerald-500/12 text-emerald-800 hover:bg-emerald-500/20"
+                  }`}
+                >
+                  <span className={`size-2 rounded-full ${openAlertCount > 0 ? "bg-amber-600" : "bg-emerald-600"}`} />
+                  <span className="tabular-nums">
+                    {openAlertCount > 0 ? `${openAlertCount} ${t(locale, "status.openAlerts")}` : t(locale, "status.allClear")}
+                  </span>
+                  <Bell className="ml-0.5 size-3.5" />
+                </Link>
+                <Link
+                  href="/ai"
+                  title="AI Assistant"
+                  className="grid size-8 shrink-0 place-items-center rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-700 transition hover:bg-indigo-500/15"
+                >
+                  <Sparkles className="size-3.5" />
+                  <span className="sr-only">AI Assistant</span>
+                </Link>
+                <AccountMenu
+                  farmName={farmName}
+                  currentFarmId={farmId}
+                  locale={locale}
+                  farms={farms}
+                  userName={userName}
+                  role={role}
+                  initials={initials}
+                  logout={<SignOutButton menu />}
+                />
+              </div>
             </div>
           </header>
 
-          <main className="mx-auto w-full min-w-0 max-w-[1220px] flex-1 overflow-x-clip px-4 pt-2 pb-8 sm:px-7 md:px-9 print:max-w-none print:p-0">
-            <OfflineSyncBanner />
-            <PageTransition>{children}</PageTransition>
-          </main>
+          <div className="farm-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain print:block print:overflow-visible">
+            <main className="mx-auto flex w-full min-w-0 max-w-[1220px] flex-1 flex-col overflow-x-clip px-4 pt-3 pb-8 sm:px-7 md:px-9 print:block print:max-w-none print:p-0">
+              <OfflineSyncBanner />
+              <PageTransition>{children}</PageTransition>
+            </main>
+          </div>
         </div>
       </div>
     </ScreenTransition>

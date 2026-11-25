@@ -1,5 +1,5 @@
 import { PageLoader } from "@/components/page-loader";
 
-export default function Loading() {
-  return <PageLoader />;
+export default function FarmRouteLoading() {
+  return <PageLoader label="Loading records" />;
 }

@@ -248,8 +248,8 @@ export default async function DashboardPage() {
   const cardClass = "rounded-2xl border border-black/[0.06] bg-card p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
 
   return (
-    <div className="space-y-4">
-      <section className="flex flex-col justify-between gap-4 pt-1 pb-2 sm:flex-row sm:items-start">
+    <div className="page-enter space-y-4">
+      <section className="flex flex-col justify-between gap-4 pt-0.5 pb-1 sm:flex-row sm:items-start">
         <div>
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{t(farm.locale, "dash.title")}</h1>
@@ -327,7 +327,7 @@ export default async function DashboardPage() {
       </section>
 
       {showFinance ? (
-        <section className="grid grid-cols-3 gap-3">
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
             <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthIncome")}</p>
             <p className="mt-1 font-display text-xl font-semibold tabular-nums text-emerald-700">₹{Math.round(mtdIncome).toLocaleString("en-IN")}</p>

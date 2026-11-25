@@ -66,7 +66,7 @@ export function PanelTabs({
           );
         })}
       </div>
-      <div role="tabpanel">{pending ? <PageLoader /> : panels[tab]}</div>
+      <div role="tabpanel">{pending ? <PageLoader compact /> : panels[tab]}</div>
     </div>
   );
 }
