@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   serverExternalPackages: ["@electric-sql/pglite", "exceljs", "@aws-sdk/client-s3", "@google/adk", "@google/genai"],
   experimental: {
+    agentUpgrade: "security",
     serverActions: {
       bodySizeLimit: "12mb",
     },
