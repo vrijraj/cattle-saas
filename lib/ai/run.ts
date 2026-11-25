@@ -2,20 +2,25 @@ import "server-only";
 
 import { getFunctionCalls, isFinalResponse, LlmAgent, Runner, StreamingMode } from "@google/adk";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
-import { DurableSessionService, sessionFilePath } from "@/lib/ai/sessions";
+import { PostgresSessionService } from "@/lib/ai/sessions";
 import { farmTools, type FarmScope } from "@/lib/ai/tools";
 
 const APP_NAME = "cattle-farm-assistant";
 
-const globalAi = globalThis as unknown as { cattleAiSessions?: DurableSessionService };
+const globalAi = globalThis as unknown as { cattleAiSessions?: PostgresSessionService };
 
 function sessions() {
-  globalAi.cattleAiSessions ??= new DurableSessionService(sessionFilePath());
+  globalAi.cattleAiSessions ??= new PostgresSessionService();
   return globalAi.cattleAiSessions;
 }
 
+export type AiImageAttachment = {
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  base64: string;
+};
+
 export type AiTurn =
-  | { kind: "text"; text: string }
+  | { kind: "text"; text: string; image?: AiImageAttachment }
   | { kind: "confirm"; id: string; confirmed: boolean };
 
 export type AiEvent =
@@ -44,6 +49,8 @@ export async function* runFarmAssistant(scope: FarmScope, turn: AiTurn, sessionI
 
 Use function calls for every lookup and every save. Never answer a number, name, date, or status from memory. If a function says this role cannot open a register, say that and do not guess.
 
+If the user attaches a photo (for example a veterinary prescription, feed/medicine bill, lab report, or ear tag), read the details carefully and propose calling the matching record tool (such as record_treatment, record_finance, or record_feed).
+
 Saving and voiding functions wait for the person to confirm. Call the function with the fields they asked for, then wait. Do not claim a record was saved or voided until the function result says saved is true. Do not disable staff.
 
 Mating checks are decision support. Repeat the disclaimer the function returns. For male cattle, reproduction and lactation are not applicable.
@@ -63,9 +70,16 @@ Answer in short paragraphs. When the answer is a set of animals or rows, use one
   let answered = false;
   let failed = false;
   let waiting = false;
+
   const newMessage =
     turn.kind === "text"
-      ? { role: "user" as const, parts: [{ text: turn.text }] }
+      ? {
+          role: "user" as const,
+          parts: [
+            ...(turn.text ? [{ text: turn.text }] : [{ text: "Analyze the attached image and help me record or understand it." }]),
+            ...(turn.image ? [{ inlineData: { mimeType: turn.image.mimeType, data: turn.image.base64 } }] : []),
+          ],
+        }
       : {
           role: "user" as const,
           parts: [
@@ -78,6 +92,7 @@ Answer in short paragraphs. When the answer is a set of animals or rows, use one
             },
           ],
         };
+
   try {
     for await (const event of runner.runAsync({
       userId: scopedUser,

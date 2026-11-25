@@ -103,14 +103,27 @@ export default async function ProfilePage({
       </Panel>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Display name" description="Shown on records and audit entries you create.">
+        <Panel title="Profile, WhatsApp & language" description="Shown on records and audit entries. Linking your phone enables WhatsApp shed commands.">
           <form action={updateProfileName} className="grid gap-3">
             <label className="grid gap-1 text-sm">
               <span className="text-muted-foreground">Name</span>
               <input name="name" required minLength={2} maxLength={120} defaultValue={farm.userName ?? ""} className={inputClass} />
             </label>
+            <label className="grid gap-1 text-sm">
+              <span className="text-muted-foreground">Phone / WhatsApp (optional)</span>
+              <input name="phone" type="tel" maxLength={20} defaultValue={farm.userPhone ?? ""} placeholder="+919876543210" className={inputClass} />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="text-muted-foreground">Interface language</span>
+              <select name="locale" defaultValue={farm.locale} className={inputClass}>
+                <option value="en">English</option>
+                <option value="hi">हिन्दी (Hindi)</option>
+                <option value="gu">ગુજરાતી (Gujarati)</option>
+                <option value="mr">मराठी (Marathi)</option>
+              </select>
+            </label>
             <div>
-              <Submit>Save name</Submit>
+              <Submit>Save profile</Submit>
             </div>
           </form>
         </Panel>

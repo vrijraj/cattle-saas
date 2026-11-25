@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { alerts, animals } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { runDailyAutomationForFarm } from "@/lib/daily-automation";
 import { farmToday, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canResolveAlert, hasRole } from "@/lib/permissions";
@@ -117,4 +118,13 @@ export async function createCustomAlert(formData: FormData) {
   });
 
   redirect("/alerts");
+}
+
+export async function runDailyCheckNow() {
+  const farm = await requireFarm();
+  if (!hasRole(farm.roles, ["owner", "manager", "admin"])) {
+    redirect("/alerts?error=role");
+  }
+  await runDailyAutomationForFarm(farm.farmId, { actorId: farm.userId, sendDigest: false });
+  redirect("/alerts?checked=1");
 }

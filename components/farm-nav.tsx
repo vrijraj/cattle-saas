@@ -20,6 +20,7 @@ import {
   ScanLine,
   ScrollText,
   Settings,
+  Shield,
   ShoppingBag,
   Sparkles,
   Sprout,
@@ -29,77 +30,79 @@ import {
   Warehouse,
   Wheat,
 } from "lucide-react";
+import { t, type DictionaryKey } from "@/lib/i18n";
 
 type NavItem = {
   href: string;
-  label: string;
+  labelKey: DictionaryKey;
   icon: ComponentType<{ className?: string }>;
 };
 
 type CollapsibleGroup = {
   id: string;
-  label: string;
+  labelKey: DictionaryKey;
   icon: ComponentType<{ className?: string }>;
   links: NavItem[];
 };
 
 const topLinks: NavItem[] = [
-  { href: "/dashboard", label: "Overview", icon: LayoutGrid },
-  { href: "/animals", label: "Cattle register", icon: Beef },
-  { href: "/ai", label: "AI Assistant", icon: Sparkles },
-  { href: "/reports", label: "Reports", icon: FileBarChart },
+  { href: "/dashboard", labelKey: "nav.overview", icon: LayoutGrid },
+  { href: "/animals", labelKey: "nav.cattle", icon: Beef },
+  { href: "/ai", labelKey: "nav.ai", icon: Sparkles },
+  { href: "/reports", labelKey: "nav.reports", icon: FileBarChart },
 ];
 
 const accordionGroups: CollapsibleGroup[] = [
   {
     id: "herd",
-    label: "Herd & sheds",
+    labelKey: "group.herd",
     icon: Warehouse,
     links: [
-      { href: "/locations", label: "Sheds & pens", icon: Warehouse },
-      { href: "/milk", label: "Milk production", icon: Milk },
-      { href: "/feed", label: "Feed & nutrition", icon: Wheat },
-      { href: "/scan", label: "Scan QR / Tag", icon: ScanLine },
+      { href: "/locations", labelKey: "nav.sheds", icon: Warehouse },
+      { href: "/milk", labelKey: "nav.milk", icon: Milk },
+      { href: "/feed", labelKey: "nav.feed", icon: Wheat },
+      { href: "/scan", labelKey: "nav.scan", icon: ScanLine },
     ],
   },
   {
     id: "breeding",
-    label: "Breeding & genetics",
+    labelKey: "group.breeding",
     icon: Dna,
     links: [
-      { href: "/breeding", label: "Reproduction & AI", icon: HeartPulse },
-      { href: "/semen", label: "Bulls & semen", icon: Droplets },
-      { href: "/genetics", label: "Pedigree & mating", icon: Dna },
-      { href: "/insights", label: "Herd insights", icon: Lightbulb },
-      { href: "/embryos", label: "Embryos", icon: Sprout },
+      { href: "/breeding", labelKey: "nav.breeding", icon: HeartPulse },
+      { href: "/semen", labelKey: "nav.semen", icon: Droplets },
+      { href: "/genetics", labelKey: "nav.genetics", icon: Dna },
+      { href: "/insights", labelKey: "nav.insights", icon: Lightbulb },
+      { href: "/embryos", labelKey: "nav.embryos", icon: Sprout },
     ],
   },
   {
     id: "health",
-    label: "Health & reminders",
+    labelKey: "group.health",
     icon: Stethoscope,
     links: [
-      { href: "/health", label: "Veterinary & health", icon: Stethoscope },
-      { href: "/alerts", label: "Smart alerts", icon: Bell },
+      { href: "/health", labelKey: "nav.health", icon: Stethoscope },
+      { href: "/alerts", labelKey: "nav.alerts", icon: Bell },
     ],
   },
   {
     id: "commerce",
-    label: "Public & shop",
+    labelKey: "group.commerce",
     icon: ShoppingBag,
     links: [
-      { href: "/listings", label: "Public listings", icon: Globe },
-      { href: "/shop", label: "Shop & orders", icon: ShoppingBag },
-      { href: "/enquiries", label: "Buyer enquiries", icon: Mail },
+      { href: "/listings", labelKey: "nav.listings", icon: Globe },
+      { href: "/shop", labelKey: "nav.shop", icon: ShoppingBag },
+      { href: "/enquiries", labelKey: "nav.enquiries", icon: Mail },
     ],
   },
 ];
 
 const footerLinks: NavItem[] = [
-  { href: "/finance", label: "Finance", icon: Wallet },
-  { href: "/settings", label: "Farm settings", icon: Settings },
-  { href: "/team", label: "Team & roles", icon: Users },
-  { href: "/audit", label: "Audit log", icon: ScrollText },
+  { href: "/finance", labelKey: "nav.finance", icon: Wallet },
+  { href: "/settings", labelKey: "nav.settings", icon: Settings },
+  { href: "/team", labelKey: "nav.team", icon: Users },
+  { href: "/audit", labelKey: "nav.audit", icon: ScrollText },
+  { href: "/admin", labelKey: "nav.admin", icon: Shield },
 ];
 
 export function FarmNav({
@@ -114,6 +117,8 @@ export function FarmNav({
   showListings = false,
   showEnquiries = false,
   showSettings = false,
+  showAdmin = false,
+  locale = "en",
   variant = "sidebar",
 }: {
   showTeam?: boolean;
@@ -127,6 +132,8 @@ export function FarmNav({
   showListings?: boolean;
   showEnquiries?: boolean;
   showSettings?: boolean;
+  showAdmin?: boolean;
+  locale?: string;
   variant?: "sidebar" | "drawer";
 }) {
   const pathname = usePathname();
@@ -143,6 +150,7 @@ export function FarmNav({
     if (href === "/listings" && !showListings) return false;
     if (href === "/enquiries" && !showEnquiries) return false;
     if (href === "/settings" && !showSettings) return false;
+    if (href === "/admin" && !showAdmin) return false;
     return true;
   }
 
@@ -198,7 +206,7 @@ export function FarmNav({
                 }`}
               >
                 <NavMark icon={Icon} active={active} />
-                <span className="truncate">{link.label}</span>
+                <span className="truncate">{t(locale, link.labelKey)}</span>
               </Link>
             );
           })}
@@ -223,7 +231,7 @@ export function FarmNav({
                 }`}
               >
                 <GroupIcon className={`size-4 shrink-0 ${hasActiveChild ? "text-emerald-400" : "text-zinc-500"}`} />
-                <span className="flex-1 truncate">{group.label}</span>
+                <span className="flex-1 truncate">{t(locale, group.labelKey)}</span>
                 <ChevronDown
                   className={`size-3.5 shrink-0 text-zinc-500 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}
                 />
@@ -244,7 +252,7 @@ export function FarmNav({
                         }`}
                       >
                         <NavMark icon={Icon} active={active} small />
-                        <span className="truncate">{link.label}</span>
+                        <span className="truncate">{t(locale, link.labelKey)}</span>
                       </Link>
                     );
                   })}
@@ -269,7 +277,7 @@ export function FarmNav({
                     active ? "bg-white/[0.1] font-medium text-white" : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
                   }`}
                 >
-                  <span className="truncate">{link.label}</span>
+                  <span className="truncate">{t(locale, link.labelKey)}</span>
                   <ChevronRight className="size-3.5 shrink-0 text-zinc-500" />
                 </Link>
               );

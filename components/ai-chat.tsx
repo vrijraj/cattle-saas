@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { FormEvent, useEffect, useRef, useState, type ChangeEvent, type ComponentType, type ReactNode } from "react";
 import {
   ArrowUp,
   Bell,
@@ -9,7 +9,10 @@ import {
   Droplets,
   FileBarChart,
   HeartPulse,
+  ImagePlus,
   LayoutDashboard,
+  Mic,
+  MicOff,
   Milk,
   Plus,
   Scale,
@@ -36,6 +39,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   tools: string[];
+  hasImage?: boolean;
   pending?: boolean;
   restored?: boolean;
   confirms?: ConfirmCard[];
@@ -43,8 +47,26 @@ type ChatMessage = {
 };
 
 type SavedChat = {
-  sessionId?: string;
+  sessionId?: string | null;
   messages?: ChatMessage[];
+};
+
+type AttachedPhoto = {
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  base64: string;
+  previewUrl: string;
+  name: string;
+};
+
+type BrowserSpeechRecognition = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
 };
 
 const suggestions: { label: string; prompt: string; icon: ComponentType<{ className?: string }> }[] = [
@@ -211,7 +233,6 @@ const KNOWN_PATH_PATTERN =
   /(^|[\s(])(\/(?:dashboard|animals|breeding|health|milk|feed|semen|genetics|insights|embryos|finance|alerts|reports|shop|listings|enquiries|team|audit|locations|settings|scan|profile|farms|ai)(?:\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*)?)/g;
 
 function inlineText(source: string) {
-  // Replace bare known app paths only when preceded by start or whitespace/( so "₹55/L" or "morning/evening" stay plain text
   const normalized = source.replace(KNOWN_PATH_PATTERN, (full, prefix: string, path: string, offset: number, str: string) => {
     const before = str.slice(Math.max(0, offset - 2), offset);
     if (before.endsWith("](") || before.endsWith("`")) return full;
@@ -271,6 +292,15 @@ function confirmsOf(message: ChatMessage): ConfirmCard[] {
   return [];
 }
 
+function getSpeechConstructor(): (new () => BrowserSpeechRecognition) | null {
+  if (typeof window === "undefined") return null;
+  const win = window as unknown as {
+    SpeechRecognition?: new () => BrowserSpeechRecognition;
+    webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
+  };
+  return win.SpeechRecognition ?? win.webkitSpeechRecognition ?? null;
+}
+
 export function AiChat({
   farmName,
   storageScope,
@@ -285,51 +315,79 @@ export function AiChat({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [photo, setPhoto] = useState<AttachedPhoto | null>(null);
   const [notice, setNotice] = useState<string | null>(configured ? null : "Add GEMINI_API_KEY to .env and restart the server.");
   const sessionId = useRef<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (cancelled) return;
+    void (async () => {
+      const hasVoice = Boolean(getSpeechConstructor());
+      let restoredSession: string | null = null;
+      let restoredMessages: ChatMessage[] = [];
+
+      // Try server-side Postgres history first so chat syncs across mobile & desktop
       try {
-        const saved = localStorage.getItem(storageKey);
-        if (saved) {
-          const parsed = JSON.parse(saved) as SavedChat;
-          sessionId.current = parsed.sessionId ?? null;
-          const stored = (parsed.messages ?? [])
-            .filter((message) => !message.pending)
-            .map((message) => ({ ...message, restored: true }));
-          setMessages(stored);
-        } else {
-          sessionId.current = null;
-          setMessages([]);
+        const res = await fetch("/api/ai", { cache: "no-store" });
+        if (res.ok) {
+          const data = (await res.json()) as SavedChat;
+          if (data.sessionId && Array.isArray(data.messages) && data.messages.length > 0) {
+            restoredSession = data.sessionId;
+            restoredMessages = data.messages.filter((m) => !m.pending).map((m) => ({ ...m, restored: true }));
+          }
         }
       } catch {
-        localStorage.removeItem(storageKey);
-        sessionId.current = null;
-        setMessages([]);
+        // Fallback to localStorage below
       }
+
+      if (restoredMessages.length === 0) {
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (saved) {
+            const parsed = JSON.parse(saved) as SavedChat;
+            restoredSession = parsed.sessionId ?? null;
+            restoredMessages = (parsed.messages ?? [])
+              .filter((message) => !message.pending)
+              .map((message) => ({ ...message, restored: true }));
+          }
+        } catch {
+          localStorage.removeItem(storageKey);
+        }
+      }
+
+      if (cancelled) return;
+      sessionId.current = restoredSession;
+      setVoiceSupported(hasVoice);
+      setMessages(restoredMessages);
       setReady(true);
-    });
+    })();
     return () => {
       cancelled = true;
+      recognitionRef.current?.stop();
     };
   }, [storageKey]);
 
   useEffect(() => {
     if (!ready) return;
+    const clean = messages.filter((message) => !message.pending);
     try {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({ sessionId: sessionId.current, messages: messages.filter((message) => !message.pending) }),
-      );
+      localStorage.setItem(storageKey, JSON.stringify({ sessionId: sessionId.current, messages: clean }));
     } catch {
       // Ignore storage quota errors
     }
-  }, [messages, ready, storageKey]);
+    if (sessionId.current && !busy && clean.length > 0) {
+      void fetch("/api/ai", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: sessionId.current, messages: clean }),
+      }).catch(() => {});
+    }
+  }, [messages, ready, busy, storageKey]);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -349,12 +407,73 @@ export function AiChat({
     );
   }
 
+  function toggleVoice() {
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    const SpeechCtor = getSpeechConstructor();
+    if (!SpeechCtor) return;
+    const rec = new SpeechCtor();
+    rec.lang = "en-IN";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript?.trim();
+      if (transcript) {
+        setDraft((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      }
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => setListening(false);
+    recognitionRef.current = rec;
+    setListening(true);
+    rec.start();
+  }
+
+  function onPhotoPick(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setNotice("Attach a JPEG, PNG, or WebP photo.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setNotice("Image must be under 4 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      const comma = result.indexOf(",");
+      if (comma < 0) return;
+      setPhoto({
+        mimeType: file.type as AttachedPhoto["mimeType"],
+        base64: result.slice(comma + 1),
+        previewUrl: result,
+        name: file.name,
+      });
+      setNotice(null);
+    };
+    reader.readAsDataURL(file);
+  }
+
   async function send(raw: string, confirmation?: { id: string; confirmed: boolean }) {
     const text = raw.trim();
-    if (!configured || busy || (!confirmation && !text)) return;
+    const attached = confirmation ? null : photo;
+    if (!configured || busy || (!confirmation && !text && !attached)) return;
     setDraft("");
+    if (attached) setPhoto(null);
     setNotice(null);
-    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", text, tools: [] };
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      text: text || `Attached image: ${attached?.name ?? "photo"}`,
+      hasImage: Boolean(attached),
+      tools: [],
+    };
     const assistantId = crypto.randomUUID();
     setMessages((current) => [...current, userMessage, { id: assistantId, role: "assistant", text: "", tools: [], pending: true }]);
     setBusy(true);
@@ -371,7 +490,12 @@ export function AiChat({
       const response = await fetch("/api/ai", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: confirmation ? undefined : text, confirmation, sessionId: sessionId.current }),
+        body: JSON.stringify({
+          message: confirmation ? undefined : text,
+          image: attached ? { mimeType: attached.mimeType, base64: attached.base64 } : undefined,
+          confirmation,
+          sessionId: sessionId.current,
+        }),
         signal: controller.signal,
       });
       if (!response.ok || !response.body) {
@@ -460,13 +584,47 @@ export function AiChat({
     sessionId.current = null;
     localStorage.removeItem(storageKey);
     setMessages([]);
+    setPhoto(null);
     setNotice(configured ? null : "Add GEMINI_API_KEY to .env and restart the server.");
     setBusy(false);
   }
 
   const composer = (
     <form onSubmit={onSubmit}>
-      <div className="assistant-composer flex items-end gap-2 rounded-3xl border border-border bg-card p-2">
+      {photo ? (
+        <div className="mb-2 flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 text-xs">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photo.previewUrl} alt="Attached preview" className="size-10 rounded-lg object-cover" />
+          <span className="min-w-0 flex-1 truncate font-medium">{photo.name}</span>
+          <button type="button" onClick={() => setPhoto(null)} className="grid size-7 place-items-center rounded-full hover:bg-muted">
+            <X className="size-3.5" />
+            <span className="sr-only">Remove image</span>
+          </button>
+        </div>
+      ) : null}
+      <div className="assistant-composer flex items-end gap-1.5 rounded-3xl border border-border bg-card p-2">
+        <label
+          title="Attach vet prescription, bill, or photo"
+          className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        >
+          <ImagePlus className="size-4" />
+          <input type="file" accept="image/jpeg,image/png,image/webp" disabled={!configured || busy} onChange={onPhotoPick} className="sr-only" />
+          <span className="sr-only">Attach photo</span>
+        </label>
+        {voiceSupported ? (
+          <button
+            type="button"
+            disabled={!configured || busy}
+            onClick={toggleVoice}
+            title={listening ? "Stop voice input" : "Speak question or record"}
+            className={`grid size-10 shrink-0 place-items-center rounded-full transition ${
+              listening ? "bg-danger/15 text-danger" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+            <span className="sr-only">{listening ? "Stop voice input" : "Voice input"}</span>
+          </button>
+        ) : null}
         <textarea
           value={draft}
           disabled={!configured}
@@ -478,25 +636,27 @@ export function AiChat({
             }
           }}
           rows={1}
-          placeholder={configured ? "Ask about cattle, milk, breeding, money…" : "Gemini key needed before the first question"}
-          className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
+          placeholder={configured ? "Ask, speak, or snap a prescription / bill…" : "Gemini key needed before the first question"}
+          className="max-h-36 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
         />
         {busy ? (
-          <button type="button" onClick={() => abortRef.current?.abort()} className="h-11 shrink-0 rounded-full border border-border px-4 text-sm font-medium">
+          <button type="button" onClick={() => abortRef.current?.abort()} className="h-10 shrink-0 rounded-full border border-border px-4 text-sm font-medium">
             Stop
           </button>
         ) : (
           <button
             type="submit"
-            disabled={!configured || !draft.trim()}
-            className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+            disabled={!configured || (!draft.trim() && !photo)}
+            className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
           >
             <ArrowUp className="size-4" />
             <span className="sr-only">Send</span>
           </button>
         )}
       </div>
-      <p className="mt-2 text-center text-xs text-muted-foreground">Enter sends. Shift Enter adds a line. A save waits until you confirm it.</p>
+      <p className="mt-2 text-center text-xs text-muted-foreground">
+        Synced to your farm account across devices. Snap vet bills/prescriptions or use voice input. Every save waits for confirmation.
+      </p>
     </form>
   );
 
@@ -514,7 +674,9 @@ export function AiChat({
               ASSISTANT
             </p>
             <h1 className="mt-3 text-3xl sm:text-4xl">Ask about the farm</h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{farmName}. Ask about the herd, milk, breeding, health, feed, and what is due.</p>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+              {farmName}. Ask by text, voice, or photo about the herd, milk, breeding, health, feed, and what is due.
+            </p>
           </div>
           {notice ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">{notice}</p> : null}
           <div className="grid gap-3 sm:grid-cols-2">

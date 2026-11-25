@@ -22,6 +22,7 @@ const messages: Record<string, string> = {
   roles: "Choose at least one role.",
   owner: "Only an owner can grant, remove, or disable the Owner role.",
   reason: "Enter the reason for turning off this sign-in.",
+  quota: "Your farm plan's staff seat limit has been reached. Upgrade your plan in Farm settings to invite more members.",
 };
 
 export const metadata = { title: "Team" };

@@ -47,7 +47,15 @@ export default async function PublicFarmPage({
     .where(and(eq(listings.farmId, farm.id), eq(listings.published, "yes")))
     .orderBy(desc(listings.createdAt));
 
-  const visible = published.filter((item) => !category || item.listing.category.toLowerCase() === category);
+  const visible = published.filter((item) => {
+    if (!category) return true;
+    if (category === "pregnant") {
+      return Boolean(item.animal && item.listing.showPregnancy === "yes" && item.animal.reproduction === "pregnant");
+    }
+    return item.listing.category.toLowerCase() === category;
+  });
+
+  const waDigits = farm.whatsappNumber?.replace(/[^0-9]/g, "") ?? "";
 
   return (
     <PublicFrame title={farm.name} subtitle="Cattle & genetics catalogue" href={`/farms/${slug}`}>
@@ -56,9 +64,21 @@ export default async function PublicFarmPage({
           title="Published catalogue"
           description="Animals, semen, and embryos published by this farm for buyer enquiries."
           action={
-            <Link href={`/farms/${slug}/shop`} className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground">
-              Shop
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              {waDigits ? (
+                <a
+                  href={`https://wa.me/${waDigits}?text=${encodeURIComponent(`Hello ${farm.name}, I saw your cattle catalogue online.`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-10 items-center rounded-full border border-emerald-600/30 bg-emerald-50 px-4 text-sm font-medium text-emerald-900 hover:bg-emerald-100"
+                >
+                  WhatsApp farm
+                </a>
+              ) : null}
+              <Link href={`/farms/${slug}/shop`} className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground">
+                Shop
+              </Link>
+            </div>
           }
         />
         {query.sent ? <Notice>Your enquiry has been sent to the farm.</Notice> : null}
@@ -90,13 +110,23 @@ export default async function PublicFarmPage({
             {visible.map(({ listing, animal, breed }) => (
               <li key={listing.id}>
                 {animal ? (
-                  <Link href={`/farms/${slug}/${encodeURIComponent(animal.code)}`} className="block rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/40">
-                    <span className="font-medium">{listing.showName === "yes" ? (animal.name ?? animal.code) : animal.code}</span>
-                    <span className="mt-1 block text-sm text-muted-foreground">
-                      {animal.code} · {breed} · {listing.category}
-                      {listing.price ? ` · ₹${Number(listing.price).toLocaleString("en-IN")}` : " · Price on enquiry"}
-                    </span>
-                    {listing.publicNote ? <span className="mt-2 block text-sm">{listing.publicNote}</span> : null}
+                  <Link href={`/farms/${slug}/${encodeURIComponent(animal.code)}`} className="flex items-start gap-4 rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/40">
+                    {animal.photoKey ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/farms/${slug}/media/animal/${encodeURIComponent(animal.code)}`}
+                        alt={listing.showName === "yes" ? (animal.name ?? animal.code) : animal.code}
+                        className="size-20 shrink-0 rounded-xl border border-border object-cover"
+                      />
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium">{listing.showName === "yes" ? (animal.name ?? animal.code) : animal.code}</span>
+                      <span className="mt-1 block text-sm text-muted-foreground">
+                        {animal.code} · {breed} · {listing.category}
+                        {listing.price ? ` · ₹${Number(listing.price).toLocaleString("en-IN")}` : " · Price on enquiry"}
+                      </span>
+                      {listing.publicNote ? <span className="mt-2 block text-sm">{listing.publicNote}</span> : null}
+                    </div>
                   </Link>
                 ) : (
                   <div className="rounded-2xl border border-border bg-card p-5">
@@ -115,6 +145,7 @@ export default async function PublicFarmPage({
         <Panel title="Enquiry" className="max-w-lg">
           <form action={sendEnquiry} className="grid gap-3">
             <input type="hidden" name="slug" value={slug} />
+            <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
             <label className="grid gap-1 text-sm">
               Your name
               <input name="name" required maxLength={120} placeholder="Your name" className={inputClass} />

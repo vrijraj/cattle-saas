@@ -31,6 +31,9 @@ export const getFarm = cache(async function getFarm() {
       userId: users.id,
       userName: users.name,
       email: users.email,
+      userPhone: users.phone,
+      userLocale: users.locale,
+      isSuperAdmin: users.isSuperAdmin,
       disabledAt: users.disabledAt,
       farmId: farms.id,
       farmName: farms.name,
@@ -39,6 +42,8 @@ export const getFarm = cache(async function getFarm() {
       currency: farms.currency,
       animalPrefix: farms.animalPrefix,
       enquiryEmail: farms.enquiryEmail,
+      whatsappNumber: farms.whatsappNumber,
+      farmLocale: farms.locale,
       milkPricePerLitre: farms.milkPricePerLitre,
       milkDropPercent: farms.milkDropPercent,
       requireBothMilkSessions: farms.requireBothMilkSessions,
@@ -46,7 +51,13 @@ export const getFarm = cache(async function getFarm() {
       pdDueDaysBuffalo: farms.pdDueDaysBuffalo,
       dryOffLeadCattle: farms.dryOffLeadCattle,
       dryOffLeadBuffalo: farms.dryOffLeadBuffalo,
+      voluntaryWaitingDays: farms.voluntaryWaitingDays,
       matingGenerationWindow: farms.matingGenerationWindow,
+      plan: farms.plan,
+      subscriptionStatus: farms.subscriptionStatus,
+      maxAnimals: farms.maxAnimals,
+      maxMembers: farms.maxMembers,
+      aiMonthlyLimit: farms.aiMonthlyLimit,
       roles: farmMembers.roles,
       canRecordVaccines: farmMembers.canRecordVaccines,
     })
@@ -69,6 +80,7 @@ export const getFarm = cache(async function getFarm() {
   const active = memberships.find((item) => item.farmId === activeId) ?? memberships[0];
   return {
     ...active,
+    locale: active.userLocale || active.farmLocale || "en",
     farms: memberships.map((item) => ({
       id: item.farmId,
       name: item.farmName,

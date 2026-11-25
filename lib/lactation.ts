@@ -13,6 +13,42 @@ export function dryOffDueOn(expectedCalving: string, species: string, custom?: {
   return addDays(expectedCalving, -dryOffLeadDays(species, custom));
 }
 
+/**
+ * Standard 305-day lactation yield projection from cumulative yield and days in milk (DIM).
+ * Uses empirical Wood-curve cumulative fraction milestones for Indian dairy cattle & buffaloes.
+ * Returns null if DIM < 30 or totalLitres <= 0 (too early for reliable projection).
+ */
+export function projected305DayLitres(totalLitres: number, daysInMilk: number): number | null {
+  if (!Number.isFinite(totalLitres) || !Number.isFinite(daysInMilk) || totalLitres <= 0 || daysInMilk < 30) {
+    return null;
+  }
+  if (daysInMilk >= 305) return Math.round((totalLitres / daysInMilk) * 305);
+  // Cumulative fraction of 305-day lactation completed by DIM milestones:
+  const milestones: [number, number][] = [
+    [30, 0.13],
+    [60, 0.27],
+    [90, 0.40],
+    [120, 0.52],
+    [150, 0.63],
+    [180, 0.73],
+    [210, 0.81],
+    [240, 0.88],
+    [270, 0.94],
+    [305, 1.0],
+  ];
+  let fraction = 1.0;
+  for (let i = 0; i < milestones.length - 1; i += 1) {
+    const [d0, f0] = milestones[i];
+    const [d1, f1] = milestones[i + 1];
+    if (daysInMilk >= d0 && daysInMilk <= d1) {
+      const ratio = (daysInMilk - d0) / (d1 - d0);
+      fraction = f0 + ratio * (f1 - f0);
+      break;
+    }
+  }
+  return Math.round(totalLitres / fraction);
+}
+
 export function lactationSummary(input: {
   calvedOn: string[];
   driedOn: string | null;

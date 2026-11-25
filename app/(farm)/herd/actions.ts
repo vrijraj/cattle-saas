@@ -22,6 +22,8 @@ import {
   inseminations,
   listings,
   locations,
+  medicineItems,
+  medicineMovements,
   milkYields,
   pregnancyChecks,
   products,
@@ -661,6 +663,29 @@ export async function recordHealth(formData: FormData) {
         dueOn: withdrawalUntil,
       });
     }
+
+    const medicineItemId = text(formData, "medicineItemId");
+    const medicineQty = Number(text(formData, "medicineQty"));
+    if (medicineItemId && Number.isFinite(medicineQty) && medicineQty > 0 && medicineQty <= 10000) {
+      const [medItem] = await tx
+        .select({ id: medicineItems.id, name: medicineItems.name, unitCost: medicineItems.unitCost })
+        .from(medicineItems)
+        .where(and(eq(medicineItems.id, medicineItemId), eq(medicineItems.farmId, farm.farmId)))
+        .limit(1);
+      if (medItem) {
+        await tx.insert(medicineMovements).values({
+          farmId: farm.farmId,
+          itemId: medItem.id,
+          kind: "use",
+          quantity: medicineQty.toFixed(1),
+          unitCost: medItem.unitCost,
+          movedOn: eventOn,
+          animalId: animal.id,
+          note: `Treatment · ${animal.code} · ${problem}`,
+          createdBy: farm.userId,
+        });
+      }
+    }
   });
   redirect(`/animals/${safeCode}?tab=health&saved=1`);
 }
@@ -1099,6 +1124,139 @@ export async function discardStraw(formData: FormData) {
       summary: `Discarded straw ${code}: ${reason}`,
       before: { status: straw.status },
       after: { status: "discarded", reason },
+    });
+    ok = true;
+  });
+  if (!ok) semenRedirect(formData, { error: "adjust" });
+  semenRedirect(formData, { saved: true });
+}
+
+export async function updateBull(formData: FormData) {
+  const farm = await requireFarm();
+  if (!canUseGenetics(farm.roles)) semenRedirect(formData, { error: "role" });
+  const id = text(formData, "id");
+  const name = text(formData, "name");
+  if (!id || !name) semenRedirect(formData, { error: "bull" });
+
+  const [current] = await db
+    .select()
+    .from(bulls)
+    .where(and(eq(bulls.id, id), eq(bulls.farmId, farm.farmId)))
+    .limit(1);
+  if (!current) semenRedirect(formData, { error: "bull" });
+
+  let photoKey = current.photoKey;
+  const photo = formData.get("photo");
+  if (photo instanceof File && photo.size > 0) {
+    if (!storageConfigured()) semenRedirect(formData, { error: "storage" });
+    if (photo.size > 5 * 1024 * 1024) semenRedirect(formData, { error: "photo" });
+    const buffer = Buffer.from(await photo.arrayBuffer());
+    const detected = detectAllowedFileType(buffer, photoMimeSet);
+    if (!detected) semenRedirect(formData, { error: "photo" });
+    photoKey = `farms/${farm.farmId}/bulls/${current.code}/${randomUUID()}.${attachmentExtensions[detected]}`;
+    await putPrivateObject(photoKey, buffer, detected);
+  }
+
+  const next = {
+    name,
+    breed: text(formData, "breed") || null,
+    registrationNumber: text(formData, "registration") || null,
+    semenCompany: text(formData, "company") || null,
+    sireCode: text(formData, "sireCode") || null,
+    damCode: text(formData, "damCode") || null,
+    notes: text(formData, "notes") || null,
+    photoKey,
+  };
+
+  await db.transaction(async (tx) => {
+    await tx.update(bulls).set(next).where(and(eq(bulls.id, current.id), eq(bulls.farmId, farm.farmId)));
+    await writeAudit(tx, {
+      farmId: farm.farmId,
+      actorId: farm.userId,
+      action: "update",
+      entity: "bull",
+      entityId: current.id,
+      summary: `Updated bull ${current.code} · ${name}`,
+      before: { name: current.name, breed: current.breed, registrationNumber: current.registrationNumber, sireCode: current.sireCode, damCode: current.damCode },
+      after: { name: next.name, breed: next.breed, registrationNumber: next.registrationNumber, sireCode: next.sireCode, damCode: next.damCode },
+    });
+  });
+  semenRedirect(formData, { saved: true });
+}
+
+export async function moveStraw(formData: FormData) {
+  const farm = await requireFarm();
+  if (!canUseGenetics(farm.roles)) semenRedirect(formData, { error: "role" });
+  const code = text(formData, "code");
+  const tank = text(formData, "tank");
+  const canister = text(formData, "canister");
+  const goblet = text(formData, "goblet");
+  const position = text(formData, "position");
+  if (!code || !tank) semenRedirect(formData, { error: "adjust" });
+
+  let ok = false;
+  await db.transaction(async (tx) => {
+    const [straw] = await tx
+      .select()
+      .from(straws)
+      .where(and(eq(straws.farmId, farm.farmId), eq(straws.code, code)))
+      .for("update")
+      .limit(1);
+    if (!straw || straw.status !== "available") return;
+    await tx
+      .update(straws)
+      .set({
+        tank,
+        canister: canister || null,
+        goblet: goblet || null,
+        position: position || null,
+      })
+      .where(and(eq(straws.id, straw.id), eq(straws.farmId, farm.farmId)));
+    await writeAudit(tx, {
+      farmId: farm.farmId,
+      actorId: farm.userId,
+      action: "update",
+      entity: "semen",
+      entityId: straw.id,
+      summary: `Moved straw ${code} to ${[tank, canister, goblet].filter(Boolean).join(" / ")}`,
+      before: { tank: straw.tank, canister: straw.canister, goblet: straw.goblet, position: straw.position },
+      after: { tank, canister: canister || null, goblet: goblet || null, position: position || null },
+    });
+    ok = true;
+  });
+  if (!ok) semenRedirect(formData, { error: "adjust" });
+  semenRedirect(formData, { saved: true });
+}
+
+export async function transferStraw(formData: FormData) {
+  const farm = await requireFarm();
+  if (!canUseGenetics(farm.roles)) semenRedirect(formData, { error: "role" });
+  const code = text(formData, "code");
+  const recipient = text(formData, "recipient").slice(0, 160);
+  if (!code || !recipient) semenRedirect(formData, { error: "reason" });
+
+  let ok = false;
+  await db.transaction(async (tx) => {
+    const [straw] = await tx
+      .select()
+      .from(straws)
+      .where(and(eq(straws.farmId, farm.farmId), eq(straws.code, code)))
+      .for("update")
+      .limit(1);
+    if (!straw || straw.status !== "available") return;
+    await tx
+      .update(straws)
+      .set({ status: "transferred", transferredTo: recipient })
+      .where(and(eq(straws.id, straw.id), eq(straws.farmId, farm.farmId)));
+    await writeAudit(tx, {
+      farmId: farm.farmId,
+      actorId: farm.userId,
+      action: "update",
+      entity: "semen",
+      entityId: straw.id,
+      summary: `Transferred straw ${code} to ${recipient}`,
+      before: { status: straw.status },
+      after: { status: "transferred", transferredTo: recipient },
     });
     ok = true;
   });
@@ -1757,6 +1915,23 @@ export async function saveProduct(formData: FormData) {
   if (!Number.isFinite(price) || price <= 0 || price > 10_000_000) redirect("/shop?error=price");
   const stock = Number(text(formData, "stock"));
   if (!Number.isInteger(stock) || stock < 0 || stock > 1_000_000) redirect("/shop?error=stock");
+  const gstRaw = text(formData, "gstPercent");
+  const gstNum = gstRaw ? Number(gstRaw) : null;
+  if (gstNum !== null && (!Number.isFinite(gstNum) || gstNum < 0 || gstNum > 28)) redirect("/shop?error=price");
+  const description = text(formData, "description").slice(0, 500) || null;
+  const unitLabel = text(formData, "unitLabel").slice(0, 40) || null;
+
+  let photoKey: string | null = null;
+  const photo = formData.get("photo");
+  if (photo instanceof File && photo.size > 0) {
+    if (!storageConfigured()) redirect("/shop?error=storage");
+    if (photo.size > 5 * 1024 * 1024) redirect("/shop?error=photo");
+    const buffer = Buffer.from(await photo.arrayBuffer());
+    const detected = detectAllowedFileType(buffer, photoMimeSet);
+    if (!detected) redirect("/shop?error=photo");
+    photoKey = `farms/${farm.farmId}/products/${randomUUID()}.${attachmentExtensions[detected]}`;
+    await putPrivateObject(photoKey, buffer, detected);
+  }
 
   await db.transaction(async (tx) => {
     const [row] = await tx
@@ -1765,6 +1940,10 @@ export async function saveProduct(formData: FormData) {
         farmId: farm.farmId,
         name,
         category: text(formData, "category") || "other",
+        description,
+        unitLabel,
+        photoKey,
+        gstPercent: gstNum !== null ? gstNum.toFixed(2) : null,
         price: price.toFixed(2),
         stock,
         published: "yes",
@@ -1777,7 +1956,7 @@ export async function saveProduct(formData: FormData) {
       entity: "product",
       entityId: row.id,
       summary: `Added product ${name} (₹${price.toFixed(2)}, stock ${stock})`,
-      after: { name, price: price.toFixed(2), stock, published: "yes" },
+      after: { name, price: price.toFixed(2), stock, published: "yes", unitLabel, gstPercent: gstNum },
     });
   });
   redirect("/shop?saved=1");
@@ -1791,9 +1970,12 @@ export async function updateProduct(formData: FormData) {
   const price = Number(text(formData, "price"));
   const stock = Number(text(formData, "stock"));
   const published = formData.get("published") === "on" ? "yes" : "no";
+  const gstRaw = text(formData, "gstPercent");
+  const gstNum = gstRaw ? Number(gstRaw) : null;
   if (!id || !name) redirect("/shop?error=product");
   if (!Number.isFinite(price) || price <= 0 || price > 10_000_000) redirect("/shop?error=price");
   if (!Number.isInteger(stock) || stock < 0 || stock > 1_000_000) redirect("/shop?error=stock");
+  if (gstNum !== null && (!Number.isFinite(gstNum) || gstNum < 0 || gstNum > 28)) redirect("/shop?error=price");
 
   const [current] = await db
     .select()
@@ -1802,12 +1984,31 @@ export async function updateProduct(formData: FormData) {
     .limit(1);
   if (!current) redirect("/shop?error=product");
 
+  let photoKey = current.photoKey;
+  const photo = formData.get("photo");
+  if (photo instanceof File && photo.size > 0) {
+    if (!storageConfigured()) redirect("/shop?error=storage");
+    if (photo.size > 5 * 1024 * 1024) redirect("/shop?error=photo");
+    const buffer = Buffer.from(await photo.arrayBuffer());
+    const detected = detectAllowedFileType(buffer, photoMimeSet);
+    if (!detected) redirect("/shop?error=photo");
+    photoKey = `farms/${farm.farmId}/products/${randomUUID()}.${attachmentExtensions[detected]}`;
+    await putPrivateObject(photoKey, buffer, detected);
+  }
+
+  const description = text(formData, "description").slice(0, 500) || null;
+  const unitLabel = text(formData, "unitLabel").slice(0, 40) || null;
+
   await db.transaction(async (tx) => {
     await tx
       .update(products)
       .set({
         name,
         category: text(formData, "category") || current.category,
+        description,
+        unitLabel,
+        photoKey,
+        gstPercent: gstNum !== null ? gstNum.toFixed(2) : null,
         price: price.toFixed(2),
         stock,
         published,

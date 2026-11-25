@@ -59,7 +59,17 @@ export default async function PublicOrderPage({
             ))}
           </ul>
         ) : null}
-        <p className="text-lg font-semibold">Total ₹{Number(order.amount).toLocaleString("en-IN")}</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <p className="text-lg font-semibold">Total ₹{Number(order.amount).toLocaleString("en-IN")}</p>
+          <a
+            href={`/farms/${slug}/orders/${order.id}/invoice?t=${encodeURIComponent(query.t ?? "")}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center rounded-full border border-border bg-white px-4 text-xs font-semibold text-foreground transition hover:bg-muted"
+          >
+            Download GST Invoice PDF
+          </a>
+        </div>
         <p className="text-xs text-muted-foreground">Delivery address: {order.address}</p>
       </div>
     </PublicFrame>

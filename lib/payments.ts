@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { orderItems, orders, products } from "@/db/schema";
+import { alerts, orderItems, orders, products } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 
 function signingSecret() {
@@ -39,6 +39,7 @@ export async function markOrderPaid(razorpayOrderId: string, razorpayPaymentId?:
           ? [{ productId: order.productId, quantity: 1 }]
           : [];
 
+    const oversold: string[] = [];
     for (const line of stockLines) {
       if (!line.productId) continue;
       const [product] = await tx
@@ -48,6 +49,9 @@ export async function markOrderPaid(razorpayOrderId: string, razorpayPaymentId?:
         .for("update")
         .limit(1);
       if (!product) continue;
+      if (product.stock < line.quantity) {
+        oversold.push(`${product.name} (ordered ${line.quantity}, had ${product.stock})`);
+      }
       const nextStock = Math.max(0, product.stock - line.quantity);
       await tx.update(products).set({ stock: nextStock }).where(and(eq(products.id, product.id), eq(products.farmId, current.farmId)));
     }
@@ -60,15 +64,29 @@ export async function markOrderPaid(razorpayOrderId: string, razorpayPaymentId?:
       })
       .where(and(eq(orders.id, order.id), eq(orders.farmId, current.farmId)));
 
+    if (oversold.length > 0) {
+      await tx.insert(alerts).values({
+        farmId: current.farmId,
+        type: "custom",
+        title: `Oversold shop order · ${current.customerName}`,
+        body: `Payment was captured for order ${current.id}, but stock was insufficient for: ${oversold.join("; ")}. Fulfill or refund.`,
+      });
+    }
+
     await writeAudit(tx, {
       farmId: current.farmId,
       actorId: null,
       action: "update",
       entity: "order",
       entityId: current.id,
-      summary: `Order for ${current.customerName} paid (₹${current.amount})`,
+      summary: `Order for ${current.customerName} paid (₹${current.amount})${oversold.length > 0 ? " [oversold alert raised]" : ""}`,
       before: { status: current.status },
-      after: { status: "paid", razorpayOrderId, razorpayPaymentId: razorpayPaymentId ?? null },
+      after: {
+        status: "paid",
+        razorpayOrderId,
+        razorpayPaymentId: razorpayPaymentId ?? null,
+        ...(oversold.length > 0 ? { oversold } : {}),
+      },
     });
   });
 

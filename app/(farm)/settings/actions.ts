@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash, randomBytes } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -8,6 +9,7 @@ import { writeAudit } from "@/lib/audit";
 import { farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
 import { canManageSettings } from "@/lib/permissions";
+import { planSpec, type PlanId } from "@/lib/plans";
 import { syncMilkDrops } from "@/lib/sync-milk-drops";
 
 function text(formData: FormData, key: string) {
@@ -28,6 +30,9 @@ export async function saveFarmGeneral(formData: FormData) {
   const timezone = text(formData, "timezone") || "Asia/Kolkata";
   const animalPrefix = text(formData, "animalPrefix").toUpperCase();
   const enquiryEmail = text(formData, "enquiryEmail").toLowerCase();
+  const whatsappNumber = text(formData, "whatsappNumber").replace(/[^0-9+]/g, "").slice(0, 20);
+  const localeRaw = text(formData, "locale");
+  const locale = localeRaw === "hi" || localeRaw === "gu" || localeRaw === "mr" ? localeRaw : "en";
 
   if (name.length < 2 || name.length > 100) redirect("/settings?error=farm");
   if (!/^[A-Z0-9]{2,6}$/.test(animalPrefix)) redirect("/settings?error=prefix");
@@ -46,6 +51,8 @@ export async function saveFarmGeneral(formData: FormData) {
         timezone,
         animalPrefix,
         enquiryEmail: enquiryEmail || null,
+        whatsappNumber: whatsappNumber || null,
+        locale,
       })
       .where(eq(farms.id, farm.farmId));
     await writeAudit(tx, {
@@ -54,9 +61,23 @@ export async function saveFarmGeneral(formData: FormData) {
       action: "update",
       entity: "farm_settings",
       entityId: farm.farmId,
-      summary: `Farm profile updated (${name}, prefix ${animalPrefix})`,
-      before: { name: farm.farmName, timezone: farm.timezone, animalPrefix: farm.animalPrefix, enquiryEmail: farm.enquiryEmail },
-      after: { name, timezone, animalPrefix, enquiryEmail: enquiryEmail || null },
+      summary: `Farm profile updated (${name}, prefix ${animalPrefix}, lang ${locale})`,
+      before: {
+        name: farm.farmName,
+        timezone: farm.timezone,
+        animalPrefix: farm.animalPrefix,
+        enquiryEmail: farm.enquiryEmail,
+        whatsappNumber: farm.whatsappNumber,
+        locale: farm.farmLocale,
+      },
+      after: {
+        name,
+        timezone,
+        animalPrefix,
+        enquiryEmail: enquiryEmail || null,
+        whatsappNumber: whatsappNumber || null,
+        locale,
+      },
     });
   });
   redirect("/settings?saved=farm");
@@ -76,6 +97,7 @@ export async function saveFarmRules(formData: FormData) {
   const dryOffLeadCattle = intInRange(text(formData, "dryOffLeadCattle"), 30, 120);
   const dryOffLeadBuffalo = intInRange(text(formData, "dryOffLeadBuffalo"), 30, 150);
   const matingGenerationWindow = intInRange(text(formData, "matingGenerationWindow"), 3, 6);
+  const voluntaryWaitingDays = intInRange(text(formData, "voluntaryWaitingDays") || "45", 20, 120);
   const requireBothMilkSessions = formData.get("requireBothMilkSessions") === "on";
 
   if (
@@ -84,7 +106,8 @@ export async function saveFarmRules(formData: FormData) {
     pdDueDaysBuffalo === null ||
     dryOffLeadCattle === null ||
     dryOffLeadBuffalo === null ||
-    matingGenerationWindow === null
+    matingGenerationWindow === null ||
+    voluntaryWaitingDays === null
   ) {
     redirect("/settings?error=rules");
   }
@@ -98,6 +121,7 @@ export async function saveFarmRules(formData: FormData) {
     dryOffLeadCattle,
     dryOffLeadBuffalo,
     matingGenerationWindow,
+    voluntaryWaitingDays,
   };
 
   await db.transaction(async (tx) => {
@@ -118,12 +142,71 @@ export async function saveFarmRules(formData: FormData) {
         dryOffLeadCattle: farm.dryOffLeadCattle,
         dryOffLeadBuffalo: farm.dryOffLeadBuffalo,
         matingGenerationWindow: farm.matingGenerationWindow,
+        voluntaryWaitingDays: farm.voluntaryWaitingDays,
       },
       after: next,
     });
   });
   await syncMilkDrops(farm.farmId, farmToday(farm.timezone));
   redirect("/settings?saved=rules");
+}
+
+export type IotKeyState = { apiKey?: string; error?: string };
+
+export async function generateIotApiKey(): Promise<IotKeyState> {
+  const farm = await requireFarm();
+  if (!canManageSettings(farm.roles)) return { error: "Only owners and admins can manage IoT API keys." };
+
+  const rawKey = `dairy_iot_${randomBytes(24).toString("base64url")}`;
+  const keyHash = createHash("sha256").update(rawKey).digest("hex");
+
+  await db.transaction(async (tx) => {
+    await tx.update(farms).set({ iotApiKeyHash: keyHash }).where(eq(farms.id, farm.farmId));
+    await writeAudit(tx, {
+      farmId: farm.farmId,
+      actorId: farm.userId,
+      action: "update",
+      entity: "farm_settings",
+      entityId: farm.farmId,
+      summary: "Generated / rotated IoT ingest API key",
+      after: { iotApiKeyRotated: true },
+    });
+  });
+
+  return { apiKey: rawKey };
+}
+
+export async function updateFarmPlan(formData: FormData) {
+  const farm = await requireFarm();
+  if (!canManageSettings(farm.roles)) redirect("/settings?error=role");
+  const requested = text(formData, "plan");
+  if (requested !== "starter" && requested !== "pro" && requested !== "enterprise") {
+    redirect("/settings?error=farm");
+  }
+  const spec = planSpec(requested as PlanId);
+  await db.transaction(async (tx) => {
+    await tx
+      .update(farms)
+      .set({
+        plan: spec.id,
+        maxAnimals: spec.maxAnimals,
+        maxMembers: spec.maxMembers,
+        aiMonthlyLimit: spec.aiMonthlyLimit,
+        subscriptionStatus: "active",
+      })
+      .where(eq(farms.id, farm.farmId));
+    await writeAudit(tx, {
+      farmId: farm.farmId,
+      actorId: farm.userId,
+      action: "update",
+      entity: "subscription",
+      entityId: farm.farmId,
+      summary: `Changed farm plan to ${spec.name}`,
+      before: { plan: farm.plan, maxAnimals: farm.maxAnimals, maxMembers: farm.maxMembers },
+      after: { plan: spec.id, maxAnimals: spec.maxAnimals, maxMembers: spec.maxMembers },
+    });
+  });
+  redirect("/settings?saved=plan");
 }
 
 export async function saveBreed(formData: FormData) {

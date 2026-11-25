@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Building2, Check, User } from "lucide-react";
-import { switchFarm } from "@/app/(farm)/profile/actions";
+import { Building2, Check, Languages, User } from "lucide-react";
+import { switchFarm, updateLocale } from "@/app/(farm)/profile/actions";
+import { LOCALES } from "@/lib/i18n";
 
 export function AccountMenu({
   farmName,
   currentFarmId,
+  locale = "en",
   farms = [],
   userName,
   role,
@@ -16,6 +18,7 @@ export function AccountMenu({
 }: {
   farmName: string;
   currentFarmId: string;
+  locale?: string;
   farms?: { id: string; name: string; slug: string; roles: string[] }[];
   userName: string;
   role: string;
@@ -86,6 +89,32 @@ export function AccountMenu({
               })}
             </div>
           ) : null}
+          <div className="border-b border-border/60 py-1.5">
+            <p className="flex items-center gap-1.5 px-3 pb-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              <Languages className="size-3" />
+              Language
+            </p>
+            <div className="grid grid-cols-2 gap-1 px-2">
+              {LOCALES.map((item) => {
+                const active = locale === item.code;
+                return (
+                  <form key={item.code} action={updateLocale}>
+                    <input type="hidden" name="locale" value={item.code} />
+                    <button
+                      type="submit"
+                      role="menuitem"
+                      onClick={() => setOpen(false)}
+                      className={`h-8 w-full rounded-lg px-2 text-xs font-medium transition ${
+                        active ? "bg-primary text-primary-foreground" : "bg-muted/60 text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {item.native}
+                    </button>
+                  </form>
+                );
+              })}
+            </div>
+          </div>
           <Link
             role="menuitem"
             href="/profile"

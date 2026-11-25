@@ -2,12 +2,14 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { enquiries, farmMembers, farms, orderItems, orders, products, users } from "@/db/schema";
 import { readCart, writeCart } from "@/lib/cart";
 import { escapeHtml, sendMail } from "@/lib/mail";
 import { markOrderPaid, orderAccessToken } from "@/lib/payments";
+import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 
 async function farmRecipientEmail(farm: { id: string; enquiryEmail: string | null }) {
   if (farm.enquiryEmail) return farm.enquiryEmail;
@@ -25,6 +27,13 @@ export async function sendEnquiry(formData: FormData) {
   const [farm] = await db.select().from(farms).where(eq(farms.slug, slug)).limit(1);
   if (!farm) redirect("/");
   const safeSlug = encodeURIComponent(farm.slug);
+  // Silently accept bots filling the hidden honeypot field without emailing or inserting.
+  if (String(formData.get("website") ?? "").trim()) redirect(`/farms/${safeSlug}?sent=1`);
+
+  const ip = clientIpFromHeaders(await headers());
+  const rl = checkRateLimit(`enquiry:${farm.id}:${ip}`, { limit: 5, windowMs: 10 * 60 * 1000 });
+  if (!rl.allowed) redirect(`/farms/${safeSlug}?error=rate`);
+
   const name = String(formData.get("name") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
   const message = String(formData.get("message") ?? "").trim();
@@ -56,14 +65,17 @@ export async function addToCart(formData: FormData) {
     .limit(1);
   if (!product || product.stock < 1) redirect(`/farms/${safeSlug}/shop?error=1`);
 
+  const rawQty = Number(formData.get("quantity") ?? "1");
+  const addQty = Number.isInteger(rawQty) && rawQty >= 1 && rawQty <= 50 ? rawQty : 1;
   const cart = await readCart();
   const lines = cart.slug === farm.slug ? [...cart.lines] : [];
   const existing = lines.find((line) => line.productId === productId);
   if (existing) {
-    if (existing.quantity >= product.stock) redirect(`/farms/${safeSlug}/shop?error=stock`);
-    existing.quantity += 1;
+    if (existing.quantity + addQty > product.stock) redirect(`/farms/${safeSlug}/shop?error=stock`);
+    existing.quantity += addQty;
   } else {
-    lines.push({ productId, quantity: 1 });
+    if (addQty > product.stock) redirect(`/farms/${safeSlug}/shop?error=stock`);
+    lines.push({ productId, quantity: addQty });
   }
   await writeCart({ slug: farm.slug, lines });
   redirect(`/farms/${safeSlug}/shop?added=1`);

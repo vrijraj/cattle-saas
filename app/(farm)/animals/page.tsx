@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { eq } from "drizzle-orm";
+import { and, count, eq, ilike, isNull, or, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { animals, breeds, locations } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
@@ -8,7 +8,6 @@ import { isUnderOneYear } from "@/lib/herd-stats";
 import { HerdTree } from "@/components/herd-tree";
 import { lactationLabel, lifeStageLabel, presenceLabel, sexLabel } from "@/lib/labels";
 import { canWriteAnimals } from "@/lib/permissions";
-import { matchesHerdQuery } from "@/lib/herd-query";
 import { herdForest } from "@/lib/pedigree-tree";
 import { HerdTabs } from "@/components/herd-tabs";
 import { inputClass, pickTab, Pill, Summary } from "@/components/workspace";
@@ -22,13 +21,14 @@ const views = [
 ] as const;
 
 type ViewId = (typeof views)[number]["id"];
+const PAGE_SIZE = 50;
 
 export const metadata = { title: "Cattle" };
 
 export default async function AnimalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; view?: string; tab?: string; breed?: string; sex?: string; shed?: string; lactation?: string }>;
+  searchParams: Promise<{ q?: string; view?: string; tab?: string; breed?: string; sex?: string; shed?: string; lactation?: string; page?: string }>;
 }) {
   const farm = await requireFarm();
   const query = await searchParams;
@@ -41,82 +41,147 @@ export default async function AnimalsPage({
   const sexFilter = query.sex && ["female", "male", "unknown"].includes(query.sex) ? query.sex : "";
   const shedFilter = query.shed?.trim() ?? "";
   const lactationFilter = query.lactation && ["lactating", "dry", "pre_lactation", "not_applicable"].includes(query.lactation) ? query.lactation : "";
+  const requestedPage = Math.max(1, Number.parseInt(query.page ?? "1", 10) || 1);
 
-  const [rows, breedList, shedList] = await Promise.all([
+  const filterConds: SQL[] = [eq(animals.farmId, farm.farmId)];
+  if (breedFilter) filterConds.push(eq(animals.breedId, breedFilter));
+  if (sexFilter) filterConds.push(eq(animals.sex, sexFilter as "female" | "male" | "unknown"));
+  if (shedFilter === "unassigned") filterConds.push(isNull(animals.locationId));
+  else if (shedFilter) filterConds.push(eq(animals.locationId, shedFilter));
+  if (lactationFilter) {
+    filterConds.push(eq(animals.lactation, lactationFilter as "lactating" | "dry" | "pre_lactation" | "not_applicable"));
+  }
+  if (rawTerm) {
+    const like = `%${rawTerm.replace(/[%_\\]/g, "\\$&")}%`;
+    filterConds.push(
+      or(
+        ilike(animals.code, like),
+        ilike(animals.name, like),
+        ilike(animals.earTag, like),
+        ilike(animals.rfid, like),
+        ilike(animals.geneticSireCode, like),
+        ilike(animals.geneticSireName, like),
+        ilike(breeds.name, like),
+        ilike(locations.name, like),
+      )!,
+    );
+  }
+
+  // View SQL conditions (except "calves" which uses damIds check cleanly)
+  const viewConds = [...filterConds];
+  if (view === "active") viewConds.push(eq(animals.presence, "on_farm"));
+  else if (view === "pregnant") {
+    viewConds.push(eq(animals.presence, "on_farm"), eq(animals.reproduction, "pregnant"));
+  } else if (view === "sold") viewConds.push(eq(animals.presence, "sold"));
+  else if (view === "calves") viewConds.push(eq(animals.presence, "on_farm"));
+
+  const [allMeta, breedList, shedList, filteredCountRow] = await Promise.all([
     db
       .select({
         id: animals.id,
-        code: animals.code,
-        name: animals.name,
-        sex: animals.sex,
         dob: animals.dob,
         presence: animals.presence,
-        lifeStage: animals.lifeStage,
         reproduction: animals.reproduction,
-        lactation: animals.lactation,
-        earTag: animals.earTag,
-        rfid: animals.rfid,
-        breedId: animals.breedId,
-        locationId: animals.locationId,
         geneticDamId: animals.geneticDamId,
-        geneticSireCode: animals.geneticSireCode,
-        geneticSireName: animals.geneticSireName,
-        breedName: breeds.name,
-        locationName: locations.name,
       })
+      .from(animals)
+      .where(eq(animals.farmId, farm.farmId)),
+    db.select({ id: breeds.id, name: breeds.name }).from(breeds).where(eq(breeds.farmId, farm.farmId)).orderBy(breeds.name),
+    db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.farmId, farm.farmId)).orderBy(locations.name),
+    db
+      .select({ total: count() })
       .from(animals)
       .innerJoin(breeds, eq(breeds.id, animals.breedId))
       .leftJoin(locations, eq(locations.id, animals.locationId))
-      .where(eq(animals.farmId, farm.farmId))
-      .orderBy(animals.code),
-    db.select({ id: breeds.id, name: breeds.name }).from(breeds).where(eq(breeds.farmId, farm.farmId)).orderBy(breeds.name),
-    db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.farmId, farm.farmId)).orderBy(locations.name),
+      .where(and(...viewConds)),
   ]);
 
-  const damIds = new Set(rows.map((row) => row.geneticDamId).filter((id): id is string => Boolean(id)));
-  const searched = rows.filter((row) => {
-    if (term && !matchesHerdQuery(row, term)) return false;
-    if (breedFilter && row.breedId !== breedFilter) return false;
-    if (sexFilter && row.sex !== sexFilter) return false;
-    if (shedFilter === "unassigned" && row.locationId !== null) return false;
-    if (shedFilter && shedFilter !== "unassigned" && row.locationId !== shedFilter) return false;
-    if (lactationFilter && row.lactation !== lactationFilter) return false;
-    return true;
-  });
+  const damIds = new Set(allMeta.map((row) => row.geneticDamId).filter((id): id is string => Boolean(id)));
+  const isCalfMeta = (row: { id: string; presence: string; dob: string | null }) =>
+    row.presence === "on_farm" && row.dob !== null && isUnderOneYear(row.dob, today) && !damIds.has(row.id);
 
-  function isPregnantOnFarm(row: (typeof rows)[number]) {
-    return row.presence === "on_farm" && row.reproduction === "pregnant";
-  }
-
-  function isCalfOnFarm(row: (typeof rows)[number]) {
-    return row.presence === "on_farm" && row.dob !== null && isUnderOneYear(row.dob, today) && !damIds.has(row.id);
-  }
-
-  function matches(row: (typeof rows)[number]) {
-    if (view === "active") return row.presence === "on_farm";
-    if (view === "pregnant") return isPregnantOnFarm(row);
-    if (view === "sold") return row.presence === "sold";
-    if (view === "calves") return isCalfOnFarm(row);
-    return true;
-  }
-
-  const visible = searched.filter(matches);
-  const counts = {
-    all: searched.length,
-    active: searched.filter((row) => row.presence === "on_farm").length,
-    pregnant: searched.filter(isPregnantOnFarm).length,
-    calves: searched.filter(isCalfOnFarm).length,
-    sold: searched.filter((row) => row.presence === "sold").length,
-  };
   const herdCounts = {
-    active: rows.filter((row) => row.presence === "on_farm").length,
-    pregnant: rows.filter(isPregnantOnFarm).length,
-    calves: rows.filter(isCalfOnFarm).length,
-    sold: rows.filter((row) => row.presence === "sold").length,
+    all: allMeta.length,
+    active: allMeta.filter((row) => row.presence === "on_farm").length,
+    pregnant: allMeta.filter((row) => row.presence === "on_farm" && row.reproduction === "pregnant").length,
+    calves: allMeta.filter(isCalfMeta).length,
+    sold: allMeta.filter((row) => row.presence === "sold").length,
   };
+
+  const baseSelect = {
+    id: animals.id,
+    code: animals.code,
+    name: animals.name,
+    sex: animals.sex,
+    dob: animals.dob,
+    presence: animals.presence,
+    lifeStage: animals.lifeStage,
+    reproduction: animals.reproduction,
+    lactation: animals.lactation,
+    earTag: animals.earTag,
+    rfid: animals.rfid,
+    breedId: animals.breedId,
+    locationId: animals.locationId,
+    geneticDamId: animals.geneticDamId,
+    geneticSireCode: animals.geneticSireCode,
+    geneticSireName: animals.geneticSireName,
+    breedName: breeds.name,
+    locationName: locations.name,
+  };
+
+  let visible: {
+    id: string;
+    code: string;
+    name: string | null;
+    sex: "female" | "male" | "unknown";
+    dob: string | null;
+    presence: "on_farm" | "sold" | "dead" | "transferred";
+    lifeStage: "calf" | "heifer" | "cow" | "bull" | "steer";
+    reproduction: "not_applicable" | "open" | "bred" | "pregnant" | "fresh";
+    lactation: "not_applicable" | "pre_lactation" | "lactating" | "dry";
+    earTag: string | null;
+    rfid: string | null;
+    breedId: string;
+    locationId: string | null;
+    geneticDamId: string | null;
+    geneticSireCode: string | null;
+    geneticSireName: string | null;
+    breedName: string;
+    locationName: string | null;
+  }[] = [];
+
+  let totalMatching = Number(filteredCountRow[0]?.total ?? 0);
+  let totalPages = Math.max(1, Math.ceil(totalMatching / PAGE_SIZE));
+  let currentPage = Math.min(requestedPage, totalPages);
+
+  if (tab === "tree" || view === "calves") {
+    const allFiltered = await db
+      .select(baseSelect)
+      .from(animals)
+      .innerJoin(breeds, eq(breeds.id, animals.breedId))
+      .leftJoin(locations, eq(locations.id, animals.locationId))
+      .where(and(...viewConds))
+      .orderBy(animals.code);
+    const narrowed = view === "calves" ? allFiltered.filter(isCalfMeta) : allFiltered;
+    totalMatching = narrowed.length;
+    totalPages = Math.max(1, Math.ceil(totalMatching / PAGE_SIZE));
+    currentPage = Math.min(requestedPage, totalPages);
+    visible = tab === "tree" ? narrowed : narrowed.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  } else {
+    visible = await db
+      .select(baseSelect)
+      .from(animals)
+      .innerJoin(breeds, eq(breeds.id, animals.breedId))
+      .leftJoin(locations, eq(locations.id, animals.locationId))
+      .where(and(...viewConds))
+      .orderBy(animals.code)
+      .limit(PAGE_SIZE)
+      .offset((currentPage - 1) * PAGE_SIZE);
+  }
+
   const hasFilters = Boolean(term || breedFilter || sexFilter || shedFilter || lactationFilter || view !== "all");
 
-  function href(nextView: ViewId = view) {
+  function href(nextView: ViewId = view, nextPage = 1) {
     const params = new URLSearchParams();
     if (rawTerm) params.set("q", rawTerm);
     if (breedFilter) params.set("breed", breedFilter);
@@ -124,6 +189,7 @@ export default async function AnimalsPage({
     if (shedFilter) params.set("shed", shedFilter);
     if (lactationFilter) params.set("lactation", lactationFilter);
     if (nextView !== "all") params.set("view", nextView);
+    if (nextPage > 1) params.set("page", String(nextPage));
     const value = params.toString();
     return value ? `/animals?${value}` : "/animals";
   }
@@ -134,8 +200,8 @@ export default async function AnimalsPage({
         title="Cattle"
         description={
           rawTerm
-            ? `${visible.length} ${visible.length === 1 ? "animal matches" : "animals match"} “${rawTerm}”.`
-            : "Open a row to see that animal's profile."
+            ? `${totalMatching} ${totalMatching === 1 ? "animal matches" : "animals match"} “${rawTerm}”.`
+            : "Open a row to see that animal's profile. Filter, print QR label sheets, or run bulk shed actions."
         }
         facts={[
           { label: "On farm", value: String(herdCounts.active) },
@@ -144,14 +210,28 @@ export default async function AnimalsPage({
           { label: "Sold", value: String(herdCounts.sold) },
         ]}
         action={
-          canWriteAnimals(farm.roles) ? (
+          <div className="flex flex-wrap items-center gap-2">
             <Link
-              href="/animals/new"
-              className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90"
+              href="/animals/labels"
+              className="inline-flex h-10 items-center rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
             >
-              + Add cattle
+              QR sheets
             </Link>
-          ) : null
+            <Link
+              href="/animals/bulk"
+              className="inline-flex h-10 items-center rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
+            >
+              Bulk &amp; CSV
+            </Link>
+            {canWriteAnimals(farm.roles) ? (
+              <Link
+                href="/animals/new"
+                className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90"
+              >
+                + Add cattle
+              </Link>
+            ) : null}
+          </div>
         }
       />
       <HerdTabs
@@ -219,13 +299,13 @@ export default async function AnimalsPage({
                   return (
                     <Link
                       key={item.id}
-                      href={href(item.id)}
+                      href={href(item.id, 1)}
                       className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors ${
                         active ? "bg-secondary text-primary ring-1 ring-primary/20" : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
                       }`}
                     >
                       {item.label}
-                      <span className="tabular-nums opacity-80">{counts[item.id]}</span>
+                      <span className="tabular-nums opacity-80">{herdCounts[item.id]}</span>
                     </Link>
                   );
                 })}
@@ -338,6 +418,32 @@ export default async function AnimalsPage({
                 </tbody>
               </table>
             </div>
+
+            {totalPages > 1 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/75 bg-muted/20 px-4 py-3 text-xs">
+                <span className="text-muted-foreground tabular-nums">
+                  Page {currentPage} of {totalPages} · {totalMatching} matching animals
+                </span>
+                <div className="flex items-center gap-2">
+                  {currentPage > 1 ? (
+                    <Link
+                      href={href(view, currentPage - 1)}
+                      className="inline-flex h-8 items-center rounded-full border border-border bg-white px-3 font-medium hover:bg-muted"
+                    >
+                      ← Previous
+                    </Link>
+                  ) : null}
+                  {currentPage < totalPages ? (
+                    <Link
+                      href={href(view, currentPage + 1)}
+                      className="inline-flex h-8 items-center rounded-full border border-border bg-white px-3 font-medium hover:bg-muted"
+                    >
+                      Next →
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </section>
         }
       />

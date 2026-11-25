@@ -1,21 +1,19 @@
-import { eq } from "drizzle-orm";
+import { and, eq, ilike, or } from "drizzle-orm";
 import { db } from "@/db";
 import { alerts, animals, breeds, bulls, enquiries, locations, products, semenBatches, straws } from "@/db/schema";
 import { getFarm } from "@/lib/farm-context";
 import { herdMatchField, type HerdMatchRow } from "@/lib/herd-query";
 import { canReadAlert, canViewEnquiries, canViewSemen, canViewShopAdmin } from "@/lib/permissions";
-
-function includes(values: Array<string | null | undefined>, term: string) {
-  return values.some((value) => value?.toLowerCase().includes(term));
-}
-
-function take<T>(rows: T[], limit: number) {
-  return { items: rows.slice(0, limit), count: rows.length };
-}
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function GET(request: Request) {
   const farm = await getFarm();
   if (!farm) return Response.json({ error: "Sign in to search the herd." }, { status: 401 });
+
+  const rl = checkRateLimit(`search:${farm.farmId}:${farm.userId}`, { limit: 60, windowMs: 60 * 1000 });
+  if (!rl.allowed) {
+    return Response.json({ error: "Too many search requests." }, { status: 429 });
+  }
 
   const term = new URL(request.url).searchParams.get("q")?.trim().toLowerCase() ?? "";
   if (!term) {
@@ -35,6 +33,7 @@ export async function GET(request: Request) {
     });
   }
 
+  const like = `%${term.replace(/[%_\\]/g, "\\$&")}%`;
   const seeSemen = canViewSemen(farm.roles);
   const seeShop = canViewShopAdmin(farm.roles);
   const seeEnquiries = canViewEnquiries(farm.roles);
@@ -54,8 +53,23 @@ export async function GET(request: Request) {
       .from(animals)
       .innerJoin(breeds, eq(breeds.id, animals.breedId))
       .leftJoin(locations, eq(locations.id, animals.locationId))
-      .where(eq(animals.farmId, farm.farmId))
-      .orderBy(animals.code),
+      .where(
+        and(
+          eq(animals.farmId, farm.farmId),
+          or(
+            ilike(animals.code, like),
+            ilike(animals.name, like),
+            ilike(animals.earTag, like),
+            ilike(animals.rfid, like),
+            ilike(animals.geneticSireCode, like),
+            ilike(animals.geneticSireName, like),
+            ilike(breeds.name, like),
+            ilike(locations.name, like),
+          ),
+        ),
+      )
+      .orderBy(animals.code)
+      .limit(25),
     seeSemen
       ? db
           .select({
@@ -71,65 +85,70 @@ export async function GET(request: Request) {
           .from(straws)
           .innerJoin(semenBatches, eq(semenBatches.id, straws.batchId))
           .innerJoin(bulls, eq(bulls.id, semenBatches.bullId))
-          .where(eq(straws.farmId, farm.farmId))
+          .where(
+            and(
+              eq(straws.farmId, farm.farmId),
+              or(
+                ilike(straws.code, like),
+                ilike(straws.tank, like),
+                ilike(bulls.code, like),
+                ilike(bulls.name, like),
+                ilike(semenBatches.batchNumber, like),
+                ilike(bulls.semenCompany, like),
+              ),
+            ),
+          )
           .orderBy(straws.code)
+          .limit(15)
       : Promise.resolve([]),
     seeSemen
       ? db
           .select({ code: bulls.code, name: bulls.name, breed: bulls.breed, semenCompany: bulls.semenCompany })
           .from(bulls)
-          .where(eq(bulls.farmId, farm.farmId))
+          .where(
+            and(
+              eq(bulls.farmId, farm.farmId),
+              or(ilike(bulls.code, like), ilike(bulls.name, like), ilike(bulls.breed, like), ilike(bulls.semenCompany, like)),
+            ),
+          )
           .orderBy(bulls.code)
+          .limit(15)
       : Promise.resolve([]),
     db
       .select({ id: alerts.id, title: alerts.title, body: alerts.body, status: alerts.status, type: alerts.type })
       .from(alerts)
-      .where(eq(alerts.farmId, farm.farmId)),
+      .where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open"), or(ilike(alerts.title, like), ilike(alerts.body, like))))
+      .limit(20),
     seeShop
       ? db
           .select({ id: products.id, name: products.name, category: products.category })
           .from(products)
-          .where(eq(products.farmId, farm.farmId))
+          .where(and(eq(products.farmId, farm.farmId), or(ilike(products.name, like), ilike(products.category, like))))
           .orderBy(products.name)
+          .limit(15)
       : Promise.resolve([]),
     seeEnquiries
       ? db
           .select({ id: enquiries.id, name: enquiries.name, phone: enquiries.phone, animalCode: enquiries.animalCode, message: enquiries.message })
           .from(enquiries)
-          .where(eq(enquiries.farmId, farm.farmId))
+          .where(
+            and(
+              eq(enquiries.farmId, farm.farmId),
+              or(ilike(enquiries.name, like), ilike(enquiries.phone, like), ilike(enquiries.animalCode, like), ilike(enquiries.message, like)),
+            ),
+          )
+          .limit(15)
       : Promise.resolve([]),
   ]);
 
-  const cattle = take(
-    cattleRows.flatMap((row) => {
-      const match = herdMatchField(row as HerdMatchRow, term);
-      return match ? [{ ...row, match }] : [];
-    }),
-    8,
-  );
-  const strawMatches = take(
-    strawRows.filter((row) => includes([row.code, row.tank, row.bullCode, row.bullName, row.batchNumber, row.semenType, row.semenCompany], term)),
-    5,
-  );
-  const bullMatches = take(
-    bullRows.filter((row) => includes([row.code, row.name, row.breed, row.semenCompany], term)),
-    5,
-  );
-  const alertMatches = take(
-    alertRows.filter((row) => row.status === "open" && canReadAlert(farm.roles, row.type) && includes([row.title, row.body], term)),
-    5,
-  );
-  const productMatches = take(
-    productRows.filter((row) => includes([row.name, row.category], term)),
-    5,
-  );
-  const enquiryMatches = take(
-    enquiryRows.filter((row) => includes([row.name, row.phone, row.animalCode, row.message], term)),
-    5,
-  );
+  const cattle = cattleRows.map((row) => ({
+    ...row,
+    match: herdMatchField(row as HerdMatchRow, term) ?? "Cattle",
+  }));
+  const visibleAlerts = alertRows.filter((row) => canReadAlert(farm.roles, row.type));
 
   return Response.json({
-    cattle: cattle.items.map((row) => ({
+    cattle: cattle.slice(0, 8).map((row) => ({
       code: row.code,
       name: row.name,
       breedName: row.breedName,
@@ -138,20 +157,20 @@ export async function GET(request: Request) {
       rfid: row.rfid,
       match: row.match,
     })),
-    cattleCount: cattle.count,
-    straws: strawMatches.items.map((row) => ({ code: row.code, bullName: row.bullName, status: row.status })),
-    strawCount: strawMatches.count,
-    bulls: bullMatches.items.map((row) => ({ code: row.code, name: row.name, breed: row.breed })),
-    bullCount: bullMatches.count,
-    alerts: alertMatches.items.map((row) => ({
+    cattleCount: cattle.length,
+    straws: strawRows.slice(0, 5).map((row) => ({ code: row.code, bullName: row.bullName, status: row.status })),
+    strawCount: strawRows.length,
+    bulls: bullRows.slice(0, 5).map((row) => ({ code: row.code, name: row.name, breed: row.breed })),
+    bullCount: bullRows.length,
+    alerts: visibleAlerts.slice(0, 5).map((row) => ({
       id: row.id,
       title: row.title,
       detail: row.title.toLowerCase().includes(term) ? "Alert" : row.body,
     })),
-    alertCount: alertMatches.count,
-    products: productMatches.items.map((row) => ({ id: row.id, name: row.name, category: row.category })),
-    productCount: productMatches.count,
-    enquiries: enquiryMatches.items.map((row) => ({ id: row.id, name: row.name, about: row.animalCode || "Catalogue" })),
-    enquiryCount: enquiryMatches.count,
+    alertCount: visibleAlerts.length,
+    products: productRows.slice(0, 5).map((row) => ({ id: row.id, name: row.name, category: row.category })),
+    productCount: productRows.length,
+    enquiries: enquiryRows.slice(0, 5).map((row) => ({ id: row.id, name: row.name, about: row.animalCode || "Catalogue" })),
+    enquiryCount: enquiryRows.length,
   });
 }

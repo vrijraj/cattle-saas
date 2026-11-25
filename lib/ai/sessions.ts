@@ -1,7 +1,10 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { and, count, desc, eq, gte } from "drizzle-orm";
 import { InMemorySessionService } from "@google/adk";
 import type { AppendEventRequest, CreateSessionRequest, GetSessionRequest } from "@google/adk";
+import { db } from "@/db";
+import { aiSessions } from "@/db/schema";
 
 type StoredEvent = AppendEventRequest["event"];
 
@@ -21,6 +24,127 @@ function storageKey(appName: string, userId: string, sessionId: string) {
   return `${appName}\u0000${userId}\u0000${sessionId}`;
 }
 
+function parseScopedUser(scopedUser: string): { farmId: string; userId: string } | null {
+  const idx = scopedUser.indexOf(":");
+  if (idx <= 0 || idx === scopedUser.length - 1) return null;
+  return { farmId: scopedUser.slice(0, idx), userId: scopedUser.slice(idx + 1) };
+}
+
+/**
+ * Postgres-backed ADK session store for multi-instance / serverless production deployments.
+ */
+export class PostgresSessionService extends InMemorySessionService {
+  private hydratedIds = new Set<string>();
+
+  async whenReady() {
+    // Queries Postgres lazily per session so pods stay synchronized.
+  }
+
+  override async createSession(request: CreateSessionRequest) {
+    const session = await super.createSession(request);
+    this.hydratedIds.add(session.id);
+    const scope = parseScopedUser(session.userId);
+    if (scope) {
+      try {
+        await db
+          .insert(aiSessions)
+          .values({
+            id: session.id,
+            farmId: scope.farmId,
+            userId: scope.userId,
+            appName: session.appName,
+            stateJson: session.state ?? {},
+            eventsJson: [],
+            messagesJson: [],
+            updatedAt: new Date(),
+          })
+          .onConflictDoNothing();
+      } catch {
+        // Keep in-memory fallback if DB write is unavailable
+      }
+    }
+    return session;
+  }
+
+  override async getSession(request: GetSessionRequest) {
+    const existing = await super.getSession(request);
+    if (existing) return existing;
+
+    const scope = parseScopedUser(request.userId);
+    if (!scope || this.hydratedIds.has(request.sessionId)) return undefined;
+
+    try {
+      const [row] = await db
+        .select()
+        .from(aiSessions)
+        .where(
+          and(
+            eq(aiSessions.id, request.sessionId),
+            eq(aiSessions.farmId, scope.farmId),
+            eq(aiSessions.userId, scope.userId),
+            eq(aiSessions.appName, request.appName),
+          ),
+        )
+        .limit(1);
+      if (!row) return undefined;
+
+      this.hydratedIds.add(row.id);
+      await super.createSession({
+        appName: row.appName,
+        userId: request.userId,
+        sessionId: row.id,
+        state: (row.stateJson as Record<string, unknown>) ?? {},
+      });
+      let session = await super.getSession(request);
+      const events = Array.isArray(row.eventsJson) ? (row.eventsJson as StoredEvent[]) : [];
+      for (const event of events.slice(-MAX_EVENTS)) {
+        if (!session) break;
+        try {
+          await super.appendEvent({ session, event });
+          session = (await super.getSession(request)) ?? session;
+        } catch {
+          continue;
+        }
+      }
+      return session;
+    } catch {
+      return undefined;
+    }
+  }
+
+  override async appendEvent(request: AppendEventRequest) {
+    const event = await super.appendEvent(request);
+    if (event.partial) return event;
+
+    const scope = parseScopedUser(request.session.userId);
+    if (scope) {
+      try {
+        const [row] = await db
+          .select({ eventsJson: aiSessions.eventsJson })
+          .from(aiSessions)
+          .where(and(eq(aiSessions.id, request.session.id), eq(aiSessions.farmId, scope.farmId), eq(aiSessions.userId, scope.userId)))
+          .limit(1);
+        const prevEvents = Array.isArray(row?.eventsJson) ? (row.eventsJson as StoredEvent[]) : [];
+        const nextEvents = [...prevEvents, event].slice(-MAX_EVENTS);
+        await db
+          .update(aiSessions)
+          .set({
+            stateJson: request.session.state ?? {},
+            eventsJson: nextEvents,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(aiSessions.id, request.session.id), eq(aiSessions.farmId, scope.farmId), eq(aiSessions.userId, scope.userId)));
+      } catch {
+        // Ignore persistence failures on non-critical event flush
+      }
+    }
+    return event;
+  }
+}
+
+/**
+ * Local JSON-file-backed session store (retained for lightweight local & test persistence).
+ */
 export class DurableSessionService extends InMemorySessionService {
   private records = new Map<string, StoredSession>();
   private ready: Promise<void>;
@@ -115,6 +239,39 @@ export class DurableSessionService extends InMemorySessionService {
       // Ignore write failures on read-only serverless filesystems; in-memory sessions still work.
     }
   }
+}
+
+export async function loadLatestUserChat(farmId: string, userId: string) {
+  const [row] = await db
+    .select({ id: aiSessions.id, messagesJson: aiSessions.messagesJson })
+    .from(aiSessions)
+    .where(and(eq(aiSessions.farmId, farmId), eq(aiSessions.userId, userId)))
+    .orderBy(desc(aiSessions.updatedAt))
+    .limit(1);
+  if (!row) return { sessionId: null as string | null, messages: [] as unknown[] };
+  return {
+    sessionId: row.id,
+    messages: Array.isArray(row.messagesJson) ? row.messagesJson : [],
+  };
+}
+
+export async function saveUserChatMessages(farmId: string, userId: string, sessionId: string, messages: unknown[]) {
+  const trimmed = messages.slice(-60);
+  await db
+    .update(aiSessions)
+    .set({ messagesJson: trimmed, updatedAt: new Date() })
+    .where(and(eq(aiSessions.id, sessionId), eq(aiSessions.farmId, farmId), eq(aiSessions.userId, userId)));
+}
+
+export async function countMonthlyAiSessions(farmId: string) {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const [row] = await db
+    .select({ total: count() })
+    .from(aiSessions)
+    .where(and(eq(aiSessions.farmId, farmId), gte(aiSessions.updatedAt, monthStart)));
+  return Number(row?.total ?? 0);
 }
 
 export function sessionFilePath() {

@@ -77,23 +77,31 @@ export default async function LocationsPage({ searchParams }: { searchParams: Pr
               <Td className="tabular-nums">{count}</Td>
               <Td>{row.active ? <Pill tone="good">Active</Pill> : <Pill>Inactive</Pill>}</Td>
               <Td className="text-right">
-                {canEdit ? (
-                  <RecordDialog title={`Edit ${row.name}`} button="Edit" quiet>
-                    <form action={saveShed} className="space-y-3">
-                      <input type="hidden" name="id" value={row.id} />
-                      <label className="grid gap-1 text-sm">
-                        Name
-                        <input name="name" required defaultValue={row.name} className={inputClass} />
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input name="active" type="checkbox" defaultChecked={row.active} /> Active
-                      </label>
-                      <div className="flex justify-end">
-                        <Submit>Save shed</Submit>
-                      </div>
-                    </form>
-                  </RecordDialog>
-                ) : null}
+                <div className="flex items-center justify-end gap-2">
+                  <Link
+                    href={`/animals/labels?shed=${encodeURIComponent(row.id)}`}
+                    className="inline-flex h-8 items-center rounded-full border border-border bg-white px-3 text-xs font-medium text-foreground transition hover:bg-muted"
+                  >
+                    QR labels
+                  </Link>
+                  {canEdit ? (
+                    <RecordDialog title={`Edit ${row.name}`} button="Edit" quiet>
+                      <form action={saveShed} className="space-y-3">
+                        <input type="hidden" name="id" value={row.id} />
+                        <label className="grid gap-1 text-sm">
+                          Name
+                          <input name="name" required defaultValue={row.name} className={inputClass} />
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input name="active" type="checkbox" defaultChecked={row.active} /> Active
+                        </label>
+                        <div className="flex justify-end">
+                          <Submit>Save shed</Submit>
+                        </div>
+                      </form>
+                    </RecordDialog>
+                  ) : null}
+                </div>
               </Td>
             </tr>
           );

@@ -43,6 +43,13 @@
       "when": 1792600000000,
       "tag": "0005_completeness_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792610000000,
+      "tag": "0006_saas_dairy_pro",
+      "breakpoints": true
     }
   ]
 }

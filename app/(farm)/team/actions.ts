@@ -9,6 +9,7 @@ import { writeAudit } from "@/lib/audit";
 import { requireFarm } from "@/lib/farm-context";
 import { escapeHtml, sendMail } from "@/lib/mail";
 import { canManageTeam, ROLES, type Role } from "@/lib/permissions";
+import { checkMemberQuota } from "@/lib/plans";
 import { inviteIsOpen, keepsTeamAdmin, roleLabel } from "@/lib/team";
 
 function chosenRoles(formData: FormData) {
@@ -33,6 +34,8 @@ async function farmRoster(farmId: string) {
 export async function createInvite(formData: FormData) {
   const farm = await requireFarm();
   if (!canManageTeam(farm.roles)) redirect("/dashboard?error=denied");
+  const quota = await checkMemberQuota(farm.farmId, farm.maxMembers);
+  if (!quota.allowed) redirect("/team?error=quota");
 
   const email = String(formData.get("email") ?? "")
     .trim()

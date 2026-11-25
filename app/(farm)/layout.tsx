@@ -51,6 +51,7 @@ export default async function FarmLayout({ children }: { children: React.ReactNo
       role={roleLabel(farm.roles)}
       userId={farm.userId}
       farmId={farm.farmId}
+      locale={farm.locale}
       farms={farm.farms}
       openAlertCount={openAlertCount}
       showTeam={canManageTeam(farm.roles)}
@@ -64,6 +65,7 @@ export default async function FarmLayout({ children }: { children: React.ReactNo
       showListings={canPublish(farm.roles)}
       showEnquiries={canViewEnquiries(farm.roles)}
       showSettings={canManageSettings(farm.roles)}
+      showAdmin={farm.isSuperAdmin}
     >
       {children}
     </FarmShell>

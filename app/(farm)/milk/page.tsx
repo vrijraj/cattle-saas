@@ -1,22 +1,23 @@
-import { and, eq, gte, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, or } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
-import { alerts, animals, healthEvents, milkYields } from "@/db/schema";
+import { alerts, animals, healthEvents, locations, milkPriceHistory, milkYields } from "@/db/schema";
 import { addDays, farmToday, formatDisplayDate, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
+import { milkPriceOnDate, milkRevenueForRows } from "@/lib/milk-pricing";
 import { milkDaySummary } from "@/lib/milk-sheet";
 import { canManageSettings, canViewFinance, canWriteMilk } from "@/lib/permissions";
 import { MilkDatePicker } from "@/components/milk-date-picker";
+import { MilkSheetForm, type MilkSheetCow } from "@/components/milk-sheet-form";
 import { RecordDialog } from "@/components/record-dialog";
-import { Button } from "@/components/ui/button";
-import { inputClass, Notice, Pill, Submit, Summary } from "@/components/workspace";
-import { saveMilk, saveMilkSettings } from "./actions";
+import { EmptyRow, inputClass, Notice, Panel, Submit, Summary, Table, Td } from "@/components/workspace";
+import { clearMilkRow, saveMilk, saveMilkPriceRule, saveMilkSettings } from "./actions";
 
 const messages: Record<string, string> = {
-  range: "Each session must be between 0 and 80 litres.",
+  range: "Each session must be 0–80 L, and Fat/SNF must be 0–15%.",
   role: "Your role cannot record milk.",
   date: "Choose today or an earlier date.",
-  settings: "Enter a valid milk price (₹0–₹1000/L) and drop threshold (5%–90%).",
+  settings: "Enter valid milk price (₹0–₹1000/L), bonus, and drop threshold (5%–90%).",
 };
 
 export const metadata = { title: "Milk records" };
@@ -31,22 +32,34 @@ export default async function MilkPage({
   const today = farmToday(farm.timezone);
   const requested = parseFarmDate(query.date);
   const selected = requested && requested <= today ? requested : today;
+  const yesterday = addDays(selected, -1);
   const recentStart = addDays(today, -7);
 
-  const [herd, existing, drops, withdrawalRows] = await Promise.all([
+  const [herd, shedRows, existing, drops, withdrawalRows, priceHistory] = await Promise.all([
     db
       .select({
         id: animals.id,
         code: animals.code,
         name: animals.name,
+        locationId: animals.locationId,
       })
       .from(animals)
       .where(and(eq(animals.farmId, farm.farmId), eq(animals.presence, "on_farm"), eq(animals.lactation, "lactating")))
       .orderBy(animals.code),
     db
+      .select({ id: locations.id, name: locations.name })
+      .from(locations)
+      .where(and(eq(locations.farmId, farm.farmId), eq(locations.active, true)))
+      .orderBy(locations.name),
+    db
       .select()
       .from(milkYields)
-      .where(and(eq(milkYields.farmId, farm.farmId), or(gte(milkYields.recordedOn, recentStart), eq(milkYields.recordedOn, selected)))),
+      .where(
+        and(
+          eq(milkYields.farmId, farm.farmId),
+          or(gte(milkYields.recordedOn, recentStart), eq(milkYields.recordedOn, selected), eq(milkYields.recordedOn, yesterday)),
+        ),
+      ),
     db
       .select()
       .from(alerts)
@@ -66,19 +79,30 @@ export default async function MilkPage({
       })
       .from(healthEvents)
       .where(and(eq(healthEvents.farmId, farm.farmId), isNull(healthEvents.voidedAt), gte(healthEvents.withdrawalUntil, selected))),
+    db
+      .select()
+      .from(milkPriceHistory)
+      .where(eq(milkPriceHistory.farmId, farm.farmId))
+      .orderBy(desc(milkPriceHistory.effectiveFrom)),
   ]);
 
+  const selectedRows = existing.filter((row) => row.recordedOn === selected);
+  const yesterdayRows = existing.filter((row) => row.recordedOn === yesterday && !row.voidedAt);
+  const yesterdayByAnimal = new Map(
+    yesterdayRows.map((row) => [row.animalId, Number(row.morningLitres ?? 0) + Number(row.eveningLitres ?? 0)]),
+  );
   const summary = milkDaySummary(
     herd.map((animal) => animal.id),
-    existing.filter((row) => row.recordedOn === selected),
+    selectedRows,
   );
   const canSave = canWriteMilk(farm.roles);
   const canConfigure = canManageSettings(farm.roles);
-  const configuredPrice = farm.milkPricePerLitre ? Number(farm.milkPricePerLitre) : null;
-  const showValue = configuredPrice !== null && Number.isFinite(configuredPrice) && canViewFinance(farm.roles);
-  const dayValue = showValue ? summary.total * configuredPrice : null;
+  const effectiveBasePrice = milkPriceOnDate(selected, priceHistory, farm.milkPricePerLitre);
+  const showValue = effectiveBasePrice !== null && canViewFinance(farm.roles);
+  const dayValue = showValue ? milkRevenueForRows(selectedRows, priceHistory, farm.milkPricePerLitre) : null;
 
   const byCode = new Map(herd.map((animal) => [animal.id, animal]));
+  const shedById = new Map(shedRows.map((s) => [s.id, s.name]));
   const withdrawalByAnimal = new Map<string, { until: string; label: string }>();
   for (const row of withdrawalRows) {
     if (!row.withdrawalUntil) continue;
@@ -102,21 +126,50 @@ export default async function MilkPage({
   }
   const recent = [...herdDays.entries()].filter(([date]) => date >= recentStart).sort(([left], [right]) => left.localeCompare(right));
 
+  // Average Fat% and SNF% on selected day
+  const activeSelected = selectedRows.filter((r) => !r.voidedAt);
+  const fatValues = activeSelected.map((r) => (r.fatPercent ? Number(r.fatPercent) : null)).filter((v): v is number => v !== null);
+  const snfValues = activeSelected.map((r) => (r.snfPercent ? Number(r.snfPercent) : null)).filter((v): v is number => v !== null);
+  const avgFat = fatValues.length > 0 ? fatValues.reduce((s, n) => s + n, 0) / fatValues.length : null;
+  const avgSnf = snfValues.length > 0 ? snfValues.reduce((s, n) => s + n, 0) / snfValues.length : null;
+
+  const sheetCows: MilkSheetCow[] = herd.map((animal) => {
+    const row = summary.active.get(animal.id);
+    const withdrawal = withdrawalByAnimal.get(animal.id);
+    return {
+      id: animal.id,
+      code: animal.code,
+      name: animal.name,
+      locationId: animal.locationId,
+      locationName: animal.locationId ? (shedById.get(animal.locationId) ?? null) : null,
+      morningLitres: row?.morningLitres ?? "",
+      eveningLitres: row?.eveningLitres ?? "",
+      fatPercent: row?.fatPercent ?? "",
+      snfPercent: row?.snfPercent ?? "",
+      cmtScore: row?.cmtScore ?? "",
+      yesterdayTotal: yesterdayByAnimal.get(animal.id) ?? null,
+      withdrawalUntil: withdrawal ? formatDisplayDate(withdrawal.until) : null,
+      hasExisting: Boolean(row),
+    };
+  });
+
   const notEntered = Math.max(0, herd.length - summary.entered);
   const stats = [
     [summary.total.toFixed(1) + " L", selected === today ? "Total milk today" : "Total for this day"],
     showValue && dayValue !== null
-      ? [`₹${Math.round(dayValue).toLocaleString("en-IN")}`, `Estimated value (₹${configuredPrice!.toFixed(2)}/L)`]
+      ? [`₹${Math.round(dayValue).toLocaleString("en-IN")}`, `Est. value (base ₹${effectiveBasePrice!.toFixed(2)}/L)`]
       : [String(notEntered), "Lactating not entered"],
     [`${summary.entered} / ${herd.length}`, "Cows entered"],
-    [summary.average.toFixed(1) + " L", "Average entered"],
+    avgFat !== null || avgSnf !== null
+      ? [`${avgFat !== null ? `${avgFat.toFixed(1)}%` : "—"} / ${avgSnf !== null ? `${avgSnf.toFixed(1)}%` : "—"}`, "Avg Fat / SNF"]
+      : [summary.average.toFixed(1) + " L", "Average entered"],
   ];
 
   return (
     <div className="space-y-5">
       <Summary
         title="Milk log"
-        description={`Daily yield for each cow in milk · ${formatDisplayDate(selected)}. Pick another day to fill in or correct that log. A blank cow is not entered. A ${farm.milkDropPercent}% drop against the previous 7 days opens an alert after day 14 in milk.`}
+        description={`Daily yield & quality for each cow in milk · ${formatDisplayDate(selected)}. Filter by shed, press Enter to jump rows, or open Fat%/SNF%/CMT quality columns.`}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <MilkDatePicker key={selected} date={selected} today={today} />
@@ -124,7 +177,7 @@ export default async function MilkPage({
               <RecordDialog title="Milk price & alert settings" button="Milk settings" quiet>
                 <form action={saveMilkSettings} className="space-y-3">
                   <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-                    Milk price per litre (INR, leave blank if unset)
+                    Fallback milk price per litre (INR, used if no dated rate exists)
                     <input
                       name="milkPricePerLitre"
                       type="number"
@@ -132,7 +185,7 @@ export default async function MilkPage({
                       max={1000}
                       step="0.01"
                       inputMode="decimal"
-                      defaultValue={configuredPrice !== null ? configuredPrice.toFixed(2) : ""}
+                      defaultValue={farm.milkPricePerLitre ? Number(farm.milkPricePerLitre).toFixed(2) : ""}
                       placeholder="e.g. 60.00"
                       className={inputClass}
                     />
@@ -158,9 +211,6 @@ export default async function MilkPage({
                     />
                     <span>Wait until both morning and evening sessions are entered before firing a milk drop alert</span>
                   </label>
-                  <p className="text-xs text-muted-foreground">
-                    Alerts trigger when an animal (after 14 days in milk) or the herd drops by at least this percentage relative to its 7-day average.
-                  </p>
                   <div className="flex justify-end pt-1">
                     <Submit>Save settings</Submit>
                   </div>
@@ -174,7 +224,8 @@ export default async function MilkPage({
       {query.error && messages[query.error] ? <Notice tone="danger">{messages[query.error]}</Notice> : null}
       {requested && requested > today && query.error !== "date" ? <Notice tone="danger">{messages.date}</Notice> : null}
       {query.saved ? <Notice>Milk for {formatDisplayDate(selected)} is saved.</Notice> : null}
-      {query.settings ? <Notice>Milk settings updated.</Notice> : null}
+      {query.settings ? <Notice>Milk pricing &amp; alert settings updated.</Notice> : null}
+
       {activeWithdrawals.length > 0 ? (
         <section role="alert" className="space-y-2 rounded-2xl border border-danger/30 bg-danger/5 p-4">
           <h2 className="text-sm font-semibold text-danger">Milk withdrawal active on {formatDisplayDate(selected)}</h2>
@@ -193,6 +244,7 @@ export default async function MilkPage({
           </ul>
         </section>
       ) : null}
+
       {drops.length > 0 ? (
         <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
           <h2 className="font-semibold">Milk drop alerts</h2>
@@ -215,9 +267,10 @@ export default async function MilkPage({
           </ul>
         </section>
       ) : null}
+
       {recent.length > 0 ? (
         <section className="space-y-3 rounded-2xl border border-border bg-card p-4">
-          <h2 className="font-semibold">Herd total</h2>
+          <h2 className="font-semibold">Herd total (last 7 days)</h2>
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {recent.map(([date, litres]) => (
               <li key={date}>
@@ -231,91 +284,75 @@ export default async function MilkPage({
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted-foreground">Open a day to edit it. Each day adds only the cows that were entered. A missing cow is not counted as zero.</p>
         </section>
       ) : null}
-      <form key={selected} action={saveMilk} className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/85 bg-card shadow-[0_1px_3px_rgba(15,35,24,0.04)]">
-        <input type="hidden" name="recordedOn" value={selected} />
-        {herd.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">No lactating animals on the farm.</p> : null}
-        {herd.length > 0 ? (
-          <div className="hidden grid-cols-[7.5rem_minmax(0,1fr)_8.5rem_8.5rem_5.5rem] gap-3 border-b border-border/80 bg-muted/60 px-4 py-3 text-xs font-semibold text-muted-foreground lg:grid">
-            <span>Cattle ID</span>
-            <span>Name</span>
-            <span>Morning (L)</span>
-            <span>Evening (L)</span>
-            <span className="text-right">Total</span>
-          </div>
-        ) : null}
-        <ul className="divide-y divide-border/70">
-          {herd.map((animal) => {
-            const row = summary.active.get(animal.id);
-            const sum = Number(row?.morningLitres ?? 0) + Number(row?.eveningLitres ?? 0);
-            const withdrawal = withdrawalByAnimal.get(animal.id);
-            return (
-              <li
-                key={animal.id}
-                className={`grid grid-cols-2 items-end gap-3 p-4 transition-colors hover:bg-muted/30 lg:grid-cols-[7.5rem_minmax(0,1fr)_8.5rem_8.5rem_5.5rem] lg:items-center lg:py-3 ${
-                  withdrawal ? "bg-danger/[0.03]" : ""
-                }`}
-              >
-                <div className="col-span-2 flex items-center justify-between gap-3 lg:contents">
-                  <Link href={`/animals/${animal.code}?tab=milk`} className="min-w-0 hover:underline lg:contents">
-                    <span className="hidden font-mono text-xs font-semibold text-muted-foreground lg:block">{animal.code}</span>
-                    <span className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="truncate font-semibold text-foreground">{animal.name ?? "Unnamed"}</span>
-                      {withdrawal ? <Pill tone="warn">Withdrawal until {formatDisplayDate(withdrawal.until)}</Pill> : null}
-                    </span>
-                    <span className="font-mono text-xs text-muted-foreground lg:hidden">{animal.code}</span>
-                  </Link>
-                  <p className="shrink-0 text-right text-sm font-semibold tabular-nums lg:order-1">
-                    {row ? `${sum.toFixed(1)} L` : <span className="text-xs font-normal text-muted-foreground">Not entered</span>}
-                  </p>
-                </div>
-                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  <span className="lg:sr-only">Morning (L)</span>
-                  <input
-                    name={`morning-${animal.id}`}
-                    type="number"
-                    min={0}
-                    max={80}
-                    step="0.1"
-                    inputMode="decimal"
-                    placeholder="0.0"
-                    defaultValue={row?.morningLitres ?? ""}
-                    disabled={!canSave}
-                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm tabular-nums text-foreground transition outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 lg:h-10"
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  <span className="lg:sr-only">Evening (L)</span>
-                  <input
-                    name={`evening-${animal.id}`}
-                    type="number"
-                    min={0}
-                    max={80}
-                    step="0.1"
-                    inputMode="decimal"
-                    placeholder="0.0"
-                    defaultValue={row?.eveningLitres ?? ""}
-                    disabled={!canSave}
-                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm tabular-nums text-foreground transition outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 lg:h-10"
-                  />
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-        {canSave && herd.length > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/80 bg-muted/25 px-4 py-3">
-            <span className="text-xs text-muted-foreground">
-              {summary.entered} of {herd.length} lactating cows entered for {formatDisplayDate(selected)}.
-            </span>
-            <Button type="submit" className="h-10 rounded-full px-5 font-semibold shadow-xs">
-              Save {formatDisplayDate(selected)}
-            </Button>
-          </div>
-        ) : null}
-      </form>
+
+      <MilkSheetForm
+        key={selected}
+        selected={selected}
+        selectedLabel={formatDisplayDate(selected)}
+        cows={sheetCows}
+        sheds={shedRows}
+        canSave={canSave}
+        pricePerLitre={showValue ? effectiveBasePrice : null}
+        action={saveMilk}
+        onClearRow={clearMilkRow}
+      />
+
+      {canViewFinance(farm.roles) ? (
+        <Panel
+          title="Effective-dated milk procurement rates"
+          description="Historical milk prices & Fat/SNF bonus adjustments (relative to 4.0% Fat / 8.5% SNF) used for daily revenue."
+          action={
+            canConfigure ? (
+              <RecordDialog quiet title="Add milk price rule" button="Add price rule">
+                <form action={saveMilkPriceRule} className="grid gap-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1 text-sm">
+                      Effective from
+                      <input name="effectiveFrom" type="date" required defaultValue={today} className={inputClass} />
+                    </label>
+                    <label className="grid gap-1 text-sm">
+                      Base rate (₹ / L)
+                      <input name="pricePerLitre" type="number" min={0} max={1000} step="0.01" required placeholder="58.00" className={inputClass} />
+                    </label>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1 text-sm">
+                      Fat bonus (₹ per +1% over 4.0%)
+                      <input name="fatBonusPerPoint" type="number" min={-100} max={100} step="0.05" placeholder="1.75" className={inputClass} />
+                    </label>
+                    <label className="grid gap-1 text-sm">
+                      SNF bonus (₹ per +1% over 8.5%)
+                      <input name="snfBonusPerPoint" type="number" min={-100} max={100} step="0.05" placeholder="1.00" className={inputClass} />
+                    </label>
+                  </div>
+                  <label className="grid gap-1 text-sm">
+                    Note (dairy union / season)
+                    <input name="note" maxLength={160} placeholder="e.g. Amul winter procurement rate" className={inputClass} />
+                  </label>
+                  <div className="flex justify-end">
+                    <Submit>Save price rule</Submit>
+                  </div>
+                </form>
+              </RecordDialog>
+            ) : null
+          }
+        >
+          <Table headers={["Effective from", "Base ₹/L", "Fat bonus", "SNF bonus", "Note"]}>
+            {priceHistory.length === 0 ? <EmptyRow cols={5}>No dated price history yet — using fallback rate from Farm settings.</EmptyRow> : null}
+            {priceHistory.map((rule) => (
+              <tr key={rule.id}>
+                <Td className="font-medium">{formatDisplayDate(rule.effectiveFrom)}</Td>
+                <Td className="tabular-nums">₹{Number(rule.pricePerLitre).toFixed(2)}</Td>
+                <Td className="tabular-nums">{rule.fatBonusPerPoint ? `₹${Number(rule.fatBonusPerPoint).toFixed(2)} / %` : "—"}</Td>
+                <Td className="tabular-nums">{rule.snfBonusPerPoint ? `₹${Number(rule.snfBonusPerPoint).toFixed(2)} / %` : "—"}</Td>
+                <Td className="text-muted-foreground">{rule.note ?? "—"}</Td>
+              </tr>
+            ))}
+          </Table>
+        </Panel>
+      ) : null}
     </div>
   );
 }

@@ -1,8 +1,8 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/db";
-import { alerts, animals, feedItems, feedMovements } from "@/db/schema";
-import { createCustomAlert, dismissAlert, setMilkAlert } from "./actions";
+import { alerts, animals, cronRuns, feedItems, feedMovements } from "@/db/schema";
+import { createCustomAlert, dismissAlert, runDailyCheckNow, setMilkAlert } from "./actions";
 import { sendReminders } from "./reminders";
 import { farmToday, formatDisplayDate } from "@/lib/dates";
 import { feedBalance, feedIsLow } from "@/lib/feed-stock";
@@ -54,7 +54,7 @@ export const metadata = { title: "Alerts" };
 export default async function AlertsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string; error?: string; q?: string; type?: string }>;
+  searchParams: Promise<{ sent?: string; error?: string; q?: string; type?: string; checked?: string }>;
 }) {
   const farm = await requireFarm();
   const query = await searchParams;
@@ -62,11 +62,17 @@ export default async function AlertsPage({
   const term = query.q?.trim().toLowerCase() ?? "";
   const typeFilter = query.type?.trim() ?? "";
 
-  const [open, herd, items, movements] = await Promise.all([
+  const [open, herd, items, movements, [lastCron]] = await Promise.all([
     db.select().from(alerts).where(and(eq(alerts.farmId, farm.farmId), eq(alerts.status, "open"))),
     db.select({ id: animals.id, code: animals.code, name: animals.name }).from(animals).where(eq(animals.farmId, farm.farmId)),
     canReadAlert(farm.roles, "low_feed") ? db.select().from(feedItems).where(eq(feedItems.farmId, farm.farmId)) : Promise.resolve([]),
     canReadAlert(farm.roles, "low_feed") ? db.select().from(feedMovements).where(and(eq(feedMovements.farmId, farm.farmId), isNull(feedMovements.voidedAt))) : Promise.resolve([]),
+    db
+      .select()
+      .from(cronRuns)
+      .where(and(eq(cronRuns.farmId, farm.farmId), eq(cronRuns.kind, "daily_automation")))
+      .orderBy(desc(cronRuns.runDate))
+      .limit(1),
   ]);
   const byId = new Map(herd.map((animal) => [animal.id, animal]));
   const stored = open
@@ -124,6 +130,7 @@ export default async function AlertsPage({
         facts={[
           { label: "Open", value: String(rows.length) },
           { label: "Overdue", value: String(overdue) },
+          { label: "Last auto check", value: lastCron ? formatDisplayDate(lastCron.runDate) : "Not run yet" },
         ]}
         action={
           term || typeFilter ? (
@@ -137,6 +144,7 @@ export default async function AlertsPage({
       {query.sent === "1" ? <Notice>Reminder notifications were sent and logged in the audit trail.</Notice> : null}
       {query.sent === "unconfigured" ? <Notice>WhatsApp/SMS tokens are not configured, so sends were logged as not configured. In-app alerts remain open.</Notice> : null}
       {query.sent === "none" ? <Notice>No open alerts needed outbound reminders.</Notice> : null}
+      {query.checked === "1" ? <Notice>Daily automation check completed (VWP transitions, vaccine protocols, pharmacy stock, and milk drops synced).</Notice> : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -193,11 +201,18 @@ export default async function AlertsPage({
             </RecordDialog>
           ) : null}
           {farm.roles.some((role) => role === "owner" || role === "manager" || role === "admin") ? (
-            <form action={sendReminders}>
-              <button className="h-10 rounded-full border border-border bg-background px-4 text-sm font-medium hover:bg-muted" type="submit">
-                Send WhatsApp and SMS
-              </button>
-            </form>
+            <>
+              <form action={runDailyCheckNow}>
+                <button className="h-10 rounded-full border border-border bg-white px-4 text-sm font-medium hover:bg-muted" type="submit">
+                  Run daily check now
+                </button>
+              </form>
+              <form action={sendReminders}>
+                <button className="h-10 rounded-full border border-border bg-background px-4 text-sm font-medium hover:bg-muted" type="submit">
+                  Send WhatsApp and SMS
+                </button>
+              </form>
+            </>
           ) : null}
         </div>
 

@@ -75,6 +75,10 @@ export default async function AnimalLabelPage({ params }: { params: Promise<{ co
                 <dd className="font-medium">{animal.earTag ?? "—"}</dd>
               </div>
               <div>
+                <dt className="text-xs text-muted-foreground print:text-black/60">RFID</dt>
+                <dd className="font-mono text-xs font-medium">{animal.rfid ?? "—"}</dd>
+              </div>
+              <div>
                 <dt className="text-xs text-muted-foreground print:text-black/60">Date of birth</dt>
                 <dd className="font-medium">
                   {animal.dob ? `${formatDisplayDate(animal.dob)}${animal.dobEstimated ? " (est.)" : ""}` : "Unknown"}

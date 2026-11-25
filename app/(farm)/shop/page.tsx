@@ -26,6 +26,8 @@ const shopMessages: Record<string, string> = {
   stock: "Stock must be a whole number of zero or more.",
   listing: "Enter a valid category and public listing note.",
   status: "That order status transition is not allowed.",
+  photo: "Upload a JPEG, PNG, or WebP product image up to 5 MB.",
+  storage: "File storage is not configured on this server.",
 };
 
 export const metadata = { title: "Shop catalogue" };
@@ -95,22 +97,40 @@ export default async function ShopAdminPage({ searchParams }: { searchParams: Pr
               <form action={saveProduct} className="grid gap-3">
                 <label className="grid gap-1 text-sm">
                   Product name
-                  <input name="name" required maxLength={120} placeholder="Product" className={inputClass} />
-                </label>
-                <label className="grid gap-1 text-sm">
-                  Category
-                  <input name="category" maxLength={60} placeholder="Category (e.g. dairy, ghee)" className={inputClass} />
+                  <input name="name" required maxLength={120} placeholder="e.g. A2 Gir Bilona Ghee" className={inputClass} />
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm">
+                    Category
+                    <input name="category" maxLength={60} placeholder="dairy, ghee, compost" className={inputClass} />
+                  </label>
+                  <label className="grid gap-1 text-sm">
+                    Pack / unit label
+                    <input name="unitLabel" maxLength={40} placeholder="e.g. 500 ml glass jar" className={inputClass} />
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
                   <label className="grid gap-1 text-sm">
                     Price (₹)
                     <input name="price" type="number" min={0.01} max={10000000} step="0.01" required inputMode="decimal" placeholder="Price" className={inputClass} />
                   </label>
                   <label className="grid gap-1 text-sm">
-                    Stock quantity
+                    Stock qty
                     <input name="stock" type="number" min={0} max={1000000} step={1} required inputMode="numeric" placeholder="Stock" className={inputClass} />
                   </label>
+                  <label className="grid gap-1 text-sm">
+                    GST (%)
+                    <input name="gstPercent" type="number" min={0} max={28} step="0.5" placeholder="0 or 5 or 12" className={inputClass} />
+                  </label>
                 </div>
+                <label className="grid gap-1 text-sm">
+                  Description
+                  <textarea name="description" maxLength={500} rows={2} placeholder="Short product details for buyers" className="rounded-xl border border-border bg-background px-3 py-2 text-sm" />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                  Product photo (JPEG / PNG / WebP)
+                  <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" className="block w-full text-xs text-muted-foreground" />
+                </label>
                 <div className="flex justify-end">
                   <Submit>Add product</Submit>
                 </div>
@@ -122,7 +142,26 @@ export default async function ShopAdminPage({ searchParams }: { searchParams: Pr
           {catalogue.length === 0 ? <EmptyRow cols={6}>{term ? "No products match this search." : "No products yet."}</EmptyRow> : null}
           {catalogue.map((product) => (
             <tr key={product.id}>
-              <Td className="font-medium">{product.name}</Td>
+              <Td>
+                <div className="flex items-center gap-2.5">
+                  {product.photoKey && product.published === "yes" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`/farms/${farm.farmSlug}/media/product/${product.id}`}
+                      alt={product.name}
+                      className="size-10 shrink-0 rounded-lg border border-border object-cover"
+                    />
+                  ) : null}
+                  <div>
+                    <p className="font-medium">{product.name}</p>
+                    {product.unitLabel || product.gstPercent ? (
+                      <p className="text-xs text-muted-foreground">
+                        {[product.unitLabel, product.gstPercent ? `GST ${Number(product.gstPercent)}%` : null].filter(Boolean).join(" · ")}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </Td>
               <Td className="capitalize">{product.category}</Td>
               <Td>₹{Number(product.price).toLocaleString("en-IN")}</Td>
               <Td>{product.stock}</Td>
@@ -138,20 +177,38 @@ export default async function ShopAdminPage({ searchParams }: { searchParams: Pr
                         Product name
                         <input name="name" required maxLength={120} defaultValue={product.name} className={inputClass} />
                       </label>
-                      <label className="grid gap-1 text-sm">
-                        Category
-                        <input name="category" maxLength={60} defaultValue={product.category} className={inputClass} />
-                      </label>
                       <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="grid gap-1 text-sm">
+                          Category
+                          <input name="category" maxLength={60} defaultValue={product.category} className={inputClass} />
+                        </label>
+                        <label className="grid gap-1 text-sm">
+                          Pack / unit label
+                          <input name="unitLabel" maxLength={40} defaultValue={product.unitLabel ?? ""} className={inputClass} />
+                        </label>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
                         <label className="grid gap-1 text-sm">
                           Price (₹)
                           <input name="price" type="number" min={0.01} max={10000000} step="0.01" required defaultValue={Number(product.price)} className={inputClass} />
                         </label>
                         <label className="grid gap-1 text-sm">
-                          Stock quantity
+                          Stock qty
                           <input name="stock" type="number" min={0} max={1000000} step={1} required defaultValue={product.stock} className={inputClass} />
                         </label>
+                        <label className="grid gap-1 text-sm">
+                          GST (%)
+                          <input name="gstPercent" type="number" min={0} max={28} step="0.5" defaultValue={product.gstPercent ? Number(product.gstPercent) : ""} className={inputClass} />
+                        </label>
                       </div>
+                      <label className="grid gap-1 text-sm">
+                        Description
+                        <textarea name="description" maxLength={500} rows={2} defaultValue={product.description ?? ""} className="rounded-xl border border-border bg-background px-3 py-2 text-sm" />
+                      </label>
+                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        Replace photo (optional)
+                        <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" className="block w-full text-xs text-muted-foreground" />
+                      </label>
                       <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" name="published" defaultChecked={product.published === "yes"} />
                         <span>Published on public shop</span>
@@ -192,9 +249,19 @@ export default async function ShopAdminPage({ searchParams }: { searchParams: Pr
                 <Td>
                   <p className="text-sm">{lines.length > 0 ? lines.map((l) => `${l.name} × ${l.quantity}`).join(", ") : "Order item"}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{order.address}</p>
-                  <Link href={trackHref} className="mt-1 inline-block text-xs font-medium text-primary hover:underline">
-                    Customer tracking link
-                  </Link>
+                  <div className="mt-1 flex flex-wrap gap-3 text-xs">
+                    <Link href={trackHref} className="font-medium text-primary hover:underline">
+                      Customer tracking link
+                    </Link>
+                    <a
+                      href={`/farms/${farm.farmSlug}/orders/${order.id}/invoice?t=${encodeURIComponent(orderAccessToken(order.id))}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-foreground hover:underline"
+                    >
+                      GST Invoice PDF
+                    </a>
+                  </div>
                 </Td>
                 <Td>₹{Number(order.amount).toLocaleString("en-IN")}</Td>
                 <Td>

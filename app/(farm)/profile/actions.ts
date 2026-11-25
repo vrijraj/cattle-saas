@@ -2,11 +2,13 @@
 
 import { hash, verify } from "@node-rs/argon2";
 import { and, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { farmMembers, users } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { requireFarm, setActiveFarmCookie } from "@/lib/farm-context";
+import { normalizeLocale } from "@/lib/i18n";
 
 export async function switchFarm(formData: FormData) {
   const farm = await requireFarm();
@@ -22,21 +24,33 @@ export async function switchFarm(formData: FormData) {
   redirect("/dashboard");
 }
 
+export async function updateLocale(formData: FormData) {
+  const farm = await requireFarm();
+  const locale = normalizeLocale(String(formData.get("locale") ?? "en"));
+  await db.update(users).set({ locale }).where(eq(users.id, farm.userId));
+  revalidatePath("/", "layout");
+}
+
 export async function updateProfileName(formData: FormData) {
   const farm = await requireFarm();
   const name = String(formData.get("name") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").replace(/[^0-9+]/g, "").slice(0, 20);
+  const locale = normalizeLocale(String(formData.get("locale") ?? farm.userLocale));
   if (name.length < 2 || name.length > 120) redirect("/profile?error=name");
   await db.transaction(async (tx) => {
-    await tx.update(users).set({ name }).where(eq(users.id, farm.userId));
+    await tx
+      .update(users)
+      .set({ name, phone: phone || null, locale })
+      .where(eq(users.id, farm.userId));
     await writeAudit(tx, {
       farmId: farm.farmId,
       actorId: farm.userId,
       action: "update",
       entity: "member",
       entityId: farm.userId,
-      summary: `Updated display name to ${name}`,
-      before: { name: farm.userName },
-      after: { name },
+      summary: `Updated profile (${name}, lang ${locale})`,
+      before: { name: farm.userName, phone: farm.userPhone, locale: farm.userLocale },
+      after: { name, phone: phone || null, locale },
     });
   });
   redirect("/profile?saved=name");

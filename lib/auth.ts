@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const credentialsSchema = z.object({
   email: z.email(),
@@ -27,10 +28,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const parsed = credentialsSchema.safeParse(credentials);
         if (!parsed.success) return null;
 
+        const email = parsed.data.email.toLowerCase();
+        const rl = checkRateLimit(`signin:${email}`, { limit: 10, windowMs: 15 * 60 * 1000 });
+        if (!rl.allowed) return null;
+
         const [user] = await db
           .select()
           .from(users)
-          .where(eq(users.email, parsed.data.email.toLowerCase()))
+          .where(eq(users.email, email))
           .limit(1);
 
         if (!user?.passwordHash || user.disabledAt) return null;

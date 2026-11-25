@@ -1,4 +1,5 @@
-import { CircleAlert, Droplets, Heart, Leaf, Mail, Wheat } from "lucide-react";
+import Link from "next/link";
+import { CircleAlert, CircleCheck, Droplets, Heart, Leaf, Mail, Wheat } from "lucide-react";
 import { siteConfig } from "@/lib/site-config";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
@@ -65,9 +66,9 @@ export const metadata = { title: "Sign in" };
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; callbackUrl?: string; email?: string }>;
+  searchParams: Promise<{ error?: string; callbackUrl?: string; email?: string; reset?: string }>;
 }) {
-  const { error, callbackUrl, email } = await searchParams;
+  const { error, callbackUrl, email, reset } = await searchParams;
   const next = callbackUrl?.startsWith("/") && !callbackUrl.startsWith("//") && !callbackUrl.startsWith("/\\") ? callbackUrl : "/dashboard";
   const invalid = Boolean(error);
 
@@ -112,6 +113,12 @@ export default async function SignInPage({
             <p className="mt-2 text-sm leading-6 text-muted-foreground">Use the email on your farm account.</p>
             <input type="hidden" name="callbackUrl" value={next} />
             <div className="mt-6 space-y-4">
+              {reset === "1" ? (
+                <p className="flex gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-900">
+                  <CircleCheck className="mt-0.5 size-4 shrink-0 text-emerald-700" />
+                  Password updated. Sign in with your new password.
+                </p>
+              ) : null}
               {invalid ? (
                 <p role="alert" className="flex gap-2 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2.5 text-sm text-danger">
                   <CircleAlert className="mt-0.5 size-4 shrink-0" />
@@ -137,11 +144,26 @@ export default async function SignInPage({
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
+                    Forgot password?
+                  </Link>
+                </div>
                 <PasswordField invalid={invalid} />
               </div>
               <SignInSubmit />
             </div>
+            <p className="mt-5 text-center text-xs text-muted-foreground">
+              New dairy farm?{" "}
+              <Link href="/signup" className="font-medium text-primary hover:underline">
+                Create a farm account
+              </Link>
+              {" · "}
+              <Link href="/" className="hover:underline">
+                Home
+              </Link>
+            </p>
             {process.env.NODE_ENV === "development" ? (
               <div className="mt-5 rounded-xl bg-muted px-3.5 py-3 text-sm text-muted-foreground">
                 <p className="text-xs font-medium tracking-wide text-foreground">Sample farm</p>

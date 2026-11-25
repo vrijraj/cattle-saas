@@ -84,12 +84,23 @@ export default async function PublicAnimalPage({ params }: { params: Promise<{ s
       : reproductionLabel[row.animal.reproduction] ?? row.animal.reproduction;
 
   const title = row.listing.showName === "yes" ? (row.animal.name ?? row.animal.code) : row.animal.code;
+  const waDigits = farm.whatsappNumber?.replace(/[^0-9]/g, "") ?? "";
 
   return (
     <PublicFrame title={farm.name} subtitle="Cattle catalogue" href={`/farms/${slug}`}>
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <section className="space-y-5">
           <PageHeader title={title} description={`Animal ID ${row.animal.code}`} />
+          {row.animal.photoKey ? (
+            <div className="overflow-hidden rounded-2xl border border-border bg-card">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/farms/${slug}/media/animal/${encodeURIComponent(row.animal.code)}`}
+                alt={title}
+                className="max-h-96 w-full object-cover"
+              />
+            </div>
+          ) : null}
           <dl className="grid gap-3 sm:grid-cols-2">
             <Fact label="Breed" value={row.breed} />
             <Fact label="Sex" value={sexLabel[row.animal.sex] ?? row.animal.sex} />
@@ -114,9 +125,20 @@ export default async function PublicAnimalPage({ params }: { params: Promise<{ s
           ) : null}
         </section>
         <Panel title="Send enquiry">
+          {waDigits ? (
+            <a
+              href={`https://wa.me/${waDigits}?text=${encodeURIComponent(`Hello ${farm.name}, I would like to enquire about ${title} (${row.animal.code}).`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-4 flex h-10 items-center justify-center rounded-full border border-emerald-600/30 bg-emerald-50 px-4 text-sm font-medium text-emerald-900 hover:bg-emerald-100"
+            >
+              Enquire on WhatsApp
+            </a>
+          ) : null}
           <form action={sendEnquiry} className="grid gap-3">
             <input type="hidden" name="slug" value={slug} />
             <input type="hidden" name="animalCode" value={row.animal.code} />
+            <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
             <label className="grid gap-1 text-sm">
               Your name
               <input name="name" required maxLength={120} placeholder="Your name" className={inputClass} />

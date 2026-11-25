@@ -12,6 +12,7 @@ import { requireFarm } from "@/lib/farm-context";
 import { issueAnimalCode } from "@/lib/issue-code";
 import { parentLinkCreatesCycle, type PedigreeAnimal } from "@/lib/pedigree-tree";
 import { canManageTeam, canOverrideStatus, canWriteAnimals } from "@/lib/permissions";
+import { checkAnimalQuota } from "@/lib/plans";
 
 const animalSchema = z.object({
   name: z.string().trim().max(80),
@@ -92,6 +93,10 @@ function pedigreeAnimalsWithBulls(
 export async function createAnimal(_prev: { error: string }, formData: FormData): Promise<{ error: string }> {
   const farm = await requireFarm();
   if (!canWriteAnimals(farm.roles)) return { error: "Your role cannot add animals." };
+  const quota = await checkAnimalQuota(farm.farmId, farm.maxAnimals);
+  if (!quota.allowed) {
+    return { error: `Plan limit reached (${quota.current}/${quota.limit} on-farm animals). Upgrade your plan in Farm settings.` };
+  }
 
   const parsed = animalSchema.safeParse({
     name: formData.get("name") ?? "",

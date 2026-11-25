@@ -5,7 +5,7 @@ export type MilkSheetRow = {
   voidedAt: Date | null;
 };
 
-export function milkDaySummary(animalIds: string[], rows: MilkSheetRow[]) {
+export function milkDaySummary<T extends MilkSheetRow>(animalIds: string[], rows: T[]) {
   const active = new Map(rows.filter((row) => !row.voidedAt).map((row) => [row.animalId, row]));
   const entered = animalIds.filter((id) => active.has(id));
   const total = entered.reduce((sum, id) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dryOffDueOn, lactationHistory, lactationSummary } from "./lactation";
+import { dryOffDueOn, lactationHistory, lactationSummary, projected305DayLitres } from "./lactation";
 
 describe("lactation", () => {
   it("numbers each calving and counts days in milk from the latest one", () => {
@@ -67,5 +67,11 @@ describe("lactation", () => {
       peakLitres: 15,
       averageLitres: 13.3,
     });
+  });
+
+  it("projects 305-day lactation yields once days in milk reaches 30", () => {
+    expect(projected305DayLitres(200, 20)).toBeNull();
+    expect(projected305DayLitres(1200, 120)).toBe(Math.round(1200 / 0.52));
+    expect(projected305DayLitres(3050, 305)).toBe(3050);
   });
 });

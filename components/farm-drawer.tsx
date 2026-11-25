@@ -10,6 +10,7 @@ export function FarmDrawer({
   userName,
   role,
   initials,
+  locale = "en",
   showTeam,
   showAudit,
   showFinance,
@@ -21,12 +22,14 @@ export function FarmDrawer({
   showListings,
   showEnquiries,
   showSettings,
+  showAdmin = false,
   signOut,
 }: {
   farmName: string;
   userName: string;
   role: string;
   initials: string;
+  locale?: string;
   showTeam: boolean;
   showAudit: boolean;
   showFinance: boolean;
@@ -38,6 +41,7 @@ export function FarmDrawer({
   showListings: boolean;
   showEnquiries: boolean;
   showSettings: boolean;
+  showAdmin?: boolean;
   signOut: React.ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -103,6 +107,8 @@ export function FarmDrawer({
             showListings={showListings}
             showEnquiries={showEnquiries}
             showSettings={showSettings}
+            showAdmin={showAdmin}
+            locale={locale}
             variant="drawer"
           />
           <div className="mt-auto border-t border-white/[0.08] px-3 py-3">{signOut}</div>

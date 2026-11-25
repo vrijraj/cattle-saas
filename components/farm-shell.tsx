@@ -6,7 +6,9 @@ import { AccountMenu } from "@/components/account-menu";
 import { FarmDrawer } from "@/components/farm-drawer";
 import { FarmNav } from "@/components/farm-nav";
 import { HerdSearch } from "@/components/herd-search";
+import { OfflineSyncBanner } from "@/components/offline-sync-banner";
 import { PageTransition, ScreenTransition } from "@/components/page-transition";
+import { t } from "@/lib/i18n";
 
 function SignOutButton({ menu = false }: { menu?: boolean }) {
   return (
@@ -39,6 +41,7 @@ export function FarmShell({
   role,
   userId,
   farmId,
+  locale = "en",
   farms = [],
   openAlertCount = 0,
   showTeam = false,
@@ -52,6 +55,7 @@ export function FarmShell({
   showListings = false,
   showEnquiries = false,
   showSettings = false,
+  showAdmin = false,
   children,
 }: {
   farmName: string;
@@ -60,6 +64,7 @@ export function FarmShell({
   role: string;
   userId: string;
   farmId: string;
+  locale?: string;
   farms?: { id: string; name: string; slug: string; roles: string[] }[];
   openAlertCount?: number;
   showTeam?: boolean;
@@ -73,6 +78,7 @@ export function FarmShell({
   showListings?: boolean;
   showEnquiries?: boolean;
   showSettings?: boolean;
+  showAdmin?: boolean;
   children: React.ReactNode;
 }) {
   const initials = userName
@@ -127,7 +133,7 @@ export function FarmShell({
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col pt-1">
-            <FarmNav {...navFlags} />
+            <FarmNav {...navFlags} showAdmin={showAdmin} locale={locale} />
           </div>
 
           <div className="mt-auto border-t border-white/[0.07] px-2.5 py-2.5">
@@ -143,7 +149,9 @@ export function FarmShell({
                 userName={userName}
                 role={role}
                 initials={initials}
+                locale={locale}
                 {...navFlags}
+                showAdmin={showAdmin}
                 signOut={<SignOutButton />}
               />
               <HerdSearch variant="header" farmId={farmId} userId={userId} {...navFlags} />
@@ -156,7 +164,7 @@ export function FarmShell({
                 className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-white px-3 text-xs font-medium text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
               >
                 <ScanLine className="size-3.5 text-muted-foreground" />
-                <span className="hidden sm:inline">Scan QR</span>
+                <span className="hidden sm:inline">{t(locale, "action.scanQr")}</span>
               </Link>
               <Link
                 href={`/farms/${farmSlug}`}
@@ -164,7 +172,7 @@ export function FarmShell({
                 className="hidden h-8 items-center gap-1.5 rounded-full border border-border bg-white px-3 text-xs font-medium text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary sm:inline-flex"
               >
                 <Eye className="size-3.5 text-muted-foreground" />
-                <span>Public page</span>
+                <span>{t(locale, "action.publicPage")}</span>
               </Link>
               <Link
                 href="/alerts"
@@ -176,7 +184,9 @@ export function FarmShell({
                 }`}
               >
                 <span className={`size-2 rounded-full ${openAlertCount > 0 ? "bg-amber-600" : "bg-emerald-600"}`} />
-                <span className="tabular-nums">{openAlertCount > 0 ? `${openAlertCount} open` : "All clear"}</span>
+                <span className="tabular-nums">
+                  {openAlertCount > 0 ? `${openAlertCount} ${t(locale, "status.openAlerts")}` : t(locale, "status.allClear")}
+                </span>
                 <Bell className="ml-0.5 size-3.5" />
               </Link>
               <Link
@@ -190,6 +200,7 @@ export function FarmShell({
               <AccountMenu
                 farmName={farmName}
                 currentFarmId={farmId}
+                locale={locale}
                 farms={farms}
                 userName={userName}
                 role={role}
@@ -200,6 +211,7 @@ export function FarmShell({
           </header>
 
           <main className="mx-auto w-full min-w-0 max-w-[1220px] flex-1 overflow-x-clip px-4 pt-2 pb-8 sm:px-7 md:px-9 print:max-w-none print:p-0">
+            <OfflineSyncBanner />
             <PageTransition>{children}</PageTransition>
           </main>
         </div>
