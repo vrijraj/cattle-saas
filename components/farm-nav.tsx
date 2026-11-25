@@ -185,12 +185,12 @@ export function FarmNav({
     <nav
       className={
         stacked
-          ? "flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 pb-3"
-          : "hidden min-h-0 flex-1 flex-col overflow-y-auto px-2.5 md:flex"
+          ? "sidebar-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3"
+          : "sidebar-scroll hidden min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-2 md:flex"
       }
     >
-      <div>
-        <p className="px-2.5 pt-2 pb-1.5 text-[10px] font-semibold tracking-[0.14em] text-zinc-500 uppercase">Menu</p>
+      <div className="shrink-0">
+        <p className="px-2.5 pt-1.5 pb-1.5 text-[10px] font-semibold tracking-[0.14em] text-zinc-500 uppercase">Overview</p>
         <div className="space-y-0.5">
           {topLinks.filter((link) => allowed(link.href)).map((link) => {
             const active = isRouteActive(link.href);
@@ -199,9 +199,9 @@ export function FarmNav({
               <Link
                 key={link.href}
                 href={link.href}
-                className={`flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] transition ${
+                className={`flex h-9 items-center gap-2.5 rounded-xl px-2.5 text-[13px] transition ${
                   active
-                    ? "bg-white/[0.11] font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                    ? "bg-white/[0.11] font-medium text-white ring-1 ring-inset ring-white/[0.08]"
                     : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
                 }`}
               >
@@ -213,72 +213,77 @@ export function FarmNav({
         </div>
       </div>
 
-      <div className="my-2.5 border-t border-white/[0.07]" />
-
-      <div className="space-y-1">
-        {visibleGroups.map((group) => {
-          const GroupIcon = group.icon;
-          const hasActiveChild = group.links.some((link) => isRouteActive(link.href));
-          const isOpen = isGroupOpen(group, hasActiveChild);
-          return (
-            <div key={group.id}>
-              <button
-                type="button"
-                onClick={() => toggleGroup(group.id, isOpen)}
-                aria-expanded={isOpen}
-                className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition ${
-                  hasActiveChild ? "font-medium text-zinc-100" : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
-                }`}
-              >
-                <GroupIcon className={`size-4 shrink-0 ${hasActiveChild ? "text-emerald-400" : "text-zinc-500"}`} />
-                <span className="flex-1 truncate">{t(locale, group.labelKey)}</span>
-                <ChevronDown
-                  className={`size-3.5 shrink-0 text-zinc-500 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}
-                />
-              </button>
-              {isOpen ? (
-                <div className="mt-0.5 ml-4 space-y-0.5 border-l border-white/[0.08] pl-2.5">
-                  {group.links.map((link) => {
-                    const active = isRouteActive(link.href);
-                    const Icon = link.icon;
-                    return (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        className={`flex h-8 items-center gap-2 rounded-lg px-2 text-xs transition ${
-                          active
-                            ? "bg-white/[0.1] font-medium text-white"
-                            : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
-                        }`}
-                      >
-                        <NavMark icon={Icon} active={active} small />
-                        <span className="truncate">{t(locale, link.labelKey)}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+      <div className="mt-4 shrink-0">
+        <p className="px-2.5 pb-1.5 text-[10px] font-semibold tracking-[0.14em] text-zinc-500 uppercase">Operations</p>
+        <div className="space-y-0.5">
+          {visibleGroups.map((group) => {
+            const GroupIcon = group.icon;
+            const hasActiveChild = group.links.some((link) => isRouteActive(link.href));
+            const isOpen = isGroupOpen(group, hasActiveChild);
+            return (
+              <div key={group.id}>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id, isOpen)}
+                  aria-expanded={isOpen}
+                  className={`flex h-9 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[13px] transition ${
+                    hasActiveChild ? "font-medium text-zinc-100" : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200"
+                  }`}
+                >
+                  <GroupIcon className={`size-4 shrink-0 ${hasActiveChild ? "text-emerald-400" : "text-zinc-500"}`} />
+                  <span className="flex-1 truncate">{t(locale, group.labelKey)}</span>
+                  <ChevronDown
+                    className={`size-3.5 shrink-0 text-zinc-500 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {isOpen ? (
+                  <div className="mt-0.5 mb-1.5 ml-4 space-y-0.5 border-l border-white/[0.08] pl-2.5">
+                    {group.links.map((link) => {
+                      const active = isRouteActive(link.href);
+                      const Icon = link.icon;
+                      return (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          className={`flex h-8 items-center gap-2 rounded-lg px-2 text-xs transition ${
+                            active
+                              ? "bg-white/[0.11] font-medium text-white ring-1 ring-inset ring-white/[0.08]"
+                              : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
+                          }`}
+                        >
+                          <NavMark icon={Icon} active={active} small />
+                          <span className="truncate">{t(locale, link.labelKey)}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {visibleFooter.length > 0 ? (
-        <div className="mt-auto pt-4">
-          <div className="mb-2 border-t border-white/[0.07]" />
+        <div className="mt-auto shrink-0 pt-4">
+          <p className="px-2.5 pb-1.5 text-[10px] font-semibold tracking-[0.14em] text-zinc-500 uppercase">Manage</p>
           <div className="space-y-0.5">
             {visibleFooter.map((link) => {
               const active = isRouteActive(link.href);
+              const Icon = link.icon;
               return (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`flex h-8.5 items-center justify-between rounded-lg px-2.5 text-[13px] transition ${
-                    active ? "bg-white/[0.1] font-medium text-white" : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
+                  className={`group flex h-8.5 items-center gap-2.5 rounded-xl px-2.5 text-[12.5px] transition ${
+                    active
+                      ? "bg-white/[0.11] font-medium text-white ring-1 ring-inset ring-white/[0.08]"
+                      : "text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
                   }`}
                 >
-                  <span className="truncate">{t(locale, link.labelKey)}</span>
-                  <ChevronRight className="size-3.5 shrink-0 text-zinc-500" />
+                  <NavMark icon={Icon} active={active} small />
+                  <span className="flex-1 truncate">{t(locale, link.labelKey)}</span>
+                  <ChevronRight className="size-3 shrink-0 text-zinc-600 transition group-hover:translate-x-0.5 group-hover:text-zinc-400" />
                 </Link>
               );
             })}

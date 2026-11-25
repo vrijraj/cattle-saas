@@ -39,7 +39,7 @@ function TransitionFrame({ children }: { children: React.ReactNode }) {
 
   return (
     <ViewTransition key={contentKey(pathname, search)} name="page-content" enter="none" exit="none" share="page" default="none" update="none">
-      <div className="flex min-h-full flex-1 min-w-0 flex-col">{children}</div>
+      <div className="flex flex-1 min-w-0 flex-col">{children}</div>
     </ViewTransition>
   );
 }

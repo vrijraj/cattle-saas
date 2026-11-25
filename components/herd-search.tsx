@@ -467,7 +467,7 @@ export function HerdSearch({
         onClick={open}
         className={
           variant === "sidebar"
-            ? "flex h-9 w-full items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 text-left text-xs text-zinc-400 transition hover:border-white/[0.14] hover:bg-white/[0.07] hover:text-zinc-200"
+            ? "flex h-9 w-full items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.05] px-3 text-left text-xs text-zinc-400 transition hover:border-white/[0.16] hover:bg-white/[0.08] hover:text-zinc-200"
             : variant === "header"
               ? "flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-white px-3 text-left text-xs text-muted-foreground shadow-2xs sm:max-w-xs"
               : "flex h-10 items-center gap-2 rounded-full border border-border/80 bg-muted/65 px-3.5 text-left text-sm text-muted-foreground transition hover:bg-muted lg:w-80"

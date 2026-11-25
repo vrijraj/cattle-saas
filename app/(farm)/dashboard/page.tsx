@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { and, eq, gte } from "drizzle-orm";
 import {
+  ArrowRight,
+  ArrowUpRight,
   Beef,
   Bell,
   Calendar,
@@ -11,8 +13,12 @@ import {
   HeartPulse,
   MapPin,
   Milk,
+  Plus,
   ScanLine,
+  ShieldCheck,
   Stethoscope,
+  TrendingDown,
+  TrendingUp,
   Wallet,
   Warehouse,
   Wheat,
@@ -184,37 +190,50 @@ export default async function DashboardPage() {
 
   const totalOpenWithFeed = openAlerts.length + lowFeed.length;
   const healthyRatio = counts.total > 0 ? Math.round(((counts.total - isolated.length) / counts.total) * 100) : 100;
+  const mtdNet = mtdIncome - mtdExpense;
+  const mtdMargin = mtdIncome > 0 ? Math.round((mtdNet / mtdIncome) * 100) : null;
 
   const topKpis = [
     {
       label: t(farm.locale, "dash.kpi.herd"),
       value: String(counts.total),
-      badge: `${cattleCount}C/${buffaloCount}B`,
-      badgeClass: "bg-blue-500/12 text-blue-700",
+      badge: `${cattleCount}C · ${buffaloCount}B`,
+      badgeClass: "bg-blue-500/10 text-blue-700 ring-1 ring-inset ring-blue-500/15",
+      icon: Beef,
+      iconClass: "bg-blue-500/10 text-blue-700",
       hint: `${counts.lactating} lactating · ${counts.dry} dry · ${counts.calves} calves`,
       href: "/animals?view=active",
     },
     {
       label: t(farm.locale, "dash.kpi.milk"),
       value: `${milkToday.toFixed(1)} L`,
-      badge: `${enteredTodayIds.size}/${lactatingIds.size}`,
-      badgeClass: "bg-emerald-500/12 text-emerald-700",
-      hint: notEnteredToday > 0 ? `${notEnteredToday} lactating not entered · MTD ${milkMonth.toFixed(1)} L` : `All lactating entered · MTD ${milkMonth.toFixed(1)} L`,
+      badge: `${enteredTodayIds.size}/${lactatingIds.size} logged`,
+      badgeClass: "bg-emerald-500/10 text-emerald-700 ring-1 ring-inset ring-emerald-500/15",
+      icon: Milk,
+      iconClass: "bg-emerald-500/10 text-emerald-700",
+      hint: notEnteredToday > 0 ? `${notEnteredToday} lactating pending · MTD ${milkMonth.toFixed(1)} L` : `All lactating logged · MTD ${milkMonth.toFixed(1)} L`,
       href: "/milk",
     },
     {
       label: t(farm.locale, "dash.kpi.pregnant"),
       value: String(counts.pregnant),
-      badge: String(calvingSoonCount),
-      badgeClass: "bg-amber-500/14 text-amber-700",
-      hint: `${calvingSoonCount} calving in 30d · ${aiThisMonth} AI this month`,
+      badge: `${calvingSoonCount} in 30d`,
+      badgeClass: "bg-amber-500/12 text-amber-800 ring-1 ring-inset ring-amber-500/20",
+      icon: HeartPulse,
+      iconClass: "bg-amber-500/12 text-amber-700",
+      hint: `${calvingSoonCount} calving soon · ${aiThisMonth} AI this month`,
       href: "/breeding",
     },
     {
       label: t(farm.locale, "dash.kpi.alerts"),
       value: String(totalOpenWithFeed),
-      badge: String(healthDueNow.length),
-      badgeClass: "bg-rose-500/12 text-rose-700",
+      badge: totalOpenWithFeed === 0 ? "All clear" : `${healthDueNow.length} due now`,
+      badgeClass:
+        totalOpenWithFeed === 0
+          ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-inset ring-emerald-500/15"
+          : "bg-rose-500/10 text-rose-700 ring-1 ring-inset ring-rose-500/15",
+      icon: Bell,
+      iconClass: totalOpenWithFeed === 0 ? "bg-emerald-500/10 text-emerald-700" : "bg-rose-500/10 text-rose-700",
       hint: `${healthDueNow.length} health due now${showLowFeed && lowFeed.length > 0 ? ` · ${lowFeed.length} low feed` : ""}`,
       href: "/alerts",
     },
@@ -248,50 +267,44 @@ export default async function DashboardPage() {
   const cardClass = "rounded-2xl border border-black/[0.06] bg-card p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]";
 
   return (
-    <div className="page-enter space-y-4">
-      <section className="flex flex-col justify-between gap-4 pt-0.5 pb-1 sm:flex-row sm:items-start">
-        <div>
+    <div className="page-enter space-y-5">
+      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{t(farm.locale, "dash.title")}</h1>
-            <span className="inline-flex items-center rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-600/20">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[28px]">{t(farm.locale, "dash.title")}</h1>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-600/20">
+              <span className="size-1.5 rounded-full bg-emerald-600" />
               {t(farm.locale, "dash.activeHerd")}
             </span>
           </div>
-          <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 font-medium text-foreground/80">
+              <MapPin className="size-3.5 text-primary" />
+              {t(farm.locale, "dash.onFarm")} · {farm.farmName}
+            </span>
+            <span className="text-border">•</span>
             <span className="inline-flex items-center gap-1">
               <Calendar className="size-3.5 text-muted-foreground/80" />
               {formatDisplayDate(today)}
             </span>
-            <span>·</span>
-            <span>{farm.timezone}</span>
-            <span>·</span>
-            <span>Since {formatDisplayDate(monthStart)}</span>
-          </p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1 font-medium text-foreground/80">
-              <MapPin className="size-3.5 text-primary" />
-              {t(farm.locale, "dash.onFarm")}
-            </span>
-            <span>·</span>
-            <span>{farm.farmName}</span>
-            <span>·</span>
+            <span className="text-border">•</span>
             <span>
               {counts.total} animals across {activeShedCount} active {activeShedCount === 1 ? "shed" : "sheds"}
             </span>
-          </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/animals"
-            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3.5 text-xs font-semibold text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/35 hover:text-primary"
           >
             <Beef className="size-3.5 text-muted-foreground" />
             {t(farm.locale, "animals.title")}
           </Link>
           <Link
             href="/milk"
-            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3.5 text-xs font-semibold text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/35 hover:text-primary"
           >
             <Milk className="size-3.5 text-muted-foreground" />
             {t(farm.locale, "dash.milkSheet")}
@@ -299,93 +312,178 @@ export default async function DashboardPage() {
           {canWriteAnimals(farm.roles) ? (
             <Link
               href="/animals/new"
-              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-[0_1px_2px_rgba(21,115,71,0.28)] transition hover:bg-primary/90"
             >
+              <Plus className="size-3.5" />
               {t(farm.locale, "dash.addCattle")}
             </Link>
           ) : null}
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-        {topKpis.map((stat) => (
-          <Link
-            key={stat.label}
-            href={stat.href}
-            className="group rounded-2xl border border-black/[0.06] bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30 hover:shadow-[0_4px_12px_rgba(15,23,42,0.06)] sm:p-5"
-          >
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{stat.label}</p>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <p className="font-display text-2xl font-semibold tracking-tight tabular-nums text-foreground sm:text-3xl">{stat.value}</p>
-              <span className={`inline-flex h-7 shrink-0 items-center justify-center rounded-full px-2 text-[11px] font-bold tabular-nums ${stat.badgeClass}`}>
-                {stat.badge}
-              </span>
-            </div>
-            <p className="mt-2 truncate text-xs text-muted-foreground">{stat.hint}</p>
-          </Link>
-        ))}
+      <section className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        {topKpis.map((stat) => {
+          const StatIcon = stat.icon;
+          return (
+            <Link
+              key={stat.label}
+              href={stat.href}
+              className="group flex flex-col justify-between rounded-2xl border border-black/[0.06] bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_8px_20px_-10px_rgba(15,23,42,0.12)] sm:p-5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{stat.label}</p>
+                <span className={`grid size-8 shrink-0 place-items-center rounded-xl ${stat.iconClass}`}>
+                  <StatIcon className="size-4" />
+                </span>
+              </div>
+              <div className="mt-3 flex items-baseline justify-between gap-2">
+                <p className="font-display text-2xl font-semibold tracking-tight tabular-nums text-foreground sm:text-[28px]">{stat.value}</p>
+                <span className={`inline-flex h-6 shrink-0 items-center rounded-full px-2 text-[11px] font-semibold tabular-nums ${stat.badgeClass}`}>
+                  {stat.badge}
+                </span>
+              </div>
+              <p className="mt-2.5 truncate text-xs text-muted-foreground">{stat.hint}</p>
+            </Link>
+          );
+        })}
       </section>
 
       {showFinance ? (
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthIncome")}</p>
-            <p className="mt-1 font-display text-xl font-semibold tabular-nums text-emerald-700">₹{Math.round(mtdIncome).toLocaleString("en-IN")}</p>
-          </Link>
-          <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthExpense")}</p>
-            <p className="mt-1 font-display text-xl font-semibold tabular-nums text-foreground">₹{Math.round(mtdExpense).toLocaleString("en-IN")}</p>
-          </Link>
-          <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthNet")}</p>
-            <p className={`mt-1 font-display text-xl font-semibold tabular-nums ${mtdIncome - mtdExpense >= 0 ? "text-emerald-700" : "text-danger"}`}>
-              {mtdIncome - mtdExpense < 0 ? "−" : ""}₹{Math.round(Math.abs(mtdIncome - mtdExpense)).toLocaleString("en-IN")}
-            </p>
-          </Link>
+        <section className="overflow-hidden rounded-2xl border border-black/[0.06] bg-card shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <span className="grid size-6 place-items-center rounded-lg bg-secondary text-primary">
+                <Wallet className="size-3.5" />
+              </span>
+              <span className="text-xs font-semibold text-foreground">Month-to-date cashflow</span>
+              <span className="hidden text-xs text-muted-foreground sm:inline">· Since {formatDisplayDate(monthStart)}</span>
+            </div>
+            <Link href="/finance" className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+              Open ledger
+              <ArrowUpRight className="size-3.5" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 divide-y divide-border/60 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <Link href="/finance" className="group px-5 py-4 transition hover:bg-[#f8faf9]">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthIncome")}</p>
+                <TrendingUp className="size-3.5 text-emerald-600" />
+              </div>
+              <p className="mt-1.5 font-display text-xl font-semibold tracking-tight tabular-nums text-emerald-700">
+                ₹{Math.round(mtdIncome).toLocaleString("en-IN")}
+              </p>
+            </Link>
+            <Link href="/finance" className="group px-5 py-4 transition hover:bg-[#f8faf9]">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthExpense")}</p>
+                <TrendingDown className="size-3.5 text-muted-foreground" />
+              </div>
+              <p className="mt-1.5 font-display text-xl font-semibold tracking-tight tabular-nums text-foreground">
+                ₹{Math.round(mtdExpense).toLocaleString("en-IN")}
+              </p>
+            </Link>
+            <Link href="/finance" className="group px-5 py-4 transition hover:bg-[#f8faf9]">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthNet")}</p>
+                {mtdMargin !== null ? (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold tabular-nums ${
+                      mtdMargin >= 0 ? "bg-emerald-500/10 text-emerald-700" : "bg-rose-500/10 text-rose-700"
+                    }`}
+                  >
+                    {mtdMargin >= 0 ? "+" : ""}
+                    {mtdMargin}% margin
+                  </span>
+                ) : null}
+              </div>
+              <p className={`mt-1.5 font-display text-xl font-semibold tracking-tight tabular-nums ${mtdNet >= 0 ? "text-emerald-700" : "text-danger"}`}>
+                {mtdNet < 0 ? "−" : ""}₹{Math.round(Math.abs(mtdNet)).toLocaleString("en-IN")}
+              </p>
+            </Link>
+          </div>
         </section>
       ) : null}
 
-      <section className="grid gap-3.5 lg:grid-cols-3">
-        <article className={cardClass}>
-          <h2 className="text-sm font-semibold text-foreground">Quick Actions</h2>
-          <div className="mt-3.5 grid grid-cols-2 gap-2">
-            {quickActions.slice(0, 10).map((action) => (
-              <Link
-                key={action.label}
-                href={action.href}
-                className="flex h-10 items-center gap-2 rounded-xl bg-secondary/75 px-3 text-xs font-semibold text-primary transition hover:bg-secondary"
-              >
-                <action.icon className="size-3.5 shrink-0" />
-                <span className="truncate">{action.label}</span>
+      <section className="grid gap-4 xl:grid-cols-12">
+        <article className={`${cardClass} xl:col-span-8`}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Milk &amp; reproduction snapshot</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">Live 7-day production curve and breeding activity for {farm.farmName}.</p>
+            </div>
+            {canViewReports(farm.roles) ? (
+              <Link href="/reports" className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+                Reports
+                <ArrowRight className="size-3" />
               </Link>
-            ))}
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-12">
+            <div className="grid gap-2.5 lg:col-span-5">
+              <div className="rounded-xl border border-black/[0.04] bg-[#f6f7f9] p-3.5">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Monthly milk</p>
+                <p className="mt-1 font-display text-2xl font-semibold tracking-tight tabular-nums text-foreground">{milkMonth.toFixed(1)} L</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Since {formatDisplayDate(monthStart)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-xl border border-black/[0.04] bg-[#f6f7f9] p-3.5">
+                  <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Today</p>
+                  <p className="mt-1 font-display text-xl font-semibold tracking-tight tabular-nums text-foreground">{milkToday.toFixed(1)} L</p>
+                </div>
+                <div className="rounded-xl border border-black/[0.04] bg-[#f6f7f9] p-3.5">
+                  <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">AI (MTD)</p>
+                  <p className="mt-1 font-display text-xl font-semibold tracking-tight tabular-nums text-foreground">{aiThisMonth}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="min-w-0 rounded-xl border border-black/[0.04] bg-[#fafbfc] p-3.5 lg:col-span-7">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Milk, last 7 days</p>
+                <span className="text-[11px] font-medium text-muted-foreground">Litres / day</span>
+              </div>
+              <MilkLine days={milkDays} />
+            </div>
           </div>
         </article>
 
-        <article className={cardClass}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Pending tasks & alerts</h2>
+        <article className={`${cardClass} flex flex-col xl:col-span-4`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-foreground">Pending tasks &amp; alerts</h2>
+              {openAlerts.length > 0 ? (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500/12 px-1.5 text-[11px] font-semibold tabular-nums text-amber-800">
+                  {openAlerts.length}
+                </span>
+              ) : null}
+            </div>
             <Link href="/alerts" className="text-xs font-semibold text-primary hover:underline">
               {openAlerts.length === 0 ? "All done" : "View all"}
             </Link>
           </div>
           {openAlerts.length === 0 ? (
-            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl bg-secondary/65 p-3.5">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-              <div>
-                <p className="text-xs font-semibold text-foreground">You&apos;re all set</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Nothing is due on {formatDisplayDate(today)}.</p>
-              </div>
+            <div className="mt-4 flex flex-1 flex-col items-center justify-center rounded-xl border border-emerald-500/15 bg-secondary/50 px-4 py-7 text-center">
+              <span className="grid size-9 place-items-center rounded-full bg-white text-primary shadow-2xs">
+                <CheckCircle2 className="size-4.5" />
+              </span>
+              <p className="mt-2.5 text-xs font-semibold text-foreground">You&apos;re all set</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Nothing is due on {formatDisplayDate(today)}.</p>
             </div>
           ) : (
-            <ul className="mt-3.5 space-y-2.5">
+            <ul className="mt-3.5 space-y-2">
               {openAlerts.slice(0, 4).map((alert) => {
                 const animal = alert.animalId ? byId.get(alert.animalId) : undefined;
                 const href = animal ? `/animals/${animal.code}` : "/alerts";
                 return (
                   <li key={alert.id}>
-                    <Link href={href} className="flex items-start gap-2.5 rounded-xl bg-[#f6f7f9] p-3 transition hover:bg-muted">
-                      <Bell className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                    <Link
+                      href={href}
+                      className="flex items-start gap-2.5 rounded-xl border border-black/[0.04] bg-[#f6f7f9] p-3 transition hover:border-primary/25 hover:bg-secondary/45"
+                    >
+                      <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-lg bg-white text-primary shadow-2xs">
+                        <Bell className="size-3" />
+                      </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-semibold text-foreground">{alert.title}</p>
                         <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
@@ -400,84 +498,78 @@ export default async function DashboardPage() {
             </ul>
           )}
         </article>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        <article className={cardClass}>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Quick Actions</h2>
+            <span className="text-[11px] text-muted-foreground">{quickActions.length} shortcuts</span>
+          </div>
+          <div className="mt-3.5 grid grid-cols-2 gap-2">
+            {quickActions.slice(0, 10).map((action) => (
+              <Link
+                key={action.label}
+                href={action.href}
+                className="group flex h-10 items-center gap-2 rounded-xl border border-black/[0.05] bg-[#f6f7f9] px-2.5 text-xs font-semibold text-foreground transition hover:border-primary/30 hover:bg-secondary/65 hover:text-primary"
+              >
+                <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-white text-primary shadow-2xs transition group-hover:bg-primary group-hover:text-white">
+                  <action.icon className="size-3.5" />
+                </span>
+                <span className="truncate">{action.label}</span>
+              </Link>
+            ))}
+          </div>
+        </article>
 
         <article className={cardClass}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Herd readiness</h2>
-            <span className="text-xs font-semibold tabular-nums text-muted-foreground">{healthyRatio}% non-isolated</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="size-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Herd readiness</h2>
+            </div>
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold tabular-nums text-secondary-foreground">
+              {healthyRatio}% healthy
+            </span>
           </div>
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-primary" style={{ width: `${healthyRatio}%` }} />
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500" style={{ width: `${healthyRatio}%` }} />
           </div>
           <ul className="mt-4 space-y-2.5">
             {readinessChecks.map((item) => (
               <li key={item.label}>
-                <Link href={item.href} className="flex items-center gap-2.5 text-xs text-foreground/90 transition hover:text-primary">
+                <Link
+                  href={item.href}
+                  className="group flex items-center gap-2.5 rounded-lg px-1.5 py-1 -mx-1.5 text-xs text-foreground/90 transition hover:bg-[#f6f7f9] hover:text-primary"
+                >
                   <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
-                  <span className="truncate">{item.label}</span>
+                  <span className="flex-1 truncate">{item.label}</span>
+                  <ArrowRight className="size-3 shrink-0 text-muted-foreground/50 opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
                 </Link>
               </li>
             ))}
           </ul>
         </article>
-      </section>
-
-      <section className="grid gap-3.5 xl:grid-cols-3">
-        <article className={`${cardClass} xl:col-span-2`}>
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Milk & reproduction snapshot</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">Live production and breeding counts for {farm.farmName}.</p>
-            </div>
-            {canViewReports(farm.roles) ? (
-              <Link href="/reports" className="text-xs font-semibold text-primary hover:underline">
-                Reports
-              </Link>
-            ) : null}
-          </div>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-12">
-            <div className="grid gap-2.5 lg:col-span-5">
-              <div className="rounded-xl bg-[#f6f7f9] p-3.5">
-                <p className="text-xs text-muted-foreground">Monthly milk</p>
-                <p className="mt-1 font-display text-2xl font-semibold tracking-tight tabular-nums">{milkMonth.toFixed(1)} L</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">Since {formatDisplayDate(monthStart)}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="rounded-xl bg-[#f6f7f9] p-3.5">
-                  <p className="text-xs text-muted-foreground">Milk today</p>
-                  <p className="mt-1 font-display text-xl font-semibold tracking-tight tabular-nums">{milkToday.toFixed(1)} L</p>
-                </div>
-                <div className="rounded-xl bg-[#f6f7f9] p-3.5">
-                  <p className="text-xs text-muted-foreground">AI this month</p>
-                  <p className="mt-1 font-display text-xl font-semibold tracking-tight tabular-nums">{aiThisMonth}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="min-w-0 lg:col-span-7">
-              <p className="text-xs font-medium text-muted-foreground">Milk, last 7 days</p>
-              <MilkLine days={milkDays} />
-            </div>
-          </div>
-        </article>
 
         <article className={cardClass}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Sheds & cattle mix</h2>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Warehouse className="size-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Sheds &amp; cattle mix</h2>
+            </div>
             <Link href="/locations" className="text-xs font-semibold text-primary hover:underline">
               Manage
             </Link>
           </div>
           <RatioList rows={shedBars} total={Math.max(counts.total, 1)} />
           <div className="mt-4 border-t border-border/70 pt-3.5">
-            <p className="text-xs font-semibold text-muted-foreground">Breeds on farm</p>
+            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Breeds on farm</p>
             <ul className="mt-2.5 space-y-1.5 text-xs">
               {breedsOnFarm.map(([name, count], index) => (
                 <li key={name} className="flex items-center gap-2">
                   <span className="size-2 shrink-0 rounded-full" style={{ background: breedColors[index % breedColors.length] }} />
                   <span className="truncate text-muted-foreground">{name}</span>
-                  <span className="ml-auto font-semibold tabular-nums">{count}</span>
+                  <span className="ml-auto font-semibold tabular-nums text-foreground">{count}</span>
                 </li>
               ))}
             </ul>
@@ -485,55 +577,72 @@ export default async function DashboardPage() {
         </article>
       </section>
 
-      <section className="grid gap-3.5 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-3">
         <article className={cardClass}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Upcoming calvings</h2>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Calendar className="size-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Upcoming calvings</h2>
+            </div>
             <Link href="/breeding" className="text-xs font-semibold text-primary hover:underline">
               View all
             </Link>
           </div>
           <ul className="mt-3 divide-y divide-border/70">
-            {upcoming.length === 0 ? <li className="py-4 text-xs text-muted-foreground">No pregnant animals with a due date.</li> : null}
+            {upcoming.length === 0 ? (
+              <li className="rounded-xl bg-[#f6f7f9] px-3.5 py-4 text-center text-xs text-muted-foreground">
+                No pregnant animals with a due date.
+              </li>
+            ) : null}
             {upcoming.slice(0, 5).map((animal) => (
-              <li key={animal.id} className="flex items-start justify-between gap-3 py-2.5">
-                <div className="min-w-0">
-                  <Link href={`/animals/${animal.code}`} className="text-xs font-semibold text-foreground hover:text-primary">
-                    {animal.name ?? animal.code}
-                  </Link>
-                  <p className="text-[11px] text-muted-foreground">
-                    {animal.code}
-                    {animal.expectedCalving ? ` · Expected ${formatDisplayDate(animal.expectedCalving)}` : " · Date not calculated"}
-                  </p>
-                </div>
-                <DueBadge today={today} due={animal.expectedCalving} />
+              <li key={animal.id} className="py-1 first:pt-0">
+                <Link
+                  href={`/animals/${animal.code}`}
+                  className="flex items-start justify-between gap-3 rounded-xl px-2 py-2 -mx-2 transition hover:bg-[#f6f7f9]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-semibold text-foreground">{animal.name ?? animal.code}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {animal.code}
+                      {animal.expectedCalving ? ` · Expected ${formatDisplayDate(animal.expectedCalving)}` : " · Date not calculated"}
+                    </p>
+                  </div>
+                  <DueBadge today={today} due={animal.expectedCalving} />
+                </Link>
               </li>
             ))}
           </ul>
         </article>
 
         <article className={cardClass}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Health & vaccination alerts</h2>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Stethoscope className="size-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Health &amp; vaccination</h2>
+            </div>
             {canViewHealth(farm.roles) ? (
               <Link href="/health" className="text-xs font-semibold text-primary hover:underline">
                 View all
               </Link>
             ) : null}
           </div>
-          <ul className="mt-3 space-y-2.5">
-            {healthAlerts.length === 0 ? <li className="py-2 text-xs text-muted-foreground">No vaccinations or health follow-ups due.</li> : null}
+          <ul className="mt-3 space-y-2">
+            {healthAlerts.length === 0 ? (
+              <li className="rounded-xl bg-[#f6f7f9] px-3.5 py-4 text-center text-xs text-muted-foreground">
+                No vaccinations or health follow-ups due.
+              </li>
+            ) : null}
             {healthAlerts.slice(0, 5).map((alert) => {
               const animal = alert.animalId ? byId.get(alert.animalId) : undefined;
               const href = animal ? `/animals/${animal.code}?tab=health` : "/alerts";
               return (
                 <li key={alert.id}>
-                  <Link href={href} className="flex gap-2.5 rounded-xl p-1 -mx-1 transition hover:bg-muted/60">
+                  <Link href={href} className="flex gap-2.5 rounded-xl p-1.5 -mx-1.5 transition hover:bg-[#f6f7f9]">
                     <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
                       <HeartPulse className="size-3.5" />
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold">{alert.title}</p>
+                      <p className="truncate text-xs font-semibold text-foreground">{alert.title}</p>
                       <p className="truncate text-[11px] text-muted-foreground">
                         {alert.dueOn ? `Due ${formatDisplayDate(alert.dueOn)} · ` : ""}
                         {alert.body}
@@ -547,15 +656,18 @@ export default async function DashboardPage() {
         </article>
 
         <article className={cardClass}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">{showLowFeed ? "Feed stock & isolation" : "Isolation status"}</h2>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Wheat className="size-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">{showLowFeed ? "Feed stock & isolation" : "Isolation status"}</h2>
+            </div>
             <Link href={showLowFeed ? "/feed" : "/locations"} className="text-xs font-semibold text-primary hover:underline">
               View all
             </Link>
           </div>
           <ul className="mt-3 divide-y divide-border/70">
             {lowFeed.length === 0 && isolated.length === 0 ? (
-              <li className="py-4 text-xs text-muted-foreground">
+              <li className="rounded-xl bg-[#f6f7f9] px-3.5 py-4 text-center text-xs text-muted-foreground">
                 {showLowFeed ? "All feed items above minimum and no cattle isolated." : "No cattle currently isolated."}
               </li>
             ) : null}
@@ -565,7 +677,7 @@ export default async function DashboardPage() {
                   <Wheat className="size-3.5" />
                 </span>
                 <div>
-                  <Link href="/feed" className="text-xs font-semibold hover:text-primary">
+                  <Link href="/feed" className="text-xs font-semibold text-foreground hover:text-primary">
                     {item.name}
                   </Link>
                   <p className="text-[11px] text-muted-foreground">
@@ -608,7 +720,7 @@ function MilkLine({ days }: { days: [string, number][] }) {
   const line = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
   const area = `${line} L ${points.at(-1)?.x.toFixed(1) ?? 0} ${height - bottom} L ${points[0]?.x.toFixed(1) ?? 0} ${height - bottom} Z`;
   return (
-    <div className="mt-4">
+    <div className="mt-3">
       <div className="relative">
         <svg
           viewBox={`0 0 ${width} ${height}`}
@@ -618,10 +730,32 @@ function MilkLine({ days }: { days: [string, number][] }) {
           role="img"
           aria-label="Milk litres for the last 7 days"
         >
-          <path d={area} fill="#157347" opacity="0.12" />
+          <defs>
+            <linearGradient id="milk-area-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#157347" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#157347" stopOpacity="0.01" />
+            </linearGradient>
+          </defs>
+          {[0.25, 0.5, 0.75, 1].map((ratio) => {
+            const y = top + (1 - ratio) * (height - top - bottom);
+            return (
+              <line
+                key={ratio}
+                x1="0"
+                x2={width}
+                y1={y}
+                y2={y}
+                stroke="#e5e7eb"
+                strokeDasharray="4 4"
+                strokeWidth="1"
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })}
+          <path d={area} fill="url(#milk-area-grad)" />
           <path d={line} fill="none" stroke="#157347" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
           {points.map((point, index) => (
-            <circle key={days[index][0]} cx={point.x} cy={point.y} r="4.5" fill="#ffffff" stroke="#157347" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+            <circle key={days[index][0]} cx={point.x} cy={point.y} r="4.5" fill="#ffffff" stroke="#157347" strokeWidth="2.25" vectorEffect="non-scaling-stroke" />
           ))}
         </svg>
         {points.map((point, index) => {

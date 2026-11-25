@@ -1,13 +1,42 @@
-const CACHE_NAME = "milkometer-static-v1";
+const CACHE_NAME = "milkometer-static-v2";
 const SHELL_ASSETS = ["/manifest.webmanifest", "/icon.svg"];
 
+function isLocalhost() {
+  return (
+    self.location.hostname === "localhost" ||
+    self.location.hostname === "127.0.0.1" ||
+    self.location.hostname === "[::1]"
+  );
+}
+
 self.addEventListener("install", (event) => {
+  if (isLocalhost()) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)).then(() => self.skipWaiting()),
   );
 });
 
 self.addEventListener("activate", (event) => {
+  if (isLocalhost()) {
+    event.waitUntil(
+      (async () => {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((key) => caches.delete(key)));
+        const clients = await self.clients.matchAll({ type: "window" });
+        await self.registration.unregister();
+        for (const client of clients) {
+          if ("navigate" in client) {
+            await client.navigate(client.url).catch(() => {});
+          }
+        }
+      })(),
+    );
+    return;
+  }
+
   event.waitUntil(
     caches
       .keys()
@@ -17,13 +46,15 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  if (isLocalhost()) return;
+
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/signin")) return;
 
-  // Cache-first only for hashed Next static chunks & icons
+  // Cache-first only for hashed production Next static chunks & icons
   if (url.pathname.startsWith("/_next/static/") || url.pathname === "/icon.svg") {
     event.respondWith(
       caches.match(request).then(
