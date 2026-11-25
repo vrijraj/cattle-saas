@@ -7,7 +7,7 @@ import { geminiConfigured } from "@/lib/ai/config";
 import { writeAudit } from "@/lib/audit";
 import { farmToday } from "@/lib/dates";
 import { canWriteMilk } from "@/lib/permissions";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkDistributedRateLimit } from "@/lib/rate-limit-db";
 import { syncMilkDrops } from "@/lib/sync-milk-drops";
 
 export const runtime = "nodejs";
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid phone number" }, { status: 400 });
   }
 
-  const rl = checkRateLimit(`wa:${senderDigits}`, { limit: 20, windowMs: 60 * 1000 });
+  const rl = await checkDistributedRateLimit(`wa:${senderDigits}`, { limit: 20, windowMs: 60 * 1000 });
   if (!rl.allowed) {
     return NextResponse.json({ error: "Rate limited" }, { status: 429 });
   }

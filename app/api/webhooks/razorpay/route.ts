@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { markOrderPaid } from "@/lib/payments";
+import { applySubscriptionWebhookEvent, type RazorpaySubscriptionEntity } from "@/lib/subscriptions";
 
 export async function POST(request: Request) {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
     payload?: {
       payment?: { entity?: { id?: string; order_id?: string; amount?: number } };
       order?: { entity?: { id?: string; amount?: number } };
+      subscription?: { entity?: RazorpaySubscriptionEntity };
     };
   };
   try {
@@ -27,9 +29,17 @@ export async function POST(request: Request) {
     return new Response("Bad Request", { status: 400 });
   }
 
-  if (event.event !== "payment.captured" && event.event !== "order.paid") {
+  const eventName = event.event ?? "";
+
+  if (eventName.startsWith("subscription.")) {
+    await applySubscriptionWebhookEvent(eventName, event.payload?.subscription?.entity);
     return new Response("ok");
   }
+
+  if (eventName !== "payment.captured" && eventName !== "order.paid") {
+    return new Response("ok");
+  }
+
   const razorpayOrderId = event.payload?.payment?.entity?.order_id ?? event.payload?.order?.entity?.id;
   const razorpayPaymentId = event.payload?.payment?.entity?.id;
   const paidAmountPaise = event.payload?.payment?.entity?.amount ?? event.payload?.order?.entity?.amount;

@@ -23,6 +23,7 @@ import { requireFarm } from "@/lib/farm-context";
 import { addDays, farmToday, formatDisplayDate } from "@/lib/dates";
 import { feedBalance, feedIsLow } from "@/lib/feed-stock";
 import { herdCounts } from "@/lib/herd-stats";
+import { t } from "@/lib/i18n";
 import {
   canReadAlert,
   canSeeClinical,
@@ -186,7 +187,7 @@ export default async function DashboardPage() {
 
   const topKpis = [
     {
-      label: "HERD ON FARM",
+      label: t(farm.locale, "dash.kpi.herd"),
       value: String(counts.total),
       badge: `${cattleCount}C/${buffaloCount}B`,
       badgeClass: "bg-blue-500/12 text-blue-700",
@@ -194,7 +195,7 @@ export default async function DashboardPage() {
       href: "/animals?view=active",
     },
     {
-      label: "TODAY'S MILK",
+      label: t(farm.locale, "dash.kpi.milk"),
       value: `${milkToday.toFixed(1)} L`,
       badge: `${enteredTodayIds.size}/${lactatingIds.size}`,
       badgeClass: "bg-emerald-500/12 text-emerald-700",
@@ -202,7 +203,7 @@ export default async function DashboardPage() {
       href: "/milk",
     },
     {
-      label: "PREGNANT & AI",
+      label: t(farm.locale, "dash.kpi.pregnant"),
       value: String(counts.pregnant),
       badge: String(calvingSoonCount),
       badgeClass: "bg-amber-500/14 text-amber-700",
@@ -210,7 +211,7 @@ export default async function DashboardPage() {
       href: "/breeding",
     },
     {
-      label: "OPEN ALERTS",
+      label: t(farm.locale, "dash.kpi.alerts"),
       value: String(totalOpenWithFeed),
       badge: String(healthDueNow.length),
       badgeClass: "bg-rose-500/12 text-rose-700",
@@ -251,9 +252,9 @@ export default async function DashboardPage() {
       <section className="flex flex-col justify-between gap-4 pt-1 pb-2 sm:flex-row sm:items-start">
         <div>
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Overview</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{t(farm.locale, "dash.title")}</h1>
             <span className="inline-flex items-center rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-600/20">
-              Active herd
+              {t(farm.locale, "dash.activeHerd")}
             </span>
           </div>
           <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -269,7 +270,7 @@ export default async function DashboardPage() {
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1 font-medium text-foreground/80">
               <MapPin className="size-3.5 text-primary" />
-              On farm
+              {t(farm.locale, "dash.onFarm")}
             </span>
             <span>·</span>
             <span>{farm.farmName}</span>
@@ -286,21 +287,21 @@ export default async function DashboardPage() {
             className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
           >
             <Beef className="size-3.5 text-muted-foreground" />
-            Cattle
+            {t(farm.locale, "animals.title")}
           </Link>
           <Link
             href="/milk"
             className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
           >
             <Milk className="size-3.5 text-muted-foreground" />
-            Milk sheet
+            {t(farm.locale, "dash.milkSheet")}
           </Link>
           {canWriteAnimals(farm.roles) ? (
             <Link
               href="/animals/new"
               className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-xs transition hover:bg-primary/90"
             >
-              + Add cattle
+              {t(farm.locale, "dash.addCattle")}
             </Link>
           ) : null}
         </div>
@@ -328,15 +329,15 @@ export default async function DashboardPage() {
       {showFinance ? (
         <section className="grid grid-cols-3 gap-3">
           <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Month income</p>
+            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthIncome")}</p>
             <p className="mt-1 font-display text-xl font-semibold tabular-nums text-emerald-700">₹{Math.round(mtdIncome).toLocaleString("en-IN")}</p>
           </Link>
           <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Month expense</p>
+            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthExpense")}</p>
             <p className="mt-1 font-display text-xl font-semibold tabular-nums text-foreground">₹{Math.round(mtdExpense).toLocaleString("en-IN")}</p>
           </Link>
           <Link href="/finance" className="rounded-2xl border border-black/[0.06] bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-primary/30">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Month net</p>
+            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{t(farm.locale, "dash.monthNet")}</p>
             <p className={`mt-1 font-display text-xl font-semibold tabular-nums ${mtdIncome - mtdExpense >= 0 ? "text-emerald-700" : "text-danger"}`}>
               {mtdIncome - mtdExpense < 0 ? "−" : ""}₹{Math.round(Math.abs(mtdIncome - mtdExpense)).toLocaleString("en-IN")}
             </p>

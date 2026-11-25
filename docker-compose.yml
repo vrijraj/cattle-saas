@@ -1,14 +1,37 @@
 services:
   db:
-    image: postgres:16
+    image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: cattle
-      POSTGRES_PASSWORD: cattle
-      POSTGRES_DB: cattle
+      POSTGRES_USER: ${POSTGRES_USER:-cattle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cattle}
+      POSTGRES_DB: ${POSTGRES_DB:-cattle}
     ports:
       - "5432:5432"
     volumes:
       - cattle_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cattle} -d ${POSTGRES_DB:-cattle}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${PORT:-3007}:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-cattle}:${POSTGRES_PASSWORD:-cattle}@db:5432/${POSTGRES_DB:-cattle}
+      PORT: "3000"
 
 volumes:
   cattle_pg:

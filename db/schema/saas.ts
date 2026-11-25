@@ -135,3 +135,9 @@ export const cronRuns = pgTable(
   },
   (table) => [uniqueIndex("cron_run_farm_date_kind").on(table.farmId, table.runDate, table.kind)],
 );
+
+export const rateLimitBuckets = pgTable("rate_limit_bucket", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull().default(1),
+  resetAt: timestamp("reset_at", { mode: "date" }).notNull(),
+});

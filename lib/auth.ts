@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkDistributedRateLimit } from "@/lib/rate-limit-db";
 
 const credentialsSchema = z.object({
   email: z.email(),
@@ -29,7 +29,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) return null;
 
         const email = parsed.data.email.toLowerCase();
-        const rl = checkRateLimit(`signin:${email}`, { limit: 10, windowMs: 15 * 60 * 1000 });
+        const rl = await checkDistributedRateLimit(`signin:${email}`, { limit: 10, windowMs: 15 * 60 * 1000 });
         if (!rl.allowed) return null;
 
         const [user] = await db

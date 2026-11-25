@@ -8,8 +8,10 @@ import { breeds, farms } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
+import { escapeHtml, sendMail } from "@/lib/mail";
 import { canManageSettings } from "@/lib/permissions";
 import { planSpec, type PlanId } from "@/lib/plans";
+import { createRazorpaySubscriptionCheckout, razorpayPlanIdFor } from "@/lib/subscriptions";
 import { syncMilkDrops } from "@/lib/sync-milk-drops";
 
 function text(formData: FormData, key: string) {
@@ -183,30 +185,83 @@ export async function updateFarmPlan(formData: FormData) {
   if (requested !== "starter" && requested !== "pro" && requested !== "enterprise") {
     redirect("/settings?error=farm");
   }
-  const spec = planSpec(requested as PlanId);
-  await db.transaction(async (tx) => {
-    await tx
-      .update(farms)
-      .set({
-        plan: spec.id,
-        maxAnimals: spec.maxAnimals,
-        maxMembers: spec.maxMembers,
-        aiMonthlyLimit: spec.aiMonthlyLimit,
-        subscriptionStatus: "active",
-      })
-      .where(eq(farms.id, farm.farmId));
-    await writeAudit(tx, {
-      farmId: farm.farmId,
-      actorId: farm.userId,
-      action: "update",
-      entity: "subscription",
-      entityId: farm.farmId,
-      summary: `Changed farm plan to ${spec.name}`,
-      before: { plan: farm.plan, maxAnimals: farm.maxAnimals, maxMembers: farm.maxMembers },
-      after: { plan: spec.id, maxAnimals: spec.maxAnimals, maxMembers: spec.maxMembers },
+  const targetPlan = requested as PlanId;
+  if (targetPlan === farm.plan) redirect("/settings");
+
+  const spec = planSpec(targetPlan);
+
+  // Super-admins can switch plans directly for internal operations / demos.
+  if (farm.isSuperAdmin) {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(farms)
+        .set({
+          plan: spec.id,
+          maxAnimals: spec.maxAnimals,
+          maxMembers: spec.maxMembers,
+          aiMonthlyLimit: spec.aiMonthlyLimit,
+          subscriptionStatus: "active",
+        })
+        .where(eq(farms.id, farm.farmId));
+      await writeAudit(tx, {
+        farmId: farm.farmId,
+        actorId: farm.userId,
+        action: "update",
+        entity: "subscription",
+        entityId: farm.farmId,
+        summary: `Super-admin changed farm plan to ${spec.name}`,
+        before: { plan: farm.plan, maxAnimals: farm.maxAnimals, maxMembers: farm.maxMembers },
+        after: { plan: spec.id, maxAnimals: spec.maxAnimals, maxMembers: spec.maxMembers },
+      });
     });
+    redirect("/settings?saved=plan");
+  }
+
+  // Standard farm owners go through Razorpay Subscription checkout when configured.
+  if (razorpayPlanIdFor(targetPlan) && process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+    const checkout = await createRazorpaySubscriptionCheckout({
+      farmId: farm.farmId,
+      farmName: farm.farmName,
+      email: farm.email,
+      plan: targetPlan,
+    });
+    if (checkout.ok) {
+      await writeAudit(db, {
+        farmId: farm.farmId,
+        actorId: farm.userId,
+        action: "create",
+        entity: "subscription",
+        entityId: farm.farmId,
+        summary: `Started Razorpay checkout for ${spec.name} (${checkout.subscriptionId})`,
+        after: { targetPlan, subscriptionId: checkout.subscriptionId },
+      });
+      redirect(checkout.shortUrl);
+    }
+    redirect("/settings?error=billing");
+  }
+
+  // Fallback when online recurring billing is not configured: record a verified upgrade request
+  // rather than granting unpaid quota increases.
+  await writeAudit(db, {
+    farmId: farm.farmId,
+    actorId: farm.userId,
+    action: "create",
+    entity: "subscription_request",
+    entityId: farm.farmId,
+    summary: `Requested plan change from ${farm.plan} to ${spec.name}`,
+    after: { currentPlan: farm.plan, requestedPlan: spec.id, requesterEmail: farm.email },
   });
-  redirect("/settings?saved=plan");
+
+  const opsEmail = process.env.PLATFORM_BILLING_EMAIL || process.env.ZEPTOMAIL_FROM;
+  if (opsEmail) {
+    await sendMail({
+      to: opsEmail,
+      subject: `Plan upgrade request: ${farm.farmName} → ${spec.name}`,
+      html: `<p><strong>${escapeHtml(farm.farmName)}</strong> (${escapeHtml(farm.farmSlug)}) requested switching from <strong>${escapeHtml(farm.plan)}</strong> to <strong>${escapeHtml(spec.name)}</strong>.</p><p>Requested by: ${escapeHtml(farm.userName ?? farm.email)} (${escapeHtml(farm.email)})</p>`,
+    });
+  }
+
+  redirect("/settings?saved=plan_request");
 }
 
 export async function saveBreed(formData: FormData) {

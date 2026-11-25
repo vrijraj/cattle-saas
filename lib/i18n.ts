@@ -44,7 +44,44 @@ export type DictionaryKey =
   | "action.publicPage"
   | "action.signOut"
   | "status.allClear"
-  | "status.openAlerts";
+  | "status.openAlerts"
+  | "dash.title"
+  | "dash.activeHerd"
+  | "dash.onFarm"
+  | "dash.addCattle"
+  | "dash.milkSheet"
+  | "dash.kpi.herd"
+  | "dash.kpi.milk"
+  | "dash.kpi.pregnant"
+  | "dash.kpi.alerts"
+  | "dash.monthIncome"
+  | "dash.monthExpense"
+  | "dash.monthNet"
+  | "milk.title"
+  | "milk.totalToday"
+  | "milk.totalDay"
+  | "milk.cowsEntered"
+  | "milk.notEntered"
+  | "milk.avgEntered"
+  | "milk.morning"
+  | "milk.evening"
+  | "milk.save"
+  | "milk.allSheds"
+  | "milk.settings"
+  | "animals.title"
+  | "animals.add"
+  | "animals.qrSheets"
+  | "animals.bulkCsv"
+  | "animals.searchPlaceholder"
+  | "animals.filter"
+  | "animals.clear"
+  | "animals.view.all"
+  | "animals.view.active"
+  | "animals.view.pregnant"
+  | "animals.view.calves"
+  | "animals.view.sold"
+  | "scan.title"
+  | "scan.desc";
 
 const dictionaries: Record<Locale, Record<DictionaryKey, string>> = {
   en: {
@@ -80,6 +117,43 @@ const dictionaries: Record<Locale, Record<DictionaryKey, string>> = {
     "action.signOut": "Sign out",
     "status.allClear": "All clear",
     "status.openAlerts": "open",
+    "dash.title": "Overview",
+    "dash.activeHerd": "Active herd",
+    "dash.onFarm": "On farm",
+    "dash.addCattle": "+ Add cattle",
+    "dash.milkSheet": "Milk sheet",
+    "dash.kpi.herd": "HERD ON FARM",
+    "dash.kpi.milk": "TODAY'S MILK",
+    "dash.kpi.pregnant": "PREGNANT & AI",
+    "dash.kpi.alerts": "OPEN ALERTS",
+    "dash.monthIncome": "Month income",
+    "dash.monthExpense": "Month expense",
+    "dash.monthNet": "Month net",
+    "milk.title": "Milk log",
+    "milk.totalToday": "Total milk today",
+    "milk.totalDay": "Total for this day",
+    "milk.cowsEntered": "Cows entered",
+    "milk.notEntered": "Lactating not entered",
+    "milk.avgEntered": "Average entered",
+    "milk.morning": "Morning (L)",
+    "milk.evening": "Evening (L)",
+    "milk.save": "Save",
+    "milk.allSheds": "All sheds",
+    "milk.settings": "Milk settings",
+    "animals.title": "Cattle",
+    "animals.add": "+ Add cattle",
+    "animals.qrSheets": "QR sheets",
+    "animals.bulkCsv": "Bulk & CSV",
+    "animals.searchPlaceholder": "Search code, name, ear tag, RFID, sire…",
+    "animals.filter": "Filter",
+    "animals.clear": "Clear",
+    "animals.view.all": "All",
+    "animals.view.active": "On farm",
+    "animals.view.pregnant": "Pregnant",
+    "animals.view.calves": "Calves",
+    "animals.view.sold": "Sold",
+    "scan.title": "Scan",
+    "scan.desc": "Open an animal from a QR tag, ear tag, or RFID — or scan a semen straw to start an insemination.",
   },
   hi: {
     "nav.overview": "डैशबोर्ड",
@@ -114,6 +188,43 @@ const dictionaries: Record<Locale, Record<DictionaryKey, string>> = {
     "action.signOut": "लॉग आउट",
     "status.allClear": "सब ठीक है",
     "status.openAlerts": "बाकी",
+    "dash.title": "फार्म डैशबोर्ड",
+    "dash.activeHerd": "सक्रिय पशुधन",
+    "dash.onFarm": "फार्म पर",
+    "dash.addCattle": "+ नया पशु जोड़ें",
+    "dash.milkSheet": "दूध शीट",
+    "dash.kpi.herd": "फार्म पर पशु",
+    "dash.kpi.milk": "आज का दूध",
+    "dash.kpi.pregnant": "गाभिन व AI",
+    "dash.kpi.alerts": "बाकी अलर्ट",
+    "dash.monthIncome": "मासिक आय",
+    "dash.monthExpense": "मासिक खर्च",
+    "dash.monthNet": "शुद्ध बचत",
+    "milk.title": "दूध रजिस्टर",
+    "milk.totalToday": "आज का कुल दूध",
+    "milk.totalDay": "इस दिन का कुल दूध",
+    "milk.cowsEntered": "दर्ज की गई गायें",
+    "milk.notEntered": "अभी दर्ज नहीं",
+    "milk.avgEntered": "औसत दूध / पशु",
+    "milk.morning": "सुबह (ली.)",
+    "milk.evening": "शाम (ली.)",
+    "milk.save": "सहेजें",
+    "milk.allSheds": "सभी शेड",
+    "milk.settings": "दूध सेटिंग्स",
+    "animals.title": "पशु रजिस्टर",
+    "animals.add": "+ नया पशु",
+    "animals.qrSheets": "QR शीट",
+    "animals.bulkCsv": "बल्क व CSV",
+    "animals.searchPlaceholder": "कोड, नाम, टैग, RFID खोजें…",
+    "animals.filter": "फ़िल्टर",
+    "animals.clear": "साफ़ करें",
+    "animals.view.all": "सभी",
+    "animals.view.active": "फार्म पर",
+    "animals.view.pregnant": "गाभिन",
+    "animals.view.calves": "बछड़े",
+    "animals.view.sold": "बिक चुके",
+    "scan.title": "टैग / QR स्कैन",
+    "scan.desc": "पशु प्रोफ़ाइल खोलने के लिए QR टैग, ईयर टैग या RFID स्कैन करें — या AI के लिए सीमन स्ट्रॉ स्कैन करें।",
   },
   gu: {
     "nav.overview": "ડેશબોર્ડ",
@@ -148,6 +259,43 @@ const dictionaries: Record<Locale, Record<DictionaryKey, string>> = {
     "action.signOut": "લોગ આઉટ",
     "status.allClear": "બધું બરાબર",
     "status.openAlerts": "બાકી",
+    "dash.title": "ફાર્મ ડેશબોર્ડ",
+    "dash.activeHerd": "સક્રિય પશુધન",
+    "dash.onFarm": "ફાર્મ પર",
+    "dash.addCattle": "+ નવું પશુ ઉમેરો",
+    "dash.milkSheet": "દૂધ શીટ",
+    "dash.kpi.herd": "ફાર્મ પર પશુ",
+    "dash.kpi.milk": "આજનું દૂધ",
+    "dash.kpi.pregnant": "ગાભણ અને AI",
+    "dash.kpi.alerts": "બાકી એલર્ટ",
+    "dash.monthIncome": "માસિક આવક",
+    "dash.monthExpense": "માસિક ખર્ચ",
+    "dash.monthNet": "ચોખ્ખો નફો",
+    "milk.title": "દૂધ રજિસ્ટર",
+    "milk.totalToday": "આજનું કુલ દૂધ",
+    "milk.totalDay": "આ દિવસનું કુલ દૂધ",
+    "milk.cowsEntered": "નોંધાયેલ ગાયો",
+    "milk.notEntered": "નોંધણી બાકી",
+    "milk.avgEntered": "સરેરાશ દૂધ",
+    "milk.morning": "સવાર (લી.)",
+    "milk.evening": "સાંજ (લી.)",
+    "milk.save": "સાચવો",
+    "milk.allSheds": "બધા શેડ",
+    "milk.settings": "દૂધ સેટિંગ્સ",
+    "animals.title": "પશુ રજિસ્ટર",
+    "animals.add": "+ નવું પશુ",
+    "animals.qrSheets": "QR શીટ",
+    "animals.bulkCsv": "બલ્ક અને CSV",
+    "animals.searchPlaceholder": "કોડ, નામ, ટેગ, RFID શોધો…",
+    "animals.filter": "ફિલ્ટર",
+    "animals.clear": "સાફ કરો",
+    "animals.view.all": "બધા",
+    "animals.view.active": "ફાર્મ પર",
+    "animals.view.pregnant": "ગાભણ",
+    "animals.view.calves": "વાછરડા",
+    "animals.view.sold": "વેચાયેલા",
+    "scan.title": "ટેગ / QR સ્કેન",
+    "scan.desc": "પશુની વિગત જોવા QR ટેગ, ઇયર ટેગ અથવા RFID સ્કેન કરો — અથવા સીમેન સ્ટ્રો સ્કેન કરો.",
   },
   mr: {
     "nav.overview": "डॅशबोर्ड",
@@ -182,6 +330,43 @@ const dictionaries: Record<Locale, Record<DictionaryKey, string>> = {
     "action.signOut": "लॉग आउट",
     "status.allClear": "सर्व सुरळीत",
     "status.openAlerts": "प्रलंबित",
+    "dash.title": "गोठा डॅशबोर्ड",
+    "dash.activeHerd": "सक्रिय पशुधन",
+    "dash.onFarm": "गोठ्यात",
+    "dash.addCattle": "+ नवीन जनावर",
+    "dash.milkSheet": "दूध नोंदणी",
+    "dash.kpi.herd": "गोठ्यातील पशुधन",
+    "dash.kpi.milk": "आजचे दूध",
+    "dash.kpi.pregnant": "गाभण व AI",
+    "dash.kpi.alerts": "प्रलंबित अलर्ट",
+    "dash.monthIncome": "मासिक उत्पन्न",
+    "dash.monthExpense": "मासिक खर्च",
+    "dash.monthNet": "निव्वळ नफा",
+    "milk.title": "दूध नोंदवही",
+    "milk.totalToday": "आजचे एकूण दूध",
+    "milk.totalDay": "या दिवसाचे एकूण दूध",
+    "milk.cowsEntered": "नोंद झालेल्या गायी",
+    "milk.notEntered": "नोंद बाकी",
+    "milk.avgEntered": "सरासरी दूध",
+    "milk.morning": "सकाळ (लि.)",
+    "milk.evening": "संध्याकाळ (लि.)",
+    "milk.save": "जतन करा",
+    "milk.allSheds": "सर्व गोठे",
+    "milk.settings": "दूध सेटिंग्ज",
+    "animals.title": "पशुधन नोंदणी",
+    "animals.add": "+ नवीन जनावर",
+    "animals.qrSheets": "QR शीट",
+    "animals.bulkCsv": "बल्क व CSV",
+    "animals.searchPlaceholder": "कोड, नाव, टॅग, RFID शोधा…",
+    "animals.filter": "फिल्टर",
+    "animals.clear": "साफ करा",
+    "animals.view.all": "सर्व",
+    "animals.view.active": "गोठ्यात",
+    "animals.view.pregnant": "गाभण",
+    "animals.view.calves": "वासरे",
+    "animals.view.sold": "विक्री झालेली",
+    "scan.title": "टॅग / QR स्कॅन",
+    "scan.desc": "जनावराची माहिती पाहण्यासाठी QR टॅग, कानातील टॅग किंवा RFID स्कॅन करा — किंवा सीमेन स्ट्रॉ स्कॅन करा.",
   },
 };
 

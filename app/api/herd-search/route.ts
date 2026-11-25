@@ -4,13 +4,13 @@ import { alerts, animals, breeds, bulls, enquiries, locations, products, semenBa
 import { getFarm } from "@/lib/farm-context";
 import { herdMatchField, type HerdMatchRow } from "@/lib/herd-query";
 import { canReadAlert, canViewEnquiries, canViewSemen, canViewShopAdmin } from "@/lib/permissions";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkDistributedRateLimit } from "@/lib/rate-limit-db";
 
 export async function GET(request: Request) {
   const farm = await getFarm();
   if (!farm) return Response.json({ error: "Sign in to search the herd." }, { status: 401 });
 
-  const rl = checkRateLimit(`search:${farm.farmId}:${farm.userId}`, { limit: 60, windowMs: 60 * 1000 });
+  const rl = await checkDistributedRateLimit(`search:${farm.farmId}:${farm.userId}`, { limit: 60, windowMs: 60 * 1000 });
   if (!rl.allowed) {
     return Response.json({ error: "Too many search requests." }, { status: 429 });
   }

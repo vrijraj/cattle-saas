@@ -5,6 +5,7 @@ import { animals, breeds, locations } from "@/db/schema";
 import { requireFarm } from "@/lib/farm-context";
 import { farmToday } from "@/lib/dates";
 import { isUnderOneYear } from "@/lib/herd-stats";
+import { t, type DictionaryKey } from "@/lib/i18n";
 import { HerdTree } from "@/components/herd-tree";
 import { lactationLabel, lifeStageLabel, presenceLabel, sexLabel } from "@/lib/labels";
 import { canWriteAnimals } from "@/lib/permissions";
@@ -12,13 +13,13 @@ import { herdForest } from "@/lib/pedigree-tree";
 import { HerdTabs } from "@/components/herd-tabs";
 import { inputClass, pickTab, Pill, Summary } from "@/components/workspace";
 
-const views = [
-  { id: "all", label: "All" },
-  { id: "active", label: "On farm" },
-  { id: "pregnant", label: "Pregnant" },
-  { id: "calves", label: "Calves" },
-  { id: "sold", label: "Sold" },
-] as const;
+const views: { id: "all" | "active" | "pregnant" | "calves" | "sold"; labelKey: DictionaryKey }[] = [
+  { id: "all", labelKey: "animals.view.all" },
+  { id: "active", labelKey: "animals.view.active" },
+  { id: "pregnant", labelKey: "animals.view.pregnant" },
+  { id: "calves", labelKey: "animals.view.calves" },
+  { id: "sold", labelKey: "animals.view.sold" },
+];
 
 type ViewId = (typeof views)[number]["id"];
 const PAGE_SIZE = 50;
@@ -197,17 +198,17 @@ export default async function AnimalsPage({
   return (
     <div className="space-y-5">
       <Summary
-        title="Cattle"
+        title={t(farm.locale, "animals.title")}
         description={
           rawTerm
             ? `${totalMatching} ${totalMatching === 1 ? "animal matches" : "animals match"} “${rawTerm}”.`
             : "Open a row to see that animal's profile. Filter, print QR label sheets, or run bulk shed actions."
         }
         facts={[
-          { label: "On farm", value: String(herdCounts.active) },
-          { label: "Pregnant", value: String(herdCounts.pregnant) },
-          { label: "Calves", value: String(herdCounts.calves) },
-          { label: "Sold", value: String(herdCounts.sold) },
+          { label: t(farm.locale, "animals.view.active"), value: String(herdCounts.active) },
+          { label: t(farm.locale, "animals.view.pregnant"), value: String(herdCounts.pregnant) },
+          { label: t(farm.locale, "animals.view.calves"), value: String(herdCounts.calves) },
+          { label: t(farm.locale, "animals.view.sold"), value: String(herdCounts.sold) },
         ]}
         action={
           <div className="flex flex-wrap items-center gap-2">
@@ -215,20 +216,20 @@ export default async function AnimalsPage({
               href="/animals/labels"
               className="inline-flex h-10 items-center rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
             >
-              QR sheets
+              {t(farm.locale, "animals.qrSheets")}
             </Link>
             <Link
               href="/animals/bulk"
               className="inline-flex h-10 items-center rounded-full border border-border bg-white px-3.5 text-xs font-semibold text-foreground shadow-2xs transition hover:border-primary/35 hover:text-primary"
             >
-              Bulk &amp; CSV
+              {t(farm.locale, "animals.bulkCsv")}
             </Link>
             {canWriteAnimals(farm.roles) ? (
               <Link
                 href="/animals/new"
                 className="inline-flex h-10 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90"
               >
-                + Add cattle
+                {t(farm.locale, "animals.add")}
               </Link>
             ) : null}
           </div>
@@ -246,7 +247,7 @@ export default async function AnimalsPage({
                   key={rawTerm}
                   name="q"
                   defaultValue={rawTerm}
-                  placeholder="Search code, name, ear tag, RFID, sire…"
+                  placeholder={t(farm.locale, "animals.searchPlaceholder")}
                   className={inputClass}
                 />
                 <select name="breed" defaultValue={breedFilter} className={inputClass} aria-label="Filter by breed">
@@ -284,11 +285,11 @@ export default async function AnimalsPage({
                 </select>
                 <div className="flex items-center gap-2">
                   <button type="submit" className="inline-flex h-11 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground">
-                    Filter
+                    {t(farm.locale, "animals.filter")}
                   </button>
                   {hasFilters ? (
                     <Link href="/animals" className="inline-flex h-11 items-center rounded-xl border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted">
-                      Clear
+                      {t(farm.locale, "animals.clear")}
                     </Link>
                   ) : null}
                 </div>
@@ -304,7 +305,7 @@ export default async function AnimalsPage({
                         active ? "bg-secondary text-primary ring-1 ring-primary/20" : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
                       }`}
                     >
-                      {item.label}
+                      {t(farm.locale, item.labelKey)}
                       <span className="tabular-nums opacity-80">{herdCounts[item.id]}</span>
                     </Link>
                   );

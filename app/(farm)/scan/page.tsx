@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { animals, bulls, semenBatches, straws } from "@/db/schema";
 import { farmToday } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
+import { t } from "@/lib/i18n";
 import { canRecordAi, canViewSemen } from "@/lib/permissions";
 import { scanLookupError } from "@/lib/scan-lookup";
 import { FormSelect } from "@/components/form-select";
@@ -102,7 +103,7 @@ export default async function ScanPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-5">
-      <Summary title="Scan" description="Open an animal from a QR tag, ear tag, or RFID — or scan a semen straw to start an insemination." />
+      <Summary title={t(farm.locale, "scan.title")} description={t(farm.locale, "scan.desc")} />
       <CodeScanner code={raw} error={lookupError} />
       {missing ? <p className="rounded-2xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">No animal or straw matches {raw}.</p> : null}
       {strawCard ? (

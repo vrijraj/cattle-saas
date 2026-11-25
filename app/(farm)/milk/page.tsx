@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { alerts, animals, healthEvents, locations, milkPriceHistory, milkYields } from "@/db/schema";
 import { addDays, farmToday, formatDisplayDate, parseFarmDate } from "@/lib/dates";
 import { requireFarm } from "@/lib/farm-context";
+import { t } from "@/lib/i18n";
 import { milkPriceOnDate, milkRevenueForRows } from "@/lib/milk-pricing";
 import { milkDaySummary } from "@/lib/milk-sheet";
 import { canManageSettings, canViewFinance, canWriteMilk } from "@/lib/permissions";
@@ -155,26 +156,26 @@ export default async function MilkPage({
 
   const notEntered = Math.max(0, herd.length - summary.entered);
   const stats = [
-    [summary.total.toFixed(1) + " L", selected === today ? "Total milk today" : "Total for this day"],
+    [summary.total.toFixed(1) + " L", selected === today ? t(farm.locale, "milk.totalToday") : t(farm.locale, "milk.totalDay")],
     showValue && dayValue !== null
       ? [`₹${Math.round(dayValue).toLocaleString("en-IN")}`, `Est. value (base ₹${effectiveBasePrice!.toFixed(2)}/L)`]
-      : [String(notEntered), "Lactating not entered"],
-    [`${summary.entered} / ${herd.length}`, "Cows entered"],
+      : [String(notEntered), t(farm.locale, "milk.notEntered")],
+    [`${summary.entered} / ${herd.length}`, t(farm.locale, "milk.cowsEntered")],
     avgFat !== null || avgSnf !== null
       ? [`${avgFat !== null ? `${avgFat.toFixed(1)}%` : "—"} / ${avgSnf !== null ? `${avgSnf.toFixed(1)}%` : "—"}`, "Avg Fat / SNF"]
-      : [summary.average.toFixed(1) + " L", "Average entered"],
+      : [summary.average.toFixed(1) + " L", t(farm.locale, "milk.avgEntered")],
   ];
 
   return (
     <div className="space-y-5">
       <Summary
-        title="Milk log"
+        title={t(farm.locale, "milk.title")}
         description={`Daily yield & quality for each cow in milk · ${formatDisplayDate(selected)}. Filter by shed, press Enter to jump rows, or open Fat%/SNF%/CMT quality columns.`}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <MilkDatePicker key={selected} date={selected} today={today} />
             {canConfigure ? (
-              <RecordDialog title="Milk price & alert settings" button="Milk settings" quiet>
+              <RecordDialog title="Milk price & alert settings" button={t(farm.locale, "milk.settings")} quiet>
                 <form action={saveMilkSettings} className="space-y-3">
                   <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
                     Fallback milk price per litre (INR, used if no dated rate exists)
@@ -295,6 +296,7 @@ export default async function MilkPage({
         sheds={shedRows}
         canSave={canSave}
         pricePerLitre={showValue ? effectiveBasePrice : null}
+        locale={farm.locale}
         action={saveMilk}
         onClearRow={clearMilkRow}
       />

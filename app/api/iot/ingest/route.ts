@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { animals, farms, milkYields, weights } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { farmToday, parseFarmDate } from "@/lib/dates";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkDistributedRateLimit } from "@/lib/rate-limit-db";
 import { syncMilkDrops } from "@/lib/sync-milk-drops";
 
 export const runtime = "nodejs";
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing X-Farm-Slug or X-API-Key headers." }, { status: 401 });
   }
 
-  const rl = checkRateLimit(`iot:${slug}`, { limit: 120, windowMs: 60 * 1000 });
+  const rl = await checkDistributedRateLimit(`iot:${slug}`, { limit: 120, windowMs: 60 * 1000 });
   if (!rl.allowed) {
     return NextResponse.json({ error: "Rate limit exceeded." }, { status: 429 });
   }

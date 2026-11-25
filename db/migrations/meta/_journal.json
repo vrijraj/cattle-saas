@@ -50,6 +50,13 @@
       "when": 1792610000000,
       "tag": "0006_saas_dairy_pro",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792620000000,
+      "tag": "0007_production_hardening",
+      "breakpoints": true
     }
   ]
 }

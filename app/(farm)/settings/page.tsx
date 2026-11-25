@@ -9,6 +9,7 @@ import { EmptyRow, inputClass, Notice, Panel, Pill, Submit, Summary, Table, Td }
 import { requireFarm } from "@/lib/farm-context";
 import { canManageSettings } from "@/lib/permissions";
 import { getFarmUsage, PLANS, planSpec } from "@/lib/plans";
+import { razorpaySubscriptionsConfigured } from "@/lib/subscriptions";
 import { saveBreed, saveFarmGeneral, saveFarmRules, updateFarmPlan } from "./actions";
 
 export const metadata = { title: "Farm settings" };
@@ -22,6 +23,7 @@ const errorMessages: Record<string, string> = {
   rules: "Check the numeric bounds for milk, gestation, PD, dry-off, VWP, and mating defaults.",
   breed: "Enter a valid breed name, 2–5 character code, and gestation days between 250 and 350.",
   breed_dup: "A breed with that code already exists on this farm.",
+  billing: "Could not start Razorpay subscription checkout right now. Please try again or contact support.",
 };
 
 const savedMessages: Record<string, string> = {
@@ -29,6 +31,7 @@ const savedMessages: Record<string, string> = {
   rules: "Milk, breeding, and alert rules updated.",
   breed: "Breed catalogue updated.",
   plan: "Subscription plan updated.",
+  plan_request: "Plan upgrade request recorded. A platform administrator will activate your new tier once billing is confirmed.",
 };
 
 export default async function SettingsPage({
@@ -50,6 +53,7 @@ export default async function SettingsPage({
   ]);
   const activeBreeds = breedRows.filter((b) => b.active).length;
   const currentPlan = planSpec(farm.plan);
+  const billingOnline = razorpaySubscriptionsConfigured();
 
   return (
     <div className="space-y-5">
@@ -202,7 +206,16 @@ export default async function SettingsPage({
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Subscription & quotas" description={`Current plan: ${currentPlan.name} (${farm.subscriptionStatus}).`}>
+        <Panel
+          title="Subscription & quotas"
+          description={
+            farm.isSuperAdmin
+              ? `Current plan: ${currentPlan.name} (${farm.subscriptionStatus}). Super-admin direct switch enabled.`
+              : billingOnline
+                ? `Current plan: ${currentPlan.name} (${farm.subscriptionStatus}). Selecting another tier opens Razorpay recurring checkout.`
+                : `Current plan: ${currentPlan.name} (${farm.subscriptionStatus}). Selecting another tier submits an upgrade request for billing approval.`
+          }
+        >
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-2 text-center text-xs">
               <div className="rounded-xl bg-muted/60 p-2.5">

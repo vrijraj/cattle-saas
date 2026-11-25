@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/workspace";
+import { t } from "@/lib/i18n";
 
 export type MilkSheetCow = {
   id: string;
@@ -29,6 +30,7 @@ export function MilkSheetForm({
   sheds,
   canSave,
   pricePerLitre,
+  locale = "en",
   action,
   onClearRow,
 }: {
@@ -38,6 +40,7 @@ export function MilkSheetForm({
   sheds: { id: string; name: string }[];
   canSave: boolean;
   pricePerLitre: number | null;
+  locale?: string;
   action: (formData: FormData) => void | Promise<void>;
   onClearRow: (formData: FormData) => void | Promise<void>;
 }) {
@@ -92,7 +95,7 @@ export function MilkSheetForm({
                 onChange={(e) => setShedFilter(e.target.value)}
                 className="h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground"
               >
-                <option value="">All sheds ({cows.length})</option>
+                <option value="">{t(locale, "milk.allSheds")} ({cows.length})</option>
                 {sheds.map((shed) => (
                   <option key={shed.id} value={shed.id}>
                     {shed.name}
@@ -137,8 +140,8 @@ export function MilkSheetForm({
           <div className="hidden grid-cols-[7.5rem_minmax(0,1fr)_8.5rem_8.5rem_6.5rem] gap-3 border-b border-border/80 bg-muted/60 px-4 py-3 text-xs font-semibold text-muted-foreground lg:grid">
             <span>Cattle ID</span>
             <span>Name &amp; yesterday</span>
-            <span>Morning (L)</span>
-            <span>Evening (L)</span>
+            <span>{t(locale, "milk.morning")}</span>
+            <span>{t(locale, "milk.evening")}</span>
             <span className="text-right">Total</span>
           </div>
         ) : null}
@@ -281,7 +284,7 @@ export function MilkSheetForm({
               Press Enter to move down a column. {totals.entered} of {cows.length} cows entered ({totals.litres.toFixed(1)} L).
             </span>
             <Button type="submit" className="h-10 rounded-full px-5 font-semibold shadow-xs">
-              Save {selectedLabel}
+              {t(locale, "milk.save")} {selectedLabel}
             </Button>
           </div>
         ) : null}

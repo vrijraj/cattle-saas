@@ -2,7 +2,7 @@ import { getFarm } from "@/lib/farm-context";
 import { geminiConfigured } from "@/lib/ai/config";
 import type { AiEvent, AiImageAttachment, AiTurn } from "@/lib/ai/run";
 import { countMonthlyAiSessions, loadLatestUserChat, saveUserChatMessages } from "@/lib/ai/sessions";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkDistributedRateLimit } from "@/lib/rate-limit-db";
 
 export const runtime = "nodejs";
 
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   const farm = await getFarm();
   if (!farm) return Response.json({ error: "Sign in to use the assistant." }, { status: 401 });
 
-  const rl = checkRateLimit(`ai:${farm.farmId}:${farm.userId}`, { limit: 20, windowMs: 60 * 1000 });
+  const rl = await checkDistributedRateLimit(`ai:${farm.farmId}:${farm.userId}`, { limit: 20, windowMs: 60 * 1000 });
   if (!rl.allowed) {
     return Response.json({ error: "Too many AI requests. Wait a minute and try again." }, { status: 429 });
   }
